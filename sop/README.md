@@ -1,0 +1,49 @@
+# SOP 库索引(可组合规程)
+
+> SOP = 一段可复用的、agent 可执行的规程。三层组织,SOP 之间可互相调用(见"依赖")。
+> 每条 SOP 用 _TEMPLATE.md 结构;每条必须映射到 ../PRINCIPLES.md 的纪律。
+> **组织判据不是"分类整齐",而是"每条 SOP 都是四条纪律的实例化"。**
+
+## Tier 0 — 核心横切(所有场景共用)
+
+| SOP | 落实纪律 | 被谁依赖 |
+|---|---|---|
+| tier0-core/lock-env.md | P4 | 几乎所有 |
+| tier0-core/add-dependency.md | P1 P4 | release-version |
+| tier0-core/build-oracle.md | P2 | run-experiment, package-submission |
+| tier0-core/no-fallback-review.md | P3 | commit-and-pr, drift-check |
+| tier0-core/commit-and-pr.md | P4 | release-version, package-submission |
+| tier0-core/profile-code.md | P2 P4 | build-local-proxy |
+| tier0-core/reproduce-result.md | P2 P4 | run-experiment |
+
+## Tier 1 — 骨架绑定
+
+| SOP | 绑定骨架 | 落实纪律 | 依赖 |
+|---|---|---|---|
+| tier1-skeleton/run-experiment.md | research | P1 P2 P4 | build-oracle, reproduce-result |
+| tier1-skeleton/contamination-check.md | research | P2 | — |
+| tier1-skeleton/package-submission.md | competition | P3 P4 | build-oracle, commit-and-pr |
+| tier1-skeleton/build-local-proxy.md | competition | P2 | profile-code |
+| tier1-skeleton/maintain-patch-series.md | competition | P4 | — |
+| tier1-skeleton/write-contract.md | development | P1 | — |
+| tier1-skeleton/drift-check.md | development | P1 | no-fallback-review |
+| tier1-skeleton/release-version.md | development | P4 | commit-and-pr, add-dependency |
+
+## Tier 2 — 活动型(非项目工作)
+
+> 这些工作不是"项目",不套骨架。运维类为**操作既有系统的规程手册**,不涉及在沙箱内起监听服务。
+
+| SOP | 领域 | 落实纪律 | 依赖 |
+|---|---|---|---|
+| tier2-activity/ops-deploy.md | 运维 | P1 P4 | reproduce-result |
+| tier2-activity/ops-monitor-rollback.md | 运维 | P2 P3 | — |
+| tier2-activity/ops-incident.md | 运维 | P3 P4 | — |
+| tier2-activity/writing-tech-doc.md | 写作 | P1 P4 | — |
+| tier2-activity/writing-report.md | 写作 | P2 P3 P4 | — |
+| tier2-activity/research-investigation.md | 调研 | P1 P2 | — |
+
+## 使用方式
+
+1. 项目任务:选 skeleton 后,在 CLAUDE.md 引用相关 tier0/tier1 SOP。
+2. 非项目任务:直接选 tier2 SOP。
+3. 一条 SOP 引用另一条时,按"依赖"字段调用,不复制内容。
