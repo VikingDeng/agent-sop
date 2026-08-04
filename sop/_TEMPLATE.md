@@ -3,6 +3,7 @@
 - **层级**: tier0-core | tier1-skeleton | tier2-activity
 - **落实纪律**: P1 / P2 / P3 / P4 中的一条或多条(必填,对不上则不得入库,见 ../PRINCIPLES.md)
 - **绑定骨架**: research | competition | development | 无(tier0/tier2 常为"无")
+- **通用性档位**: U0 普适 | U1 语言/生态相关 | U2 项目相关(必填,见 _METHODOLOGY.md §3)
 - **版本**: v1
 
 ## 触发条件
