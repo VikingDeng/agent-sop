@@ -25,7 +25,6 @@ agent-sop/
 │   ├── tier0-core/        # 核心横切(全场景共用,7 条)
 │   ├── tier1-skeleton/    # 骨架绑定(8 条)
 │   └── tier2-activity/    # 非项目型工作:运维/写作/调研(6 条)
-├── templates/             # 模板仓库索引(按需配套)
 └── README.md              # 本文件
 ```
 
@@ -35,7 +34,6 @@ agent-sop/
    - **是** → 选骨架([skeletons/README.md](skeletons/README.md)),在项目 CLAUDE.md 引用相关 tier0/tier1 SOP。
    - **不是**(运维/写作/调研)→ 直接走 [sop/tier2-activity/](sop/README.md) 的活动型 SOP。
 2. **所有情况都受 PRINCIPLES 约束**(任何 skeleton/SOP 必须落实至少一条纪律)。
-3. 需要项目骨架直接开工 → clone [contestos-starter](https://github.com/VikingDeng/contestos-starter)。
 
 ## 新增一个 SOP
 
@@ -47,4 +45,3 @@ agent-sop/
 
 1. 文档放 `skeletons/<语义名>-v<版本>.md`,头部声明落实的纪律。
 2. 更新 [skeletons/README.md](skeletons/README.md) 索引。
-3. 需要模板骨架 → 建模板仓库(标记 Template Repository)→ 登记到 [templates/README.md](templates/README.md)。
