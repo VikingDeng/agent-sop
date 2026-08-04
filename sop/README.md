@@ -6,41 +6,41 @@
 
 ## Tier 0 — 核心横切(所有场景共用)
 
-| SOP | 落实纪律 | 被谁依赖 |
-|---|---|---|
-| tier0-core/lock-env.md | P4 | 几乎所有 |
-| tier0-core/add-dependency.md | P1 P4 | release-version |
-| tier0-core/build-oracle.md | P2 | run-experiment, package-submission |
-| tier0-core/no-fallback-review.md | P3 | commit-and-pr, drift-check |
-| tier0-core/commit-and-pr.md | P4 | release-version, package-submission |
-| tier0-core/profile-code.md | P2 P4 | build-local-proxy |
-| tier0-core/reproduce-result.md | P2 P4 | run-experiment |
+| SOP | 档位 | 落实纪律 | 被谁依赖 |
+|---|---|---|---|
+| tier0-core/lock-env.md | U1 | P4 | 几乎所有 |
+| tier0-core/add-dependency.md | U1 | P1 P4 | release-version |
+| tier0-core/build-oracle.md | U0 | P2 | run-experiment, package-submission |
+| tier0-core/no-fallback-review.md | U0 | P3 | commit-and-pr, drift-check |
+| tier0-core/commit-and-pr.md | U1 | P4 | release-version, package-submission |
+| tier0-core/profile-code.md | U2 | P2 P4 | build-local-proxy |
+| tier0-core/reproduce-result.md | U1 | P2 P4 | run-experiment |
 
 ## Tier 1 — 骨架绑定
 
-| SOP | 绑定骨架 | 落实纪律 | 依赖 |
-|---|---|---|---|
-| tier1-skeleton/run-experiment.md | research | P1 P2 P4 | build-oracle, reproduce-result |
-| tier1-skeleton/contamination-check.md | research | P2 | — |
-| tier1-skeleton/package-submission.md | competition | P3 P4 | build-oracle, commit-and-pr |
-| tier1-skeleton/build-local-proxy.md | competition | P2 | profile-code |
-| tier1-skeleton/maintain-patch-series.md | competition | P4 | — |
-| tier1-skeleton/write-contract.md | development | P1 | — |
-| tier1-skeleton/drift-check.md | development | P1 | no-fallback-review |
-| tier1-skeleton/release-version.md | development | P4 | commit-and-pr, add-dependency |
+| SOP | 绑定骨架 | 档位 | 落实纪律 | 依赖 |
+|---|---|---|---|---|
+| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P4 | build-oracle, reproduce-result |
+| tier1-skeleton/contamination-check.md | research | U2 | P2 | — |
+| tier1-skeleton/package-submission.md | competition | U1 | P3 P4 | build-oracle, commit-and-pr |
+| tier1-skeleton/build-local-proxy.md | competition | U2 | P2 | profile-code |
+| tier1-skeleton/maintain-patch-series.md | competition | U1 | P4 | — |
+| tier1-skeleton/write-contract.md | development | U1 | P1 | — |
+| tier1-skeleton/drift-check.md | development | U1 | P1 | no-fallback-review |
+| tier1-skeleton/release-version.md | development | U1 | P4 | commit-and-pr, add-dependency |
 
 ## Tier 2 — 活动型(非项目工作)
 
 > 这些工作不是"项目",不套骨架。运维类为**操作既有系统的规程手册**,不涉及在沙箱内起监听服务。
 
-| SOP | 领域 | 落实纪律 | 依赖 |
-|---|---|---|---|
-| tier2-activity/ops-deploy.md | 运维 | P1 P4 | reproduce-result |
-| tier2-activity/ops-monitor-rollback.md | 运维 | P2 P3 | — |
-| tier2-activity/ops-incident.md | 运维 | P3 P4 | — |
-| tier2-activity/writing-tech-doc.md | 写作 | P1 P4 | — |
-| tier2-activity/writing-report.md | 写作 | P2 P3 P4 | — |
-| tier2-activity/research-investigation.md | 调研 | P1 P2 | — |
+| SOP | 领域 | 档位 | 落实纪律 | 依赖 |
+|---|---|---|---|---|
+| tier2-activity/ops-deploy.md | 运维 | U1 | P1 P4 | reproduce-result |
+| tier2-activity/ops-monitor-rollback.md | 运维 | U1 | P2 P3 | — |
+| tier2-activity/ops-incident.md | 运维 | U0 | P3 P4 | — |
+| tier2-activity/writing-tech-doc.md | 写作 | U0 | P1 P4 | — |
+| tier2-activity/writing-report.md | 写作 | U0 | P2 P3 P4 | — |
+| tier2-activity/research-investigation.md | 调研 | U0 | P1 P2 | — |
 
 ## 使用方式
 
