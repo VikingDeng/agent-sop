@@ -38,6 +38,7 @@
 | tier2-activity/ops-deploy.md | 运维 | U1 | P1 P4 | reproduce-result |
 | tier2-activity/ops-monitor-rollback.md | 运维 | U1 | P2 P3 | — |
 | tier2-activity/ops-incident.md | 运维 | U0 | P3 P4 | — |
+| tier2-activity/ops-remote-compute.md | 运维 | U1 | P1 P3 P4 | no-fallback-review, lock-env, commit-and-pr |
 | tier2-activity/writing-tech-doc.md | 写作 | U0 | P1 P4 | — |
 | tier2-activity/writing-report.md | 写作 | U0 | P2 P3 P4 | — |
 | tier2-activity/research-investigation.md | 调研 | U0 | P1 P2 | — |
