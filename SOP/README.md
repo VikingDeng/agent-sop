@@ -7,6 +7,7 @@
 |---|---|---|---|---|---|
 | [contestos-ai-research-v1.md](contestos-ai-research-v1.md) | AI 科研 | LLM / agent / RL / 推理期方法 / 数据中心(含比赛项目) | v1 | §6 | [contestos-starter](https://github.com/VikingDeng/contestos-starter) |
 | [contestos-competition-v1.md](contestos-competition-v1.md) | 竞赛 | 有客观分且能本地代理的竞赛(性能赛 / 系统优化赛 / 榜单预测赛) | v1 | §8 | [contestos-starter](https://github.com/VikingDeng/contestos-starter)(contests/ 结构) |
+| [contestos-development-v1.md](contestos-development-v1.md) | 开发 | 高质量项目交付:库/框架、服务、CLI、管线、infra 组件、应用、黑客松 MVP | v1 | §7 | 待建 |
 
 ## 使用方式
 
