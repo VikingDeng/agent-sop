@@ -1,8 +1,13 @@
-# ContestOS · AI 科研项目架构规范(骨架终稿 v1)
+# ContestOS · AI 科研项目架构标准 v1
 
-> 本文件是**施工蓝图**,不是设计说明。你的 agent 读完应能直接 scaffold 出目录、写出模板文件、配好环境、装好 gate。
-> 每一个目录节点都标注了它**防住哪一种具体的腐烂/造假**;答不出的节点即为装饰,不要建。
-> 适用范围:AI 科研项目(LLM / agent / RL / 推理期方法 / 数据中心),即"贡献往往不是模型本身,而是围绕一个不拥有的骨干模型做的 method"。
+> **文档身份**:本标准是**施工蓝图**,不是设计说明 —— agent 读完应能直接 scaffold 出目录、写出模板文件、配好环境、装好 gate;也是**行为约束** —— 适用项目中的硬锚(§6)不可违反。
+> **适用范围**:AI 科研项目(LLM / agent / RL / 推理期方法 / 数据中心),即"贡献往往不是模型本身,而是围绕一个不拥有的骨干模型做的 method"。
+> **启用方式**:项目属于该类型时,项目级 `CLAUDE.md` 一行引用本文件(如"开发前先读 STANDARD.md 并遵守其硬锚"),不整体注入。
+> **版本与来源**:v1(骨架终稿)。源文件 `~/Desktop/ContestOS_AI科研项目架构规范_v1.md`;本仓库收录版与源文件 sha256 一致。模板落地见 `contestos-starter` 仓库。
+
+## 读法
+
+每一个目录节点都标注了它**防住哪一种具体的腐烂/造假**;答不出的节点即为装饰,不要建。
 
 ---
 
@@ -35,7 +40,7 @@
 | 静默降级 | 指标算不出就跳过、baseline 抄论文数、单 seed 当结论 | 指标缺失=硬失败;baseline 本地复现;多 seed 强制 |
 | 灌水/挑好结果 | 只留跑赢的实验,删负结果,cherry-pick seed | run 目录不可覆盖 + `HYPOTHESIS_LEDGER` 预注册指标+保留负结果 |
 
-### 1.2 LLM/agent 时代新增腐烂(6 类,更隐蔽)
+### 1.2 LLM/agent 时代新增腐烂(7 类,更隐蔽)
 
 | 新腐烂 | 表现 | 骨架用什么挡 |
 |---|---|---|
@@ -246,6 +251,7 @@ uv pip install \
   --torch-backend=cu129
 ```
 把 `nvidia-smi` 输出 + CUDA 版本抓进 `env/env.lock.json`。
+> 注:上面的 wheel URL 是 **Linux x86_64** 场景;macOS 场景无 CUDA wheel,直接用 `uv pip install vllm --torch-backend=auto`,训练/推理到 Linux GPU 机上跑。
 
 ### 4.3 三层环境锁 + 一个自检
 ```
@@ -263,7 +269,7 @@ env/
 - **模型下载**:`registry.yaml`(revision + sha256)+ `download_model.py`。补一条离线复现测试:设 `HF_HUB_OFFLINE=1`,若开离线仍跑通,证明权重真落盘且被 registry 追踪,没偷偷拉 latest。挡"骨干漂移"的 [RUNTIME] 校验。
 - **provenance**:每次下载写 `provenance.json`(何时/从哪源/什么 revision/sha256),落到 `models_cache/<model>@<revision>/`,`chmod` 只读,不同版本物理隔离。
 
-### 4.5 还有什么必须考虑
+### 4.5 其他必须考虑项
 - **随机性完整闭环**:不只 `seed`,还有 `torch.use_deterministic_algorithms`、`CUBLAS_WORKSPACE_CONFIG`、vLLM 采样 seed,全进 manifest。
 - **chat template 锁定**:同骨干 chat template 变了结果就变。registry pin template(builtin 版本或锁定文件)。LLM 特有、极易忽略的复现漏洞。
 - **compute budget 披露**(顶会要求):每个 run 记 GPU 小时 / token 数,进 manifest,report 汇总。
