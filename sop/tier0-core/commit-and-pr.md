@@ -32,6 +32,7 @@
 
 [AUTO] 提交前 `git_dirty=false`(要提交的变更已全部 stage,无未跟踪的意图内文件遗漏);commit message 符合 `{type}: {...}` 规范。
 [REVIEW] PR 至少能回答:每个改动对应哪条需求?有无未声明的依赖/抽象?
+[REVIEW] 产出符合 → PROSE_STANDARD.md(commit message / PR 描述)。
 
 ## 完成判定
 
