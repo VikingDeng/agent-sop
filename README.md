@@ -16,7 +16,11 @@ agent-sop/
 │   ├── 02-runtime-architecture.md    # agent 栈架构:角色分工、模型路由
 │   ├── 03-development-workflow.md    # 开发流程:plan → research → implement → review
 │   ├── 04-research-rules.md          # 研究规则:证据纪律、品味启发
-│   └── 05-coding-and-quality.md      # 编码规范与质量门禁
+│   ├── 05-coding-and-quality.md      # 编码规范与质量门禁
+│   └── 06-code-project-development.md  # 代码与项目开发规范(草案)
+├── standards/         # 任务层标准(按任务激活的深度规范)
+│   ├── README.md      # 索引:适用范围/版本/启用条件
+│   └── contestos-ai-research-v1.md   # AI 科研项目架构规范(施工蓝图,原样收录)
 └── skills/            # skill 清单(只做索引,不镜像源码)
     └── INDEX.md       # 全部 skill:名称/领域/用途/触发场景
 ```
@@ -27,6 +31,7 @@ agent-sop/
 - `~/ops` 是工作站自动化的**唯一事实源**;本仓库是其对外文档化副本,供 agent 引用。
 - 修改 SOP 时:优先改 `~/ops` 侧来源,再同步本仓库;或直接改本仓库并保持一致。
 - skills 清单同步自 `~/ops/claude/skills/` 的 SKILL.md frontmatter。
+- `standards/` 收录任务层标准(原样保留),源文件变更时重新复制并更新登记。
 
 ## 维护约定
 
