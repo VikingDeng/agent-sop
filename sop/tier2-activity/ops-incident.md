@@ -31,6 +31,7 @@
 
 [REVIEW] 必问:"是真定位了根因,还是重启/自愈掩盖了问题?影响面上报是否如实?"
 [HUMAN] 定级与对外通报口径人工把关。
+[REVIEW] 产出符合 → PROSE_STANDARD.md(复盘 postmortem 正文)。
 
 ## 完成判定
 
