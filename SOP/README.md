@@ -6,6 +6,7 @@
 | SOP | 类型 | 适用任务 | 版本 | 硬锚 | 模板 |
 |---|---|---|---|---|---|
 | [contestos-ai-research-v1.md](contestos-ai-research-v1.md) | AI 科研 | LLM / agent / RL / 推理期方法 / 数据中心(含比赛项目) | v1 | §6 | [contestos-starter](https://github.com/VikingDeng/contestos-starter) |
+| [contestos-competition-v1.md](contestos-competition-v1.md) | 竞赛 | 有客观分且能本地代理的竞赛(性能赛 / 系统优化赛 / 榜单预测赛) | v1 | §8 | [contestos-starter](https://github.com/VikingDeng/contestos-starter)(contests/ 结构) |
 
 ## 使用方式
 
