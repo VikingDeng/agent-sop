@@ -1,17 +1,31 @@
 # agent-sop
 
-个人 agent 开发规范仓库。
+个人 agent 开发 SOP 体系仓库。**一个仓库容纳全部 SOP 文档 + 模板索引**,agent 开发时按任务类型遵守对应 SOP。
 
-## 内容
+## 结构
 
-- **[STANDARD.md](STANDARD.md)** —— 唯一标准文档:ContestOS · AI 科研项目架构标准 v1(施工蓝图 + 硬锚)。适用 AI 科研/比赛项目。
+```
+agent-sop/
+├── SOP/            # ★ 全部 SOP 文档(每份独立标准,含硬锚)
+│   └── README.md   # 索引:类型/适用任务/版本/模板
+├── templates/      # 模板仓库索引(按需配套)
+└── README.md       # 本文件
+```
+
+## 当前 SOP
+
+| SOP | 适用任务 | 模板 |
+|---|---|---|
+| [AI 科研架构标准 v1](SOP/contestos-ai-research-v1.md) | AI 科研/比赛项目(LLM/agent/RL/推理期/数据中心) | [contestos-starter](https://github.com/VikingDeng/contestos-starter) |
 
 ## 使用方式
 
-1. 项目属于 **AI 科研/比赛**类型 → 项目级 `CLAUDE.md` 一行引用:`开发前先读 STANDARD.md 并遵守其硬锚`,然后按 STANDARD.md §7 落地步骤开工。
-2. 需要骨架直接开工 → clone **contestos-starter**(模板仓库):`git clone https://github.com/VikingDeng/contestos-starter.git`。
+1. 读 [SOP/README.md](SOP/README.md) 确定任务对应的 SOP。
+2. 项目级 `CLAUDE.md` 一行引用对应 SOP 并遵守其硬锚。
+3. 有配套模板的,clone 模板开工。
 
-## 维护
+## 新增一个 SOP
 
-- STANDARD.md 源文件在 `~/Desktop/ContestOS_AI科研项目架构规范_v1.md`;源文件更新后重新复制进本仓库,保持 sha256 一致。
-- 本仓库只放稳定标准,不放过程性内容。
+1. 文档放 `SOP/<语义名>-v<版本>.md`(文件头部含:身份/适用范围/启用方式/版本来源)。
+2. 更新 `SOP/README.md` 索引。
+3. 需要模板骨架 → 建模板仓库(标记 Template Repository)→ 登记到 `templates/README.md`。
