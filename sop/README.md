@@ -21,7 +21,7 @@
 
 | SOP | 绑定骨架 | 档位 | 落实纪律 | 依赖 |
 |---|---|---|---|---|
-| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P4 | build-oracle, reproduce-result |
+| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P3 P4 | build-oracle, reproduce-result |
 | tier1-skeleton/statistics-oracle.md | research | U1 | P2 P3 P4 | build-oracle, reproduce-result, no-fallback-review |
 | tier1-skeleton/contamination-check.md | research | U2 | P2 | — |
 | tier1-skeleton/package-submission.md | competition | U1 | P3 P4 | build-oracle, commit-and-pr |
