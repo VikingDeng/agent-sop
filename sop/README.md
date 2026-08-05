@@ -22,6 +22,7 @@
 | SOP | 绑定骨架 | 档位 | 落实纪律 | 依赖 |
 |---|---|---|---|---|
 | tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P4 | build-oracle, reproduce-result |
+| tier1-skeleton/statistics-oracle.md | research | U1 | P2 P3 P4 | build-oracle, reproduce-result, no-fallback-review |
 | tier1-skeleton/contamination-check.md | research | U2 | P2 | — |
 | tier1-skeleton/package-submission.md | competition | U1 | P3 P4 | build-oracle, commit-and-pr |
 | tier1-skeleton/build-local-proxy.md | competition | U2 | P2 | profile-code |
@@ -42,7 +43,7 @@
 | tier2-activity/ops-remote-compute.md | 运维 | U1 | P1 P3 P4 | no-fallback-review, lock-env, commit-and-pr |
 | tier2-activity/writing-tech-doc.md | 写作 | U0 | P1 P4 | — |
 | tier2-activity/writing-report.md | 写作 | U0 | P2 P3 P4 | — |
-| tier2-activity/scientific-paper.md | 写作 | U1 | P1 P2 P3 P4 | build-oracle, reproduce-result, contamination-check, PROSE_STANDARD |
+| tier2-activity/scientific-paper.md | 写作 | U1 | P1 P2 P3 P4 | build-oracle, reproduce-result, contamination-check, statistics-oracle, PROSE_STANDARD |
 | tier2-activity/research-investigation.md | 调研 | U0 | P1 P2 | — |
 
 ## 使用方式
