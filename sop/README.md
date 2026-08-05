@@ -15,6 +15,7 @@
 | tier0-core/commit-and-pr.md | U1 | P4 | release-version, package-submission |
 | tier0-core/profile-code.md | U2 | P2 P4 | build-local-proxy |
 | tier0-core/reproduce-result.md | U1 | P2 P4 | run-experiment |
+| tier0-core/fetch-assets.md | U1 | P1 P3 P4 | run-experiment, ops-remote-compute |
 
 ## Tier 1 — 骨架绑定
 
