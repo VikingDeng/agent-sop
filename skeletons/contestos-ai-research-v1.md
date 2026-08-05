@@ -282,6 +282,7 @@ env/
 - **环境在服务器建**:`env/`(uv + torch-backend + verify_env)在选定远程机的 `{REMOTE_WORKSPACE}` 下搭建并自检通过;本地只保留代码与轻量配置。
 - **数据与模型在服务器下载**:语料、数据集、权重一律在远程机上下载(走 registry + checksum),**禁止本地下载大文件再回传**;服务器上的下载源用镜像(HF endpoint/modelscope),版本仍由 hash 锁死。
 - **计算在服务器跑**:训练/实验/评测全部在远程执行;`reproduce.sh`、CI 冒烟可以在本地跑小样本验证代码路径。
+- **全量前小样本冒烟(防返工)**:任何**全量长时任务**(大语料下载、全量候选生成、长训练、后台监测)启动前,必须先**小样本跑通整条链路**(输入 → 处理 → 产物 → 留痕),确认 pipeline 无问题再放全量。全量跑了几小时才发现 bug 的返工是不可逆损失;小样本冒烟就是这条防线的成本最低形态。
 - **GitHub 为代码中枢**:项目开工即建 **GitHub 私有仓库**(VikingDeng 账号,`gh repo create <name> --private`),本地与远程服务器均以它为远端(push/pull)——多机同步经 GitHub 中转,不依赖本地裸仓库。**权重/数据/大文件不进 git**(在服务器数据盘,如 houyi 的 `/home/gys_ssd`);密钥/凭据永不入库(见工作站治理)。产物/日志回传本地或约定存储;具体同步动作与进程红线见 `→ sop/tier2-activity/ops-remote-compute.md`。
 - **选机是执行时的事**:契约阶段(EXPERIMENT_PROTOCOL 定稿)只评估并记录**资源需求**(显存/GPU 数/内存/磁盘/预计时长),不锁定具体机器;执行时从服务器清单(`~/ops/remotes/hosts.tsv` + `~/ops/docs/server-inventory.md`)按需求选机,经人确认后开工。
 - **执行与算力规划进 EXPERIMENT_PROTOCOL**:与评测协议、骨干矩阵、多 seed 一起在定稿时冻结(见 §7 步骤 2 与 §6 人的介入点)。
