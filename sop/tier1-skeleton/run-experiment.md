@@ -14,7 +14,8 @@ research 骨架项目中,需要跑一次实验产出用于决策/汇报的结果
 
 - 假设已预注册到 `{HYPOTHESIS_LEDGER}`(要验证什么、预期方向、成功判据),防事后编故事;
 - 环境已按 `→ tier0-core/lock-env.md` 锁定;
-- 正确性 oracle 已按 `→ tier0-core/build-oracle.md` 就位。
+- 正确性 oracle 已按 `→ tier0-core/build-oracle.md` 就位;
+- **执行位置已定**:实验在远程服务器执行(科研骨架 §4.6,本机禁止跑实验),契约阶段已确认执行机或至少已记录资源需求。
 
 ## 依赖 SOP
 
