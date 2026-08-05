@@ -188,7 +188,7 @@ ai-research/
 │
 ├── docs/                           # 过程账本(给人读)
 │   ├── HYPOTHESIS_LEDGER.md        #   [反灌水] 预注册指标 + 保留负结果
-│   ├── EXPERIMENT_PROTOCOL.md      #   评测协议冻结 + 骨干矩阵 + 多seed + 污染规则
+│   ├── EXPERIMENT_PROTOCOL.md      #   评测协议冻结 + 骨干矩阵 + 多seed + 污染规则 + 执行与算力规划(全远程默认,见 §4.6)
 │   └── DECISIONS.md                #   方向性决策与被否决方案
 │
 ├── delivery/                       # 30秒验收门面(给决策者)
@@ -274,6 +274,17 @@ env/
 - **chat template 锁定**:同骨干 chat template 变了结果就变。registry pin template(builtin 版本或锁定文件)。LLM 特有、极易忽略的复现漏洞。
 - **compute budget 披露**(顶会要求):每个 run 记 GPU 小时 / token 数,进 manifest,report 汇总。
 - **CI 只做"小而真"冒烟**:CI 无大 GPU,用最小骨干(0.5B)+ 极小样本跑通 `reproduce.sh` 的流程,证明代码路径不假死;全量复现在自有算力。
+
+### 4.6 远程执行默认(科研项目的执行基准)
+
+**科研项目的环境、数据、计算默认全部在远程 SSH 算力机上,本地只做编排。** 本机不建 GPU 环境、不下大权重/大数据集。
+
+- **环境在服务器建**:`env/`(uv + torch-backend + verify_env)在选定远程机的 `{REMOTE_WORKSPACE}` 下搭建并自检通过;本地只保留代码与轻量配置。
+- **数据与模型在服务器下载**:语料、数据集、权重一律在远程机上下载(走 registry + checksum),**禁止本地下载大文件再回传**;服务器上的下载源用镜像(HF endpoint/modelscope),版本仍由 hash 锁死。
+- **计算在服务器跑**:训练/实验/评测全部在远程执行;`reproduce.sh`、CI 冒烟可以在本地跑小样本验证代码路径。
+- **代码同步**:以 git 为主(本地仓库 push → 远程 pull),产物/日志回传本地或约定存储;具体同步动作与进程红线见 `→ sop/tier2-activity/ops-remote-compute.md`。
+- **选机是执行时的事**:契约阶段(EXPERIMENT_PROTOCOL 定稿)只评估并记录**资源需求**(显存/GPU 数/内存/磁盘/预计时长),不锁定具体机器;执行时从服务器清单(`~/ops/remotes/hosts.tsv` + `~/ops/docs/server-inventory.md`)按需求选机,经人确认后开工。
+- **执行与算力规划进 EXPERIMENT_PROTOCOL**:与评测协议、骨干矩阵、多 seed 一起在定稿时冻结(见 §7 步骤 2 与 §6 人的介入点)。
 
 ---
 
@@ -369,7 +380,7 @@ experiments/.../rollouts/  # ★ 每步 rollout + reward 分布 + KL 曲线落�
 
 **enforcement 分档**:`[AUTO]` formatter/linter,无人;`[SCAN]` gate 脚本(读只);`[REVIEW]` 异构模型(codex 判"真不真");`[RUNTIME]` 真实运行取证;`[HUMAN]` 仅架构/协议决策。
 
-**人的唯一介入点**:`ARCHITECTURE.md` + `EXPERIMENT_PROTOCOL.md` 定稿时拍板(分层、评测协议、骨干矩阵、多 seed 数、污染规则)。之后所有验收由机器/异构模型执行,人不看细节。
+**人的唯一介入点**:`ARCHITECTURE.md` + `EXPERIMENT_PROTOCOL.md` 定稿时拍板(分层、评测协议、骨干矩阵、多 seed 数、污染规则、执行与算力规划——含"全远程默认"确认与选机授权)。之后所有验收由机器/异构模型执行,人不看细节。
 
 ---
 
@@ -377,14 +388,15 @@ experiments/.../rollouts/  # ★ 每步 rollout + reward 分布 + KL 曲线落�
 
 1. 读 `RESEARCH_MODE.md`,确定模式 A/B/C/D → 决定启用哪些 `recipe/` 与 `src/` 子目录(未启用的不建空目录)。
 2. 先写 `ARCHITECTURE.md`(4 块:分层 / 依赖图 / 边界 / 被否决方案)→ 这是 [HUMAN] 拍板点,等确认再动代码。
-3. 建 `env/`:`setup_env.sh` → `verify_env.py` 跑通(CUDA/vLLM/GPU 自检绿)才继续。
-4. 建 `models/registry.yaml` + `download_model.py`,下载骨干并校验 checksum,`HF_HUB_OFFLINE=1` 离线复现测试通过。
-5. 建 `src/` 三个抽象接口:`Backbone` / `Method` / `Task`(method 与 baseline 都实现 `Method`)。
-6. 建 `conf/`(Hydra 组合)、`scripts/`(薄编排)、`experiments/`(不可覆盖 run 目录 + manifest)。
-7. 建 `tests/`:先让 `test_env` / `test_backbone_contract` / `test_contamination` / `test_determinism` 绿。
-8. 装 gate:`git_dirty`/`revision`/`split_hash`/`seeds_planned` 的 [SCAN] 脚本 + **`gate_no_fallback.py`(§9.2 零兜底扫描)** + `reproduce.sh` 的 CI 冒烟。
-9. 首个实验前在 `HYPOTHESIS_LEDGER` 预注册指标;跑完(含负结果)入账本;`make_report.py` 生成 `results/main_table.md`(骨干列一致、多 seed std)。
-10. 交付走 `delivery/UNIT.md` 5 行骨架。
+3. 写 `EXPERIMENT_PROTOCOL.md` 时同步产出**执行与算力规划**(§4.6):资源需求(显存/GPU 数/内存/磁盘/预计时长)、数据与模型下载计划、同步策略。**全远程默认**:环境/数据/计算在远程机上,本地只编排;选机执行时从 `~/ops/remotes/hosts.tsv` + `~/ops/docs/server-inventory.md` 按需求选择并经人确认。→ [HUMAN] 拍板点。
+4. 建 `env/`:`setup_env.sh` → `verify_env.py` 跑通(CUDA/vLLM/GPU 自检绿)才继续——**在选定远程机的 `{REMOTE_WORKSPACE}` 下搭建**,不在本机建 GPU 环境。
+5. 建 `models/registry.yaml` + `download_model.py`,下载骨干并校验 checksum,`HF_HUB_OFFLINE=1` 离线复现测试通过——**下载在远程机执行**(§4.6)。
+6. 建 `src/` 三个抽象接口:`Backbone` / `Method` / `Task`(method 与 baseline 都实现 `Method`)。
+7. 建 `conf/`(Hydra 组合)、`scripts/`(薄编排)、`experiments/`(不可覆盖 run 目录 + manifest)。
+8. 建 `tests/`:先让 `test_env` / `test_backbone_contract` / `test_contamination` / `test_determinism` 绿。
+9. 装 gate:`git_dirty`/`revision`/`split_hash`/`seeds_planned` 的 [SCAN] 脚本 + **`gate_no_fallback.py`(§9.2 零兜底扫描)** + `reproduce.sh` 的 CI 冒烟。
+10. 首个实验前在 `HYPOTHESIS_LEDGER` 预注册指标;跑完(含负结果)入账本;`make_report.py` 生成 `results/main_table.md`(骨干列一致、多 seed std)。
+11. 交付走 `delivery/UNIT.md` 5 行骨架。
 
 ---
 
