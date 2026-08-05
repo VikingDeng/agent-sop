@@ -190,8 +190,8 @@ v1 只会做减法(删禁用词、闭合逻辑),不会做加法。清除 AI 味�
 | tier2-activity/research-investigation.md | 调研结论 | — |
 | tier2-activity/ops-incident.md | 故障复盘 postmortem | — |
 | tier0-core/commit-and-pr.md | commit message / PR 描述 | 非写作 SOP,但产文字,同样受约束 |
-| tier2-activity/scientific-paper.md(规划中) | 论文正文 | 红线关/风格关之外,另接一条独立审稿关(见下) |
+| tier2-activity/scientific-paper.md | 论文正文 | 红线关/风格关之外,另接一条独立审稿关(已由该 SOP 兑现) |
 
 > 引用而非复制:SOP 只写"符合 PROSE_STANDARD",判据集中在本文件维护,改一处全库生效。
 
-> **给论文 SOP 的预留接口**:论文除走本规范的红线关(逻辑/术语/语病)+ 风格关(措辞/中庸)外,还需一条 **独立审稿关**——模拟顶会审稿,查 claim↔evidence 是否闭合、区分"表述问题 vs 方法缺陷"。那一关本质是 **P2 独立 oracle 验证**用在论文上(不信作者自述),不属于本规范,由 scientific-paper SOP 自己承接并引用 `→ build-oracle`。本规范只负责把接口留在这里。
+> **论文 SOP 的独立审稿关(接口已兑现)**:论文除走本规范的红线关(逻辑/术语/语病)+ 风格关(措辞/中庸)外,还需一条 **独立审稿关**——模拟顶会审稿,查 claim↔evidence 是否闭合、区分"表述问题 vs 方法缺陷"。那一关本质是 **P2 独立 oracle 验证**用在论文上(不信作者自述)。该接口已由 `sop/tier2-activity/scientific-paper.md` 的门禁"审稿关"承接(引用 `→ build-oracle`)。
