@@ -277,11 +277,11 @@ env/
 
 ### 4.6 远程执行默认(科研项目的执行基准)
 
-**科研项目的环境、数据、计算默认全部在远程 SSH 算力机上,本地只做编排。** 本机不建 GPU 环境、不下大权重/大数据集。
+**科研项目的环境、数据、计算一律在远程 SSH 算力机上。本机(Mac)禁止运行实验与计算任务,只允许写代码、编辑、编排、轻量校验(语法/lint/单测冒烟)。** 本机不建 GPU 环境、不下大权重/大数据集;训练/评测/数据收集/长时任务全部在服务器上启动与监控。
 
 - **环境在服务器建**:`env/`(uv + torch-backend + verify_env)在选定远程机的 `{REMOTE_WORKSPACE}` 下搭建并自检通过;本地只保留代码与轻量配置。
 - **数据与模型在服务器下载**:语料、数据集、权重一律在远程机上下载(走 registry + checksum),**禁止本地下载大文件再回传**;服务器上的下载源用镜像(HF endpoint/modelscope),版本仍由 hash 锁死。
-- **计算在服务器跑**:训练/实验/评测全部在远程执行;`reproduce.sh`、CI 冒烟可以在本地跑小样本验证代码路径。
+- **计算在服务器跑(硬性)**:训练/实验/评测/数据收集/长时任务**一律在远程执行,禁止在本机(Mac)运行**;本机只允许 `reproduce.sh`、CI 冒烟这类轻量代码路径校验(小样本、不耗 GPU)。
 - **全量前小样本冒烟(防返工)**:任何**全量长时任务**(大语料下载、全量候选生成、长训练、后台监测)启动前,必须先**小样本跑通整条链路**(输入 → 处理 → 产物 → 留痕),确认 pipeline 无问题再放全量。全量跑了几小时才发现 bug 的返工是不可逆损失;小样本冒烟就是这条防线的成本最低形态。
 - **GitHub 为代码中枢**:项目开工即建 **GitHub 私有仓库**(VikingDeng 账号,`gh repo create <name> --private`),本地与远程服务器均以它为远端(push/pull)——多机同步经 GitHub 中转,不依赖本地裸仓库。**权重/数据/大文件不进 git**(在服务器数据盘,如 houyi 的 `/home/gys_ssd`);密钥/凭据永不入库(见工作站治理)。产物/日志回传本地或约定存储;具体同步动作与进程红线见 `→ sop/tier2-activity/ops-remote-compute.md`。
 - **选机是执行时的事**:契约阶段(EXPERIMENT_PROTOCOL 定稿)只评估并记录**资源需求**(显存/GPU 数/内存/磁盘/预计时长),不锁定具体机器;执行时从服务器清单(`~/ops/remotes/hosts.tsv` + `~/ops/docs/server-inventory.md`)按需求选机,经人确认后开工。
@@ -374,6 +374,7 @@ experiments/.../rollouts/  # ★ 每步 rollout + reward 分布 + KL 曲线落�
 | agent trajectory 可回放 + 多seed | 报最好一次无法伪装成稳定 | [SCAN] |
 | RL reward/KL 曲线落盘 | reward hacking 在曲线上暴露 | [RUNTIME+REVIEW] |
 | `verify_env.py` 自检 | "环境搭好了"从主观变机器可判 | [RUNTIME] |
+| 计算一律远程执行(本机只写代码) | manifest 记录执行机;本机不跑 GPU 训练/评测进程 | [SCAN+RUNTIME] |
 | `HF_HUB_OFFLINE=1` 离线复现 | 偷偷联网拉 latest 当场失败 | [RUNTIME] |
 | **零 fallback 扫描**(§9.2) | 静默降级=造假温床,宁崩不兜底 | [SCAN+REVIEW] |
 | 差分测试 naive reference(§9.1) | 复杂实现对不上朴素实现当场露 | [RUNTIME] |
