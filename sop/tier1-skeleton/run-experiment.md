@@ -21,6 +21,7 @@ research 骨架项目中,需要跑一次实验产出用于决策/汇报的结果
 
 → tier0-core/build-oracle.md(结果正确性判定)
 → tier0-core/reproduce-result.md(结果可复现)
+→ tier1-skeleton/statistics-oracle.md(多 seed 结果聚合后,若要下"显著/优于"类结论,过统计关;单次实验产出分布本身不强制,聚合下结论时强制)
 
 ## 步骤
 

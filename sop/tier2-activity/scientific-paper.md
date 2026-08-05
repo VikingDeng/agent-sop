@@ -20,7 +20,8 @@
 ## 依赖 SOP
 
 → tier0-core/build-oracle.md(方法/实验正确性:claim 的证据是否被独立验证)。
-→ tier1-skeleton/reproduce-result.md(方法段可复现性下界)。
+→ tier0-core/reproduce-result.md(方法段可复现性下界)。
+→ tier1-skeleton/statistics-oracle.md(实验结论的统计正确性:显著性/效应量/多重比较,claim 里凡含"显著/优于/提升"必过此关)。
 → tier1-skeleton/contamination-check.md(实验数据无污染,baseline 公平)。
 → PROSE_STANDARD.md(全文语言/风格/AI 味,走风格关)。
 
@@ -40,7 +41,7 @@
 > 三关串行,前关不过不进后关(容忍度档位见 no-fallback-review):
 > - **风格关(信号型)**:全文 `→ PROSE_STANDARD.md`。Tier1 词/破折号/三段式/加粗滥用脚本预扫;中庸收尾、超证据结论列信号交作者裁决。
 > - **复现关(阻断型)**:方法段过 `→ reproduce-result`(缺数据/超参/种子即拦);实验过 `→ contamination-check`(baseline 不公平即拦);claim 的证据过 `→ build-oracle`(无独立验证即拦)。
-> - **审稿关(阻断型,本 SOP 特有 · P2)**:模拟顶会审稿,逐条核对——每条 claim 是否有对应实验证据(claim↔evidence 闭合)?贡献是否被正文兑现(不超证据)?区分"表述问题(可改)vs 方法缺陷(硬伤)"。这一关是 P2 独立 oracle 用在论文上:不信作者自述,拿证据对拍 claim。
+> - **审稿关(阻断型,本 SOP 特有 · P2)**:模拟顶会审稿,逐条核对——每条 claim 是否有对应实验证据(claim↔evidence 闭合)?贡献是否被正文兑现(不超证据)?区分"表述问题(可改)vs 方法缺陷(硬伤)"。这一关是 P2 独立 oracle 用在论文上:不信作者自述,拿证据对拍 claim。凡 claim 中出现"显著 / 优于 / 提升 X%"类**统计断言**,其证据必须已过 `→ statistics-oracle`(效应量+CI+p 齐全、独立复算一致、多重比较已校正);统计断言无此支撑 → 与"claim 无证据"同等处理,删断言或补统计。
 
 [HUMAN] 步骤 1 贡献列表必须作者确认。
 [REVIEW] 审稿关必问:"每条 claim 的证据是哪个表/图?找不到的 claim 必须删或补实验。"
@@ -50,6 +51,7 @@
 
 - 贡献列表经作者确认,每条可指向正文某节(二值);
 - 每条 claim 有对应证据(审稿关 claim↔evidence 映射表无空项);
+- 每条统计型 claim 已过 statistics-oracle(STATS_REPORT 可指)(二值);
 - 方法段过复现关、实验过污染关(二值);
 - 全文过 PROSE 风格关(Tier1 词零命中,其余信号已交作者裁决)。
 
