@@ -30,7 +30,7 @@
 
 > 分段节奏(遵守 Checkpoint 节奏):步骤 1–3 是"勘察 + 确认方向"段,必须在首个 checkpoint 向人复述"用哪台机、哪张卡、哪个工作区"并等确认;确认后步骤 4–6 按判据自动执行,末尾汇总。方向未确认前不得在远程写入或启动任何计算进程。
 
-1. **发现候选机(读 ssh config,不猜)**:解析本机 `~/.ssh/config`,列出可用 Host 别名作为候选。只读别名与用途,不打印私钥路径等敏感字段到日志。ssh config 不存在或无可用 Host → 停,报"无可连远程机,请先在 ~/.ssh/config 配置 Host",不得凭记忆猜 IP/用户名硬连。
+1. **发现候选机(读 ssh config 与服务器清单,不猜)**:候选机以 `~/ops/remotes/hosts.tsv`(结构化清单)为主,`~/.ssh/config` 校验可用性——注意 config 可能含 `Include ~/.ssh/conf.d/*.conf`,解析时用 `ssh -G {alias}` 探测或直接读 conf.d,不要只 grep 主文件(会漏掉 Include 的机器)。只读别名与用途,不打印私钥路径等敏感字段到日志。无可连远程机 → 停,报"服务器清单为空或未配置,请检查 ~/.ssh/config 与 conf.d",不得凭记忆猜 IP/用户名硬连。
 2. **认证把关(免密缺失即停,继承 P3)**:对目标 Host 做非交互探测 `ssh -o BatchMode=yes -o ConnectTimeout=10 {HOST} true`。
    - 返回 0 → 免密可用,继续;
    - 提示需要密码/交互 → **中止**,报"{HOST} 未配置免密登录,请先 ssh-copy-id 配置公钥后重试"。**严禁**:存明文密码、用 sshpass/expect 灌密码、反复重试(会触发目标机账户锁定)。
