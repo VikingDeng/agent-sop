@@ -22,13 +22,14 @@ agent-sop/
 ├── AGENTS.md              # Codex 仓库级薄 dispatcher
 ├── PRINCIPLES.md          # 四条核心纪律 + 收纳判据(全仓地基)
 ├── PROSE_STANDARD.md      # 文字产出规范 v2(横切:产人读文字时遵守)
+├── SKILL-ADAPTERS.md      # 官方/维护者 Skill 与 SOP 的适配矩阵(不改变 SOP 权威)
 ├── skeletons/             # 项目骨架(3 份:科研/竞赛/开发,内容零改动)
 │   └── README.md          # 骨架索引
 ├── sop/                   # 可组合规程库(三层)
 │   ├── README.md          # 三层 INDEX + 依赖图 + 纪律映射
 │   ├── _TEMPLATE.md       # 单条 SOP 统一模板
 │   ├── tier0-core/        # 核心横切(全场景共用,9 条)
-│   ├── tier1-skeleton/    # 骨架绑定(9 条)
+│   ├── tier1-skeleton/    # 骨架绑定(10 条)
 │   └── tier2-activity/    # 非项目型工作:运维/写作/调研(8 条)
 ├── codex/                 # 个人模板与 custom-agent adapter
 └── scripts/               # 仓库独立验证器
@@ -37,11 +38,13 @@ agent-sop/
 ## 使用流程
 
 1. **判断任务是不是"项目"**(有 src/、跨时间存在、有交付物):
-   - **是** → 选骨架([skeletons/README.md](skeletons/README.md)),在项目级 Agent 指令文件(Codex 使用 `AGENTS.md`,Claude 使用 `CLAUDE.md`)引用相关 tier0/tier1 SOP。
+   - **是** → 选骨架([skeletons/README.md](skeletons/README.md)),在项目级 `AGENTS.md` 引用相关 tier0/tier1 SOP。
    - **不是**(运维/写作/调研)→ 直接走 [sop/tier2-activity/](sop/README.md) 的活动型 SOP。
 2. **所有情况都受 PRINCIPLES 约束**(任何 skeleton/SOP 必须落实至少一条纪律)。
 3. **产出人读文字时受 PROSE_STANDARD 约束**(产文字的 SOP 在门禁引用它,一处定义全库复用)。
 4. **需要自主编排时走 [autonomous-supervisor](sop/tier0-core/autonomous-supervisor.md)**:在授权包络内自动冻结契约并执行;真实方向分叉才进入 HUMAN gate。
+5. **选 Skill 适配器时读 [SKILL-ADAPTERS.md](SKILL-ADAPTERS.md)**:只在已选 SOP 需要领域知识、格式处理或工具操作时加载;Skill 不改变任务分类、门禁或完成判定。
+6. **实施已批准科研 proposal 前走 [research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)**:不重新生成 idea,只把 claim、实现歧义、实验设计、oracle、预算与 scale 判据冻结成机器可验契约。
 
 ## 新增一个 SOP
 

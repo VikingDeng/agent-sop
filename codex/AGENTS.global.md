@@ -6,6 +6,8 @@ Treat a clear user goal as authorization to perform the normal, reversible work 
 
 Project-level `AGENTS.md` files provide repository-specific rules and override this general guidance where they are more specific. Load only the instructions and task references relevant to the current path; avoid broad context loading without a decision it supports.
 
+Use Codex and GPT models only. Independent review means an isolated, read-only GPT/Codex context with fresh evidence; do not invoke Claude or represent same-provider review as external review. `/Users/viking/code/agent-sop` is the reusable workflow authority. When an already approved research proposal is about to be implemented or materially scaled, follow its `research-execution-grill` SOP before execution; do not generate replacement ideas unless explicitly requested.
+
 ## Risk classification
 
 - Trivial: clear, narrow, low-risk work with a known path. Complete it directly and run the smallest meaningful check.

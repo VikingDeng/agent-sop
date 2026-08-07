@@ -4,7 +4,7 @@
 - **落实纪律**: P1(假设先注册)+ P2(独立 oracle 判正确 + 上报干净重跑)+ P3(指标算不出/预算触顶即硬失败)+ P4(结果与预算与证伪决策可追溯)
 - **绑定骨架**: research
 - **通用性档位**: U2(指标/数据集/模型绑具体研究,需项目注入)
-- **版本**: v2
+- **版本**: v3
 
 ## 触发条件
 
@@ -13,6 +13,7 @@ research 骨架项目中,需要跑一次实验产出用于决策/汇报的结果
 ## 前置条件
 
 - 假设已预注册到 `{HYPOTHESIS_LEDGER}`(要验证什么、预期方向、成功判据),防事后编故事;
+- 已批准 proposal 已按 `→ tier1-skeleton/research-execution-grill.md` 转成 `{GRILL_ARTIFACT}`;本次动作已声明 `{REQUIRED_GRILL_CHECKPOINT}`:实现/pilot 为 `pre_implementation`,物质性扩容为 `pre_scale`,且 validator 使用该参数后退出码为 `0`;
 - 环境已按 `→ tier0-core/lock-env.md` 锁定;
 - 正确性 oracle 已按 `→ tier0-core/build-oracle.md` 就位;
 - **执行位置已定**:实验在远程服务器执行(科研骨架 §4.6,本机禁止跑实验),契约阶段已确认执行机或至少已记录资源需求;
@@ -28,9 +29,11 @@ research 骨架项目中,需要跑一次实验产出用于决策/汇报的结果
 
 → tier1-skeleton/statistics-oracle.md(多 seed 结果聚合后,若要下"显著/优于"类结论,过统计关;单次实验产出分布本身不强制,聚合下结论时强制)
 
+→ tier1-skeleton/research-execution-grill.md(已批准 proposal 的实现歧义、实验设计与 pilot→scale 门禁)
+
 ## 步骤
 
-1. 从 `{HYPOTHESIS_LEDGER}` 取本次要验证的假设与成功判据(先有判据,后跑实验)。
+1. 读取 `{GRILL_ARTIFACT}` 与 `{HYPOTHESIS_LEDGER}`,从本次动作导出 `{REQUIRED_GRILL_CHECKPOINT}`,运行 `{GRILL_VALIDATE_CMD} {GRILL_ARTIFACT} --required-checkpoint {REQUIRED_GRILL_CHECKPOINT}`,并确认 proposal hash、claim–experiment 映射和成功/kill 判据一致;任一漂移先重跑 research-execution-grill,不得直接开跑。
 2. 固定实验配置:数据集划分(train/val/**holdout** 隔离)、`{SEED}`、超参、代码 `{GIT_SHA}`(git 干净)。——中间产物复用规则:探索/调参阶段允许复用中间结果(prompt 编码、KV、特征缓存)以省算力;但**任何将写入 HYPOTHESIS_LEDGER 上报的结果,必须来自一次不复用缓存的干净重跑**(与 → tier0-core/reproduce-result.md 步骤 2 一致)。探索省钱与上报可信不冲突,靠"上报前干净重跑"这一刀分开。
 3. 跑实验,用 build-oracle 的独立参照判定输出正确性;correctness 不过 → 结果作废,不记指标。
 4. 指标算不出(NaN/维度错/缺数据)即**硬失败**,不得填占位或估计值。
@@ -43,11 +46,13 @@ research 骨架项目中,需要跑一次实验产出用于决策/汇报的结果
 
 [RUNTIME] 指标算不出即硬失败;correctness 未过不记 speed/quality 分。
 [RUNTIME] budget guard:批次累计 compute 超 {BUDGET} 即中止;续跑须显式改 {BUDGET} 并留痕。
+[RUNTIME] `{GRILL_ARTIFACT}` 必须匹配当前 proposal hash 与本次动作要求的 checkpoint,且 validator 带 `--required-checkpoint` 后退出码为 `0`;blocked/错 checkpoint/过期/缺失均不得启动或扩容。
 [REVIEW] 必问:"holdout 有没有泄漏进训练/调参?这次结果是不是单点幸运?"
 
 ## 完成判定
 
 - correctness 通过;
+- 当前 checkpoint 的 research-execution-grill validator 通过;
 - 指标在多 seed 下有分布;
 - 结果与配置、假设结论已归档且可复现(经 reproduce-result 校验)。
 

@@ -68,7 +68,7 @@
 例——`lock-env` 的步骤不该写死:
 - ❌(通用性塌):"锁定环境"
 - ❌(质量塌/绑死):"运行 `uv lock` 生成 uv.lock"
-- ✅(分层):"用项目声明的锁定器 `{LOCK_CMD}` 生成锁文件 `{LOCK_FILE}`;完成判定:`{LOCK_FILE}` 存在且 CI 能据此复现环境。`{LOCK_CMD}`/`{LOCK_FILE}` 由项目 PROJECT_TYPE 或项目级 Agent 指令文件(Codex 使用 AGENTS.md,Claude 使用 CLAUDE.md)提供(如 Python+uv → `uv lock`/`uv.lock`)。"
+- ✅(分层):"用项目声明的锁定器 `{LOCK_CMD}` 生成锁文件 `{LOCK_FILE}`;完成判定:`{LOCK_FILE}` 存在且 CI 能据此复现环境。`{LOCK_CMD}`/`{LOCK_FILE}` 由项目 PROJECT_TYPE 或项目级 `AGENTS.md` 提供(如 Python+uv → `uv lock`/`uv.lock`)。"
 
 第三种写法通用性和质量同时在线:不变式(必须有可复现的锁文件)通用且可判定;具体命令作为参数由项目注入,保证可跑通。
 

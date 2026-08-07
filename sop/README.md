@@ -11,8 +11,8 @@
 | tier0-core/autonomous-supervisor.md | U1 | P1 P2 P3 P4 | write-contract |
 | tier0-core/lock-env.md | U1 | P4 | add-dependency, fetch-assets, reproduce-result, run-experiment, release-version, ops-remote-compute |
 | tier0-core/add-dependency.md | U1 | P1 P4 | fetch-assets, drift-check, release-version |
-| tier0-core/build-oracle.md | U0 | P2 | autonomous-supervisor, fetch-assets, profile-code, run-experiment, statistics-oracle, package-submission, build-local-proxy, scientific-paper |
-| tier0-core/no-fallback-review.md | U0 | P3 | autonomous-supervisor, commit-and-pr, drift-check, statistics-oracle, ops-remote-compute |
+| tier0-core/build-oracle.md | U0 | P2 | autonomous-supervisor, fetch-assets, profile-code, run-experiment, statistics-oracle, package-submission, build-local-proxy, research-execution-grill, scientific-paper |
+| tier0-core/no-fallback-review.md | U0 | P3 | autonomous-supervisor, commit-and-pr, drift-check, statistics-oracle, research-execution-grill, ops-remote-compute |
 | tier0-core/commit-and-pr.md | U1 | P4 | autonomous-supervisor, release-version, package-submission, ops-remote-compute |
 | tier0-core/profile-code.md | U2 | P2 P4 | build-local-proxy |
 | tier0-core/reproduce-result.md | U1 | P2 P4 | run-experiment, statistics-oracle, ops-deploy, scientific-paper |
@@ -22,7 +22,8 @@
 
 | SOP | 绑定骨架 | 档位 | 落实纪律 | 依赖 |
 |---|---|---|---|---|
-| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P3 P4 | lock-env, build-oracle, reproduce-result, statistics-oracle |
+| tier1-skeleton/research-execution-grill.md | research | U2 | P1 P2 P3 P4 | build-oracle, no-fallback-review |
+| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P3 P4 | lock-env, build-oracle, reproduce-result, statistics-oracle, research-execution-grill |
 | tier1-skeleton/statistics-oracle.md | research | U1 | P2 P3 P4 | build-oracle, reproduce-result, no-fallback-review |
 | tier1-skeleton/contamination-check.md | research | U2 | P2 | — |
 | tier1-skeleton/package-submission.md | competition | U1 | P3 P4 | build-oracle, commit-and-pr, maintain-patch-series |
@@ -49,7 +50,7 @@
 
 ## 使用方式
 
-1. 项目任务:选 skeleton 后,在项目级 Agent 指令文件(Codex 使用 `AGENTS.md`,Claude 使用 `CLAUDE.md`)引用相关 tier0/tier1 SOP。
+1. 项目任务:选 skeleton 后,在项目级 `AGENTS.md` 引用相关 tier0/tier1 SOP。
 2. 非项目任务:直接选 tier2 SOP。
 3. 一条 SOP 引用另一条时,按"依赖"字段调用,不复制内容。
 4. 用户只给目标且授权范围清晰时,先走 `tier0-core/autonomous-supervisor.md`;它负责风险分类、checkpoint、成本路由、验证与 Review,不替代具体任务 SOP。

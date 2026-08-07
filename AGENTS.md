@@ -11,6 +11,7 @@ This file governs maintenance of this repository. It is a dispatcher, not a copy
 3. Use `sop/README.md` to select only the SOPs that match the task, then load their declared dependencies. Do not load every SOP for safety theater.
 4. Read `PROSE_STANDARD.md` only when producing or reviewing human-facing prose.
 5. For project-shaped work, choose a skeleton from `skeletons/README.md`. Treat the three `contestos-*-v1.md` files as provenance-locked source artifacts: do not edit them in place. Express runtime changes through an SOP, README overlay, or a new explicitly versioned skeleton.
+6. Treat user-supplied research proposals as approved directions unless idea generation is explicitly requested. Before implementation or material scale-up, route through `sop/tier1-skeleton/research-execution-grill.md`.
 
 ## Autonomous execution and checkpoints
 
