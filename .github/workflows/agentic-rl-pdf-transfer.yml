@@ -1,0 +1,113 @@
+name: Agentic RL PDF Transfer
+
+on:
+  push:
+    branches:
+      - automation/agentic-rl-pdf-transfer-2026-08-07
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  download-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download P0 paper set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pdfs
+          cat > papers.tsv <<'EOF'
+          2510.04206	2025_Wang_AgentRL_Agentic-RL-Framework_arXiv-2510.04206.pdf	AgentRL: Scaling Agentic Reinforcement Learning with a Multi-Turn, Multi-Task Framework
+          2402.19446	2024_Zhou_ArCHer_ICML-2024_arXiv-2402.19446.pdf	ArCHer: Training Language Model Agents via Hierarchical Multi-Turn RL
+          2308.02151	2024_Yao_Retroformer_ICLR-2024-Spotlight_arXiv-2308.02151.pdf	Retroformer: Retrospective Large Language Agents with Policy Gradient Optimization
+          2405.16247	2024_Chen_AutoManual_NeurIPS-2024_arXiv-2405.16247.pdf	AutoManual: Constructing Instruction Manuals by LLM Agents via Interactive Environmental Learning
+          2311.12983	2024_Mialon_GAIA_ICLR-2024_arXiv-2311.12983.pdf	GAIA: a benchmark for General AI Assistants
+          2405.15793	2024_Yang_SWE-agent_NeurIPS-2024_arXiv-2405.15793.pdf	SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering
+          2310.06770	2024_Jimenez_SWE-bench_ICLR-2024_arXiv-2310.06770.pdf	SWE-bench: Can Language Models Resolve Real-World GitHub Issues?
+          2401.13649	2024_Koh_VisualWebArena_ACL-2024_arXiv-2401.13649.pdf	VisualWebArena: Evaluating Multimodal Agents on Realistic Visual Web Tasks
+          2306.06070	2023_Deng_Mind2Web_NeurIPS-2023-Spotlight_arXiv-2306.06070.pdf	Mind2Web: Towards a Generalist Agent for the Web
+          2302.04761	2023_Schick_Toolformer_NeurIPS-2023_arXiv-2302.04761.pdf	Toolformer: Language Models Can Teach Themselves to Use Tools
+          2207.01206	2022_Yao_WebShop_NeurIPS-2022_arXiv-2207.01206.pdf	WebShop: Towards Scalable Real-World Web Interaction with Grounded Language Agents
+          2010.03768	2021_Shridhar_ALFWorld_ICLR-2021_arXiv-2010.03768.pdf	ALFWorld: Aligning Text and Embodied Environments for Interactive Learning
+          2112.09332	2021_Nakano_WebGPT_arXiv-2112.09332.pdf	WebGPT: Browser-assisted question-answering with human feedback
+          1707.06347	2017_Schulman_PPO_arXiv-1707.06347.pdf	Proximal Policy Optimization Algorithms
+          EOF
+
+          : > download-status.tsv
+          while IFS=$'\t' read -r id filename title; do
+            [ -n "$id" ] || continue
+            echo "Downloading $id -> $filename"
+            primary="https://arxiv.org/pdf/${id}"
+            fallback="https://agentic-rl-pdf-bridge.vercel.app/api/pdf?id=${id}"
+            if ! curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
+                 --connect-timeout 30 --max-time 600 \
+                 --user-agent 'Agentic-RL-Library-Curator/1.0 (research library)' \
+                 "$primary" --output "pdfs/$filename"; then
+              curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
+                   --connect-timeout 30 --max-time 600 \
+                   "$fallback" --output "pdfs/$filename"
+            fi
+            printf '%s\t%s\t%s\n' "$id" "$filename" "$title" >> download-status.tsv
+            sleep 2
+          done < papers.tsv
+
+      - name: Validate PDFs and build manifest
+        shell: bash
+        run: |
+          python -m pip install --quiet pypdf
+          python - <<'PY'
+          from pathlib import Path
+          import csv, hashlib, json, sys
+          from pypdf import PdfReader
+
+          root = Path('pdfs')
+          rows = []
+          failures = []
+          with Path('download-status.tsv').open(encoding='utf-8') as f:
+              for line in f:
+                  paper_id, filename, title = line.rstrip('\n').split('\t', 2)
+                  path = root / filename
+                  try:
+                      data = path.read_bytes()
+                      if not data.startswith(b'%PDF-'):
+                          raise ValueError('missing %PDF signature')
+                      if len(data) < 100_000:
+                          raise ValueError(f'implausibly small: {len(data)} bytes')
+                      reader = PdfReader(path, strict=False)
+                      pages = len(reader.pages)
+                      if pages < 2:
+                          raise ValueError(f'implausible page count: {pages}')
+                      rows.append({
+                          'arxiv_id': paper_id,
+                          'filename': filename,
+                          'title': title,
+                          'size_bytes': len(data),
+                          'pages': pages,
+                          'sha256': hashlib.sha256(data).hexdigest(),
+                          'source_url': f'https://arxiv.org/pdf/{paper_id}',
+                          'validated': True,
+                      })
+                      print(f'VALID {paper_id}: {pages} pages, {len(data)} bytes')
+                  except Exception as exc:
+                      failures.append({'arxiv_id': paper_id, 'filename': filename, 'error': str(exc)})
+                      print(f'INVALID {paper_id}: {exc}', file=sys.stderr)
+
+          Path('pdfs/download_manifest.json').write_text(
+              json.dumps({'papers': rows, 'failures': failures}, indent=2, ensure_ascii=False),
+              encoding='utf-8',
+          )
+          if failures:
+              raise SystemExit(f'{len(failures)} PDF(s) failed validation')
+          PY
+
+      - name: Upload validated PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentic-rl-p0-pdfs-2026-08-07
+          path: pdfs/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
