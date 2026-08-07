@@ -18,7 +18,16 @@ import tomllib
 from typing import Any
 
 
-ROLES = ("explorer", "focused_worker", "luna_executor", "worker", "verifier", "reviewer", "risk_reviewer")
+ROLES = (
+    "explorer",
+    "focused_worker",
+    "luna_executor",
+    "terra_debugger",
+    "worker",
+    "verifier",
+    "reviewer",
+    "risk_reviewer",
+)
 HOOK_FILES = ("weighted_cost_router.py", "weighted_routing_policy.py")
 AGENT_SETTINGS = {
     "default_subagent_model": '"gpt-5.6-luna"',

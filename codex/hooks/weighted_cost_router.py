@@ -12,7 +12,14 @@ import tempfile
 import time
 from typing import Any
 
-from weighted_routing_policy import command_text, is_sol_execution, normalize_tool_name
+from weighted_routing_policy import (
+    MAX_FUNCTIONS_EXEC_SOURCE,
+    ROLE_MODEL_FAMILIES,
+    analyze_functions_exec,
+    command_text,
+    is_sol_execution,
+    normalize_tool_name,
+)
 
 
 SESSION_CONTEXT = """Weighted-cost routing is active.
@@ -27,11 +34,12 @@ ROLE_CONTEXT = {
     "luna_executor": "Own the bounded labor-heavy implementation. Follow the frozen architecture and binary acceptance criteria; escalate judgment-heavy ambiguity.",
     "verifier": "Run the declared oracle and return concise raw evidence plus exit codes; do not edit source.",
     "worker": "This is a Terra escalation. Resolve the documented semantic/cross-file issue without redesigning the task.",
+    "terra_debugger": "Diagnose an unknown root cause hypothesis-first: state competing hypotheses, rank them by evidence, and run discriminating checks. Use no-fallback behavior; return a compact evidence packet and escalate when evidence or the contract is insufficient.",
     "reviewer": "Review independently and read-only; findings need severity, location, failure path, and minimal repair.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
 }
 
-LOWER_COST_ROLES = {"explorer", "focused_worker", "luna_executor", "verifier", "worker", "reviewer"}
+LOWER_COST_ROLES = set(ROLE_MODEL_FAMILIES) - {"risk_reviewer"}
 
 def _emit(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, separators=(",", ":"))
@@ -80,6 +88,27 @@ def _role(tool_input: dict[str, Any]) -> str:
         if isinstance(value, str):
             return value.lower()
     return ""
+
+
+def _model_override(tool_input: dict[str, Any]) -> str | None:
+    for key in ("model", "model_name"):
+        if key in tool_input:
+            value = tool_input[key]
+            return value.lower() if isinstance(value, str) else ""
+    return None
+
+
+def _model_matches_family(model: str, family: str) -> bool:
+    return re.search(rf"(?:^|[-_.:/]){re.escape(family)}(?:$|[-_.:/])", model) is not None
+
+
+def _role_model_mismatch(role: str, model: str | None) -> bool:
+    expected_family = ROLE_MODEL_FAMILIES.get(role)
+    return (
+        expected_family is not None
+        and model is not None
+        and not _model_matches_family(model, expected_family)
+    )
 
 
 def _prompt(tool_input: dict[str, Any]) -> str:
@@ -173,9 +202,16 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
 
     if tool_leaf in {"agent", "spawn_agent", "create_agent"}:
         role = _role(tool_input)
+        model_override = _model_override(tool_input)
         if _has_full_fork(tool_input):
             return _deny(
                 "Weighted router: do not fork the full parent history. Send a compact work package and use fork_turns=none/fork_context=false."
+            )
+        if _role_model_mismatch(role, model_override):
+            expected_family = ROLE_MODEL_FAMILIES[role].title()
+            return _deny(
+                f"Weighted router: {role} is configured for the {expected_family} family; "
+                "omit the model override or select a matching family."
             )
         if role == "risk_reviewer":
             prompt = _prompt(tool_input)
@@ -187,7 +223,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
                     + ". Use Luna/Terra reviewer for ordinary review."
                 )
         elif role not in LOWER_COST_ROLES and not any(
-            family in str(tool_input.get("model", "")).lower() for family in ("luna", "terra")
+            _model_matches_family(model_override or "", family) for family in ("luna", "terra")
         ):
             return _deny(
                 "Weighted router: an unspecified/default child may inherit Sol. Select an explicit Luna/Terra role or model; use risk_reviewer only with its trigger and evidence pack."
@@ -195,19 +231,10 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
 
     if tool_leaf == "exec":
         raw = command_text(tool_input)
-        if re.search(r"tools\.[A-Za-z0-9_]*(?:spawn_agent|create_agent)\s*\(", raw):
-            if re.search(r"fork_(?:context|turns)\s*:\s*(?:true|['\"](?:all|full)['\"])", raw, re.IGNORECASE):
-                return _deny("Weighted router: nested full-history agent forks are blocked; send a compact work package.")
-            if "risk_reviewer" in raw and any(marker not in raw for marker in ("HIGH_RISK_TRIGGER:", "EVIDENCE_PACK:")):
-                return _deny("Weighted router: nested risk_reviewer requires HIGH_RISK_TRIGGER and EVIDENCE_PACK.")
-            role_match = re.search(r"(?:['\"]?(?:agent_type|role)['\"]?)\s*:\s*['\"]([^'\"]+)['\"]", raw)
-            model_match = re.search(r"(?:['\"]?model['\"]?)\s*:\s*['\"]([^'\"]+)['\"]", raw)
-            nested_role = role_match.group(1).lower() if role_match else ""
-            nested_model = model_match.group(1).lower() if model_match else ""
-            if nested_role != "risk_reviewer" and nested_role not in LOWER_COST_ROLES and not any(
-                family in nested_model for family in ("luna", "terra")
-            ):
-                return _deny("Weighted router: nested child creation must explicitly select a Luna/Terra role or model.")
+        try:
+            analyze_functions_exec(raw)
+        except ValueError as exc:
+            return _deny(f"Weighted router: nested agent factory syntax is not policy-verifiable: {exc}.")
         if re.search(r"tools\.[A-Za-z0-9_]*(?:wait_agent|wait_for_agent|wait_for_subagent)\s*\(", raw):
             session_id = str(data.get("session_id", "unknown"))
             if _too_many_waits(session_id, raw, time.time()):

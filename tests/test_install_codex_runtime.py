@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import shlex
+import shutil
 import sys
 import tempfile
 import tomllib
@@ -29,7 +30,21 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             codex_home.mkdir(parents=True)
             workspace.mkdir()
             (codex_home / "config.toml").write_text(
-                'model = "gpt-5.6-sol"\n\n[agents]\nmax_depth = 3\n', encoding="utf-8"
+                '\n'.join((
+                    'model = "gpt-5.6-sol"',
+                    'model_reasoning_effort = "high"',
+                    'sandbox_mode = "read-only"',
+                    'approval_policy = "never"',
+                    '',
+                    '[telemetry]',
+                    'retained = "yes"',
+                    '',
+                    '[agents]',
+                    'max_depth = 3',
+                    'unrelated_agent_setting = "preserve"',
+                    '',
+                )),
+                encoding="utf-8",
             )
             (codex_home / "hooks.json").write_text(json.dumps({
                 "description": "existing",
@@ -40,18 +55,64 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             installer.install()
 
             config = (codex_home / "config.toml").read_text()
-            self.assertIn('model = "gpt-5.6-sol"', config)
-            self.assertIn('default_subagent_model = "gpt-5.6-luna"', config)
-            self.assertIn("max_depth = 1", config)
+            parsed = tomllib.loads(config)
+            self.assertEqual(parsed["model"], "gpt-5.6-sol")
+            self.assertEqual(parsed["model_reasoning_effort"], "high")
+            self.assertEqual(parsed["sandbox_mode"], "read-only")
+            self.assertEqual(parsed["approval_policy"], "never")
+            self.assertEqual(parsed["telemetry"], {"retained": "yes"})
+            self.assertEqual(parsed["agents"]["unrelated_agent_setting"], "preserve")
+            self.assertEqual(parsed["agents"]["default_subagent_model"], "gpt-5.6-luna")
+            self.assertEqual(parsed["agents"]["max_depth"], 1)
             hooks = json.loads((codex_home / "hooks.json").read_text())
             rendered = json.dumps(hooks)
             self.assertIn("existing-hook", rendered)
             self.assertIn(str(codex_home / "hooks" / "weighted_cost_router.py"), rendered)
             self.assertTrue((codex_home / "agents" / "luna_executor.toml").is_symlink())
+            terra_debugger = codex_home / "agents" / "terra_debugger.toml"
+            self.assertTrue(terra_debugger.is_symlink())
+            self.assertEqual(terra_debugger.resolve(), (ROOT / "codex" / "agents" / "terra_debugger.toml").resolve())
 
             second = INSTALL.Installer(ROOT, home, workspace)
             second.install()
             self.assertFalse(any(action.startswith("backup") for action in second.actions))
+
+    def test_terra_debugger_role_declares_fixed_debugging_contract(self) -> None:
+        role = tomllib.loads((ROOT / "codex" / "agents" / "terra_debugger.toml").read_text())
+        self.assertEqual(role["name"], "terra_debugger")
+        self.assertEqual(role["model"], "gpt-5.6-terra")
+        self.assertEqual(role["model_reasoning_effort"], "high")
+        self.assertEqual(role["sandbox_mode"], "workspace-write")
+        for requirement in (
+            "P1 contract",
+            "P2",
+            "falsifiable hypotheses",
+            "independent oracle",
+            "P3",
+            "fallback behavior",
+            "P4",
+            "Luna",
+            "STATUS: PASS | REVISE | BLOCKED",
+            "ROOT_CAUSE:",
+            "ALTERNATIVES_REJECTED:",
+        ):
+            self.assertIn(requirement, role["developer_instructions"])
+
+    def test_preflight_requires_the_terra_debugger_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            repo_root = base / "repo"
+            shutil.copytree(ROOT / "codex", repo_root / "codex")
+            (repo_root / "codex" / "agents" / "terra_debugger.toml").unlink()
+            home = base / "home"
+            workspace = base / "workspace"
+            (home / ".codex").mkdir(parents=True)
+            workspace.mkdir()
+
+            installer = INSTALL.Installer(repo_root, home, workspace)
+            with self.assertRaisesRegex(ValueError, "terra_debugger.toml"):
+                installer.preflight()
+            self.assertFalse((home / ".codex" / "agents").exists())
 
     def test_malformed_existing_hooks_are_not_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -143,6 +204,7 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertEqual(runtime_agents.resolve(), original_source.resolve())
             self.assertEqual(config.read_text(), original_config)
             self.assertFalse((codex_home / "agents" / "luna_executor.toml").exists())
+            self.assertFalse((codex_home / "agents" / "terra_debugger.toml").exists())
 
     def test_description_mention_does_not_remove_unrelated_hook(self) -> None:
         registration = {

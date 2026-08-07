@@ -4,7 +4,7 @@
 - **落实纪律**: P1(先冻结任务契约) P2(确定性验证与独立 Review) P3(失败显式升级,禁止静默 fallback) P4(工作包、证据、决策与 Git 结果可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1(编排不变式跨项目通用;角色配置、命令和工具由运行环境以 `{参数}` 注入)
-- **版本**: v2
+- **版本**: v3
 
 ## 触发条件
 
@@ -51,7 +51,9 @@
    - `LUNA_ELIGIBLE=yes`:架构和语义已冻结、允许文件和不变量明确、验收为二值、失败可被工具或 Review 检出。此类工作必须优先交给 explorer/focused_worker/luna_executor/verifier,包括普通代码、测试、fixture、实验管线、日志分析、数据整理和批量文档;“要写代码”不是排除 Luna 的理由。
    - `LUNA_ELIGIBLE=no(reason)`:工作包仍需架构取舍、研究/实验设计、产品语义解释、高风险边界判断,或缺少可靠 oracle。主 Agent先完成这些判断,再重新切出 Luna 可执行包;只有不可切分的语义跨文件实现才路由 Terra worker/reviewer。
    - 升级顺序固定为 `Luna -> Terra -> Sol`。升级必须附原角色失败证据、未满足判据、scope delta 与 criteria delta;没有低价尝试或客观不适用理由不得直接使用更贵执行角色。Sol 只保留规划、架构、研究设计、歧义消解、最终判断和明确触发的 HIGH_RISK 审查,不直接写源文件、跑构建/测试/安装/部署或处理大段原始输出。
+   - `terra_debugger` 只能直接用于未知根因、假设驱动的诊断:它必须列出并排序竞争假设,运行能区分假设的检查,并在证据不足时显式升级或阻断。根因与修复契约一旦变成机械性工作,应在可行时把执行交还 Luna;不得用 Terra debugger 承接普通实现。
    - HIGH_RISK 的 Sol risk_reviewer 必须收到 `HIGH_RISK_TRIGGER` 和紧凑 `EVIDENCE_PACK`;普通正确性审查使用 Terra reviewer。禁止把完整父会话复制给 subagent,只传工作包和必要证据。
+   - 每个 child 必须返回紧凑 evidence packet,至少包含角色/任务契约状态、关键假设或观察、检查及 exit code、改动定位、未决风险和升级/交接结论;不得返回 raw transcript、无界日志或整段上下文。
    - trivial 不机械委派:仅当预计委派开销按 WCU 折算后高于直接完成,且不包含劳动密集写入/命令时,主 Agent 才直接处理。工作包应足够大到可独立验收,不得把单个搜索、单行编辑或每条命令分别拆成 Agent。
    - 主 Agent 不重复 subagent 已完成的宽扫描;多个 Agent 不重复读取同一批大文件;Agent 返回摘要、定位和证据,不回传无界日志/图片/文件全文;同一文件同一时间只有一个 writer;默认最多 `{MAX_CONCURRENT_SUBAGENTS=2}` 个 subagent 并发。
    - verifier 与 reviewer 必须独立于被审实现路径;“使用了 subagent”本身不是质量证据。
@@ -68,7 +70,7 @@
 
    escalation 必须记录原角色失败原因与证据、为何超出工作包或能力边界、升级角色、修改范围是否扩大、验收标准是否变化和升级后的 WCU 预算影响。同一失败包不得由同一低能力角色无界重试。显式、有证据的升级不是 P3 禁止的 fallback;未记录地换角色、跳过验证或改变成功定义才是 fallback。
 
-7. **按所有权实施**:主 Agent 合并架构与最终决策;Luna/Terra writer 只修改工作包允许的文件并保留用户改动。前台为 Sol 时不得因“自己改更快”夺回可委派执行;运行时允许用 Hook 阻断 Sol 写入、重型命令、完整上下文 fork 和短周期轮询。方向或验收标准发生物质变化时返回步骤 1 重新冻结契约,不得边做边猜。默认只进行一次 `implement -> verify -> review -> repair` 循环;再次失败由主 Agent诊断并决定显式 escalation 或报告阻塞。
+7. **按所有权实施**:主 Agent 合并架构与最终决策;Luna/Terra writer 只修改工作包允许的文件并保留用户改动。前台为 Sol 时不得因“自己改更快”夺回可委派执行;运行时允许用 Hook 阻断 Sol 写入、重型命令、完整上下文 fork 和短周期轮询。方向或验收标准发生物质变化时返回步骤 1 重新冻结契约,不得边做边猜。每个 tier 对同一契约只允许 initial attempt 加至多一次 compact correction;仅当契约未变且失败是局部、可定位的实现/验证错误时才可 correction。第二次失败或出现 semantic pressure 必须携带证据显式 escalation 或 block,不得静默 fallback。
 
 8. **确定性验证与独立 Review(P2)**:严格按 `契约 -> 定向调查 -> 实现 -> 确定性验证 -> 独立 Review -> 修复 -> 重新验证 -> 证据汇总` 执行。真实命令退出码和输出是 source of truth。Reviewer 不修改被审对象;finding 必须含 severity、文件/符号或位置、失败路径/证据和最小修复。纯风格 finding 不阻断;高风险 finding 未解决不得交付。找不到独立 oracle 时明确记录“未能独立验证”,不得让实现自证。
 

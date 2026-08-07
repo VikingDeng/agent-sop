@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -27,6 +29,19 @@ def pretool(model: str, tool_name: str, tool_input: dict | str) -> dict:
         "tool_name": tool_name,
         "tool_input": tool_input,
     }
+
+
+def nested_spawn(
+    role: str,
+    *,
+    model: str | None = None,
+    message: str = "bounded canonical task",
+    factory: str = "multi_agent_v1__spawn_agent",
+) -> str:
+    payload = {"agent_type": role, "fork_context": False, "message": message}
+    if model is not None:
+        payload["model"] = model
+    return f"await tools.{factory}({json.dumps(payload, separators=(',', ':'))});"
 
 
 class WeightedCostRouterTests(unittest.TestCase):
@@ -201,6 +216,174 @@ class WeightedCostRouterTests(unittest.TestCase):
         }))
         self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIsNone(allowed)
+
+    def test_sol_parent_may_spawn_explicit_terra_debugger_without_full_fork(self) -> None:
+        result = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", {
+            "agent_type": "terra_debugger",
+            "message": "unknown root cause; test ranked hypotheses",
+            "fork_context": False,
+        }))
+        self.assertIsNone(result)
+
+    def test_terra_debugger_subagent_context_is_hypothesis_first_and_no_fallback(self) -> None:
+        result = ROUTER.handle({
+            "hook_event_name": "SubagentStart",
+            "agent_type": "terra_debugger",
+        })
+        context = result["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("hypothesis-first", context)
+        self.assertIn("no-fallback", context)
+        self.assertIn("compact evidence packet", context)
+
+    def test_known_role_model_mismatches_are_denied(self) -> None:
+        cases = (
+            ("terra_debugger", "gpt-5.6-sol"),
+            ("luna_executor", "gpt-5.6-terra"),
+        )
+        for role, model in cases:
+            with self.subTest(role=role, model=model):
+                result = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": role,
+                    "model": model,
+                    "message": "bounded task",
+                    "fork_context": False,
+                }))
+                self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_known_role_correct_or_omitted_model_overrides_are_allowed(self) -> None:
+        cases = (
+            {
+                "agent_type": "terra_debugger",
+                "model": "gpt-5.6-terra",
+                "message": "diagnose an unknown root cause",
+                "fork_context": False,
+            },
+            {
+                "agent_type": "luna_executor",
+                "model": "gpt-5.6-luna",
+                "message": "bounded implementation",
+                "fork_context": False,
+            },
+            {
+                "agent_type": "reviewer",
+                "message": "review the bounded diff",
+                "fork_context": False,
+            },
+        )
+        for tool_input in cases:
+            with self.subTest(tool_input=tool_input):
+                self.assertIsNone(ROUTER.handle(pretool(
+                    "gpt-5.6-sol", "spawn_agent", tool_input
+                )))
+
+    def test_canonical_nested_agent_calls_allow_matching_or_omitted_models(self) -> None:
+        cases = (
+            nested_spawn("luna_executor"),
+            nested_spawn("luna_executor", model="gpt-5.6-luna"),
+            nested_spawn("terra_debugger", model="gpt-5.6-terra", factory="multi_agent_v1__create_agent"),
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "functions.exec", source)))
+
+    def test_canonical_nested_agent_payload_rejects_policy_errors(self) -> None:
+        cases = (
+            nested_spawn("luna_executor", model="gpt-5.6-terra"),
+            nested_spawn("missing_role"),
+            nested_spawn("luna_executor").replace('"agent_type":"luna_executor",', ""),
+            nested_spawn("luna_executor").replace('"fork_context":false', '"fork_context":true'),
+            nested_spawn("luna_executor").replace('"fork_context":false,', ""),
+            nested_spawn("luna_executor").replace('"message":"bounded canonical task"', '"message":""'),
+            nested_spawn("luna_executor").replace('"message":"bounded canonical task"', '"message":selectedMessage'),
+            nested_spawn("luna_executor").replace('"message":"bounded canonical task"', '"unknown":"x","message":"bounded canonical task"'),
+            'await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x","agent_type":"terra_debugger"});',
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                result = ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", source))
+                self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_nested_risk_reviewer_requires_markers(self) -> None:
+        allowed = nested_spawn(
+            "risk_reviewer",
+            model="gpt-5.6-sol",
+            message="HIGH_RISK_TRIGGER: parser boundary\nEVIDENCE_PACK: focused diff",
+        )
+        missing = nested_spawn("risk_reviewer", model="gpt-5.6-sol", message="ordinary review")
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", allowed)))
+        denied = ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", missing))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_nested_agent_statement_must_be_the_only_statement(self) -> None:
+        canonical = nested_spawn("luna_executor")
+        cases = (
+            "const result = " + canonical,
+            canonical + " " + canonical,
+            canonical + " await tools.exec_command({\"cmd\":\"pwd\"});",
+            "/* comment */ " + canonical,
+            canonical.replace("await tools.", "await tools /* comment */."),
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                result = ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", source))
+                self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_nested_agent_factory_static_bypasses_are_denied(self) -> None:
+        cases = (
+            'const { multi_agent_v1__spawn_agent: spawn } = tools; await spawn({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+            'await tools[ /* comment */ "multi_agent_v1__spawn_agent"]({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+            'await tools["multi_agent_v1__\\u0073pawn_agent"]({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+            'await tools["multi_agent_v1__\\x73pawn_agent"]({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+            'await tools.multi_agent_v1__sp\\u0061wn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+            'await tools.multi_agent_v1__sp\\u{61}wn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+            'await tools.multi_agent_v1__sp\\u00zzwn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                result = ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", source))
+                self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_duplicate_json_keys_are_rejected(self) -> None:
+        source = 'await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x","agent_type":"terra_debugger"});'
+        result = ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", source))
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_respawn_and_unrelated_nested_calls_remain_unchanged(self) -> None:
+        cases = (
+            'await tools.respawn_agent({"agent_type":"luna_executor"})',
+            'await tools.exec_command({"cmd":"rg router tests"})',
+        )
+        for source in cases:
+            with self.subTest(source=source):
+                self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", source)))
+
+    def test_dynamic_nested_tool_access_is_terra_allowed_but_sol_denied(self) -> None:
+        source = 'const method = "apply_patch"; await tools[method]({"patch":"x"})'
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", source)))
+        denied = ROUTER.handle(pretool("gpt-5.6-sol", "functions.exec", source))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_nested_source_limit_is_deterministic_and_fail_closed(self) -> None:
+        canonical = nested_spawn("luna_executor")
+        near_limit = canonical + (" " * (ROUTER.MAX_FUNCTIONS_EXEC_SOURCE - len(canonical)))
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", near_limit)))
+        self.assertEqual(
+            ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", near_limit)),
+            ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", near_limit)),
+        )
+        over_limit = near_limit + " "
+        result = ROUTER.handle(pretool("gpt-5.6-terra", "functions.exec", over_limit))
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_near_cap_unmatched_braces_scan_within_conservative_cpu_budget(self) -> None:
+        # The old per-opening forward search is quadratic on this input. CPU time
+        # avoids scheduler noise while leaving a deliberately generous bound.
+        source = "{ " * (ROUTER.MAX_FUNCTIONS_EXEC_SOURCE // 2)
+        started = time.process_time()
+        analysis = ROUTER.analyze_functions_exec(source)
+        elapsed = time.process_time() - started
+        self.assertFalse(analysis.dynamic_tool_access)
+        self.assertLess(elapsed, 1.0)
 
     def test_third_short_wait_is_denied(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(

@@ -38,6 +38,22 @@ def usage(total: int, cached: int = 0) -> dict:
     }
 
 
+def successful_spawn(role: str, call_id: str = "spawn") -> str:
+    return "".join([
+        record("response_item", {
+            "type": "function_call",
+            "name": "spawn_agent",
+            "call_id": call_id,
+            "arguments": json.dumps({"agent_type": role}),
+        }),
+        record("response_item", {
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"agent_id": f"{role}-child"}),
+        }),
+    ])
+
+
 class AuditCodexSessionTests(unittest.TestCase):
     def write_log(
         self,
@@ -196,6 +212,83 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["cost_status"], "partial_uncertain")
             self.assertTrue(any("successful spawn" in item for item in report["routing_violations"]))
 
+    def test_requested_role_must_match_child_role_and_actual_model_family(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=successful_spawn("luna_executor"))
+            self.write_log(root, "child", "child", "gpt-5.6-terra", [200], "root", "reviewer")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+            self.assertEqual(report["family_totals"]["terra"]["total_tokens"], 200)
+            self.assertTrue(any("role mismatch" in item for item in report["routing_violations"]))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(AUDIT.main([str(parent), "--sessions-root", str(root), "--json"]), 1)
+
+    def test_child_role_with_sol_usage_is_partial_even_when_role_label_is_luna(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=successful_spawn("luna_executor"))
+            self.write_log(root, "child", "child", "gpt-5.6-sol", [200], "root", "luna_executor")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+            self.assertTrue(any("used 'sol' model family" in item for item in report["routing_violations"]))
+
+    def test_missing_extra_and_unknown_child_roles_are_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            missing_parent = self.write_log(root, "missing", "missing", "gpt-5.6-luna", [100], extra=successful_spawn("luna_executor"))
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "missing")
+            missing = AUDIT.audit_session_tree(str(missing_parent), root)
+            self.assertEqual(missing["cost_status"], "partial_uncertain")
+            self.assertTrue(any("has no declared agent_role" in item for item in missing["routing_violations"]))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra_parent = self.write_log(root, "extra", "extra", "gpt-5.6-luna", [100])
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "extra", "luna_executor")
+            extra = AUDIT.audit_session_tree(str(extra_parent), root)
+            self.assertEqual(extra["cost_status"], "partial_uncertain")
+            self.assertTrue(any("extra child log" in item for item in extra["routing_violations"]))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            unknown_parent = self.write_log(root, "unknown", "unknown", "gpt-5.6-luna", [100], extra=successful_spawn("luna_executor"))
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "unknown", "not_a_role")
+            unknown = AUDIT.audit_session_tree(str(unknown_parent), root)
+            self.assertEqual(unknown["cost_status"], "partial_uncertain")
+            self.assertTrue(any("unknown agent_role" in item for item in unknown["routing_violations"]))
+
+    def test_fully_matched_requested_role_child_role_and_family_is_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=successful_spawn("luna_executor"))
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "root", "luna_executor")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertEqual(report["cost_status"], "complete")
+            self.assertFalse(report["routing_violations"])
+
+    def test_escaped_dotted_nested_factory_is_an_audit_violation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join(
+                record("response_item", {
+                    "type": "custom_tool_call",
+                    "name": "functions.exec",
+                    "call_id": f"escaped-{index}",
+                    "input": source,
+                })
+                for index, source in enumerate((
+                    'await tools.multi_agent_v1__sp\\u0061wn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+                    'await tools.multi_agent_v1__sp\\u{61}wn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+                    'await tools.multi_agent_v1__sp\\u00zzwn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x"});',
+                ))
+            )
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+            self.assertTrue(any("exact agent factory reference" in item for item in report["routing_violations"]))
+            self.assertTrue(any("invalid JavaScript identifier escape" in item for item in report["routing_violations"]))
+
     def test_missing_total_tokens_is_derived_but_marked_uncertain(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -248,6 +341,29 @@ class AuditCodexSessionTests(unittest.TestCase):
             report = AUDIT.audit_session_tree(str(path), root)
             self.assertEqual(len(report["sol_execution_calls"]), 1)
             self.assertTrue(report["routing_violations"])
+
+    def test_dynamic_nested_tool_access_is_partial_and_strict_fails_without_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "custom_tool_call",
+                    "name": "functions.exec",
+                    "call_id": "dynamic",
+                    "input": 'const method = "exec_command"; await tools[method]({"cmd":"rg router tests"})',
+                }),
+                record("response_item", {
+                    "type": "custom_tool_call_output",
+                    "call_id": "dynamic",
+                    "output": '{"captured_inner_evidence":true,"inner_tool_call":"apply_patch"}',
+                }),
+            ])
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+            self.assertTrue(any("dynamic tools access" in item for item in report["routing_violations"]))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(AUDIT.main([str(path), "--sessions-root", str(root), "--json"]), 1)
 
     def test_task_complete_must_be_terminal_for_final_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

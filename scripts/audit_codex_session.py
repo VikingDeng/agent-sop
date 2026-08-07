@@ -16,7 +16,13 @@ from typing import Any
 HOOKS_DIR = Path(__file__).resolve().parents[1] / "codex" / "hooks"
 if str(HOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(HOOKS_DIR))
-from weighted_routing_policy import is_sol_execution, normalize_tool_name  # noqa: E402
+from weighted_routing_policy import (  # noqa: E402
+    ROLE_MODEL_FAMILIES,
+    analyze_functions_exec,
+    command_text,
+    is_sol_execution,
+    normalize_tool_name,
+)
 
 
 MODEL_WEIGHTS = {"sol": 25, "terra": 10, "luna": 1}
@@ -184,10 +190,14 @@ def _output_size(payload: dict[str, Any]) -> int:
 
 def _spawn_role(name: str, arguments: dict[str, Any]) -> str | None:
     leaf = normalize_tool_name(name)
-    raw = str(arguments.get("raw", ""))
-    if leaf not in {"spawn_agent", "agent", "create_agent"} and not (
-        leaf == "exec" and re.search(r"tools\.[A-Za-z0-9_]*(?:spawn_agent|create_agent)\s*\(", raw)
-    ):
+    raw = command_text(arguments)
+    if leaf == "exec":
+        try:
+            analysis = analyze_functions_exec(raw)
+        except ValueError:
+            return None
+        return analysis.canonical_call.role if analysis.canonical_call else None
+    if leaf not in {"spawn_agent", "agent", "create_agent"}:
         return None
     direct = arguments.get("agent_type") or arguments.get("role")
     if isinstance(direct, str):
@@ -218,6 +228,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     call_index: dict[str, tuple[str, str]] = {}
     pending_spawns: dict[str, str] = {}
     successful_spawns: Counter[str] = Counter()
+    successful_spawn_roles: list[str] = []
     failed_spawns: Counter[str] = Counter()
     large_outputs: list[dict[str, Any]] = []
     sol_execution_calls: list[dict[str, str]] = []
@@ -227,6 +238,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     task_complete = False
     last_token_line = 0
     last_substantive_line = 0
+    nested_policy_violations: list[str] = []
+    nested_policy_uncertainties: list[str] = []
 
     try:
         handle = meta.path.open()
@@ -240,6 +253,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "usage_by_model": {},
             "calls_by_model": {},
             "successful_spawns": {},
+            "successful_spawn_roles": [],
             "failed_spawns": {},
             "unresolved_spawn_calls": 0,
             "large_outputs": [],
@@ -248,6 +262,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "usage_schema_errors": [f"cannot open log: {exc}"],
             "token_snapshot_count": 0,
             "task_complete": False,
+            "nested_policy_violations": [],
+            "nested_policy_uncertainties": [],
         }
 
     with handle:
@@ -304,6 +320,17 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                         pending_spawns[call_id] = role
                     else:
                         failed_spawns[role] += 1
+                if normalize_tool_name(name) == "exec":
+                    raw = command_text(arguments)
+                    try:
+                        analysis = analyze_functions_exec(raw)
+                    except ValueError as exc:
+                        nested_policy_violations.append(f"line {line_number}: {exc}")
+                    else:
+                        if analysis.dynamic_tool_access:
+                            nested_policy_uncertainties.append(
+                                f"line {line_number}: dynamic tools access has no authoritative captured inner evidence"
+                            )
                 if model_family(active_model) == "sol" and is_sol_execution(name, arguments):
                     sol_execution_calls.append({"tool": name, "line": str(line_number)})
                 continue
@@ -318,9 +345,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 if role is not None:
                     if _spawn_output_succeeded(payload.get("output")):
                         successful_spawns[role] += 1
+                        successful_spawn_roles.append(role)
                     else:
                         failed_spawns[role] += 1
-
     return {
         "thread_id": meta.thread_id,
         "session_id": meta.session_id,
@@ -330,6 +357,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "usage_by_model": {model: dict(counter) for model, counter in usage_by_model.items()},
         "calls_by_model": {model: dict(counter) for model, counter in calls_by_model.items()},
         "successful_spawns": dict(successful_spawns),
+        "successful_spawn_roles": successful_spawn_roles,
         "failed_spawns": dict(failed_spawns),
         "unresolved_spawn_calls": len(pending_spawns),
         "large_outputs": large_outputs,
@@ -340,6 +368,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "task_complete": task_complete,
         "last_token_line": last_token_line,
         "last_substantive_line": last_substantive_line,
+        "nested_policy_violations": nested_policy_violations,
+        "nested_policy_uncertainties": nested_policy_uncertainties,
     }
 
 
@@ -349,7 +379,11 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
     model_totals: dict[str, Counter[str]] = defaultdict(Counter)
     family_totals: dict[str, Counter[str]] = defaultdict(Counter)
     roles: Counter[str] = Counter()
-    children_by_parent: Counter[str] = Counter(meta.parent_thread_id for meta in metas if meta.parent_thread_id)
+    children_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for session in sessions:
+        parent = session["parent_thread_id"]
+        if parent:
+            children_by_parent[str(parent)].append(session)
     large_outputs: list[dict[str, Any]] = []
     sol_execution_calls: list[dict[str, Any]] = []
     completeness_violations: list[str] = []
@@ -366,11 +400,39 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
         for call in session["sol_execution_calls"]:
             sol_execution_calls.append({"thread_id": thread_id, **call})
 
-        expected_children = sum(session["successful_spawns"].values())
-        discovered_children = children_by_parent[thread_id]
+        requested_roles = Counter(session["successful_spawn_roles"])
+        expected_children = sum(requested_roles.values())
+        children = children_by_parent[thread_id]
+        discovered_children = len(children)
         if expected_children > discovered_children:
             completeness_violations.append(
                 f"thread {thread_id}: {expected_children} successful spawn(s) but only {discovered_children} child log(s)"
+            )
+        elif discovered_children > expected_children:
+            completeness_violations.append(
+                f"thread {thread_id}: {discovered_children - expected_children} extra child log(s) without a successful parent spawn"
+            )
+        for role, count in sorted(requested_roles.items()):
+            if role not in ROLE_MODEL_FAMILIES:
+                completeness_violations.append(
+                    f"thread {thread_id}: {count} successful spawn(s) requested noncanonical role {role!r}"
+                )
+        discovered_roles = Counter(
+            str(child["agent_role"]) for child in children if child["agent_role"]
+        )
+        missing_roles = requested_roles - discovered_roles
+        extra_roles = discovered_roles - requested_roles
+        if missing_roles:
+            detail = ", ".join(f"{role}={count}" for role, count in sorted(missing_roles.items()))
+            completeness_violations.append(f"thread {thread_id}: missing requested child role(s): {detail}")
+        if extra_roles:
+            detail = ", ".join(f"{role}={count}" for role, count in sorted(extra_roles.items()))
+            completeness_violations.append(f"thread {thread_id}: extra discovered child role(s): {detail}")
+        if requested_roles != discovered_roles:
+            requested = ", ".join(f"{role}={count}" for role, count in sorted(requested_roles.items())) or "none"
+            discovered = ", ".join(f"{role}={count}" for role, count in sorted(discovered_roles.items())) or "none"
+            completeness_violations.append(
+                f"thread {thread_id}: role mismatch: requested {requested}; discovered {discovered}"
             )
         if session["unresolved_spawn_calls"]:
             completeness_violations.append(
@@ -382,12 +444,38 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
             completeness_violations.append(
                 f"thread {thread_id}: {len(session['usage_schema_errors'])} token/schema error(s)"
             )
+        for item in session["nested_policy_violations"]:
+            completeness_violations.append(f"thread {thread_id}: {item}")
+        for item in session["nested_policy_uncertainties"]:
+            completeness_violations.append(f"thread {thread_id}: {item}")
         if not session["token_snapshot_count"]:
             completeness_violations.append(f"thread {thread_id}: no valid token snapshot")
         if not session["task_complete"]:
             completeness_violations.append(f"thread {thread_id}: task_complete event missing")
         elif session["last_token_line"] < session["last_substantive_line"]:
             completeness_violations.append(f"thread {thread_id}: final token snapshot precedes later activity")
+
+        for child in children:
+            child_id = str(child["thread_id"])
+            role = child["agent_role"]
+            if not role:
+                completeness_violations.append(f"thread {thread_id}: child {child_id} has no declared agent_role")
+                continue
+            expected_family = ROLE_MODEL_FAMILIES.get(str(role))
+            if expected_family is None:
+                completeness_violations.append(
+                    f"thread {thread_id}: child {child_id} has unknown agent_role {role!r}"
+                )
+                continue
+            for model, usage in child["usage_by_model"].items():
+                if not usage.get("total_tokens", 0):
+                    continue
+                actual_family = model_family(model)
+                if actual_family != expected_family:
+                    completeness_violations.append(
+                        f"thread {thread_id}: child {child_id} role {role!r} used {actual_family!r} model family "
+                        f"({model}); expected {expected_family!r}"
+                    )
 
     unknown_models = sorted(
         model for model in model_totals

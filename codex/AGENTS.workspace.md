@@ -10,7 +10,8 @@
 
 - Use Codex and GPT models only. Do not route work through Claude, local `claude` CLI, DeepSeek compatibility harnesses, or retired Research OS agents.
 - Use an isolated GPT/Codex reviewer when independent scrutiny is required. Same-provider independent review is an internal blind review, not external review.
-- Minimize `25*Sol + 10*Terra + 1*Luna` weighted token cost without weakening acceptance criteria. Send bounded labor-heavy code, tests, experiment plumbing, logs, data work, and commands to Luna first; use Terra for semantic escalation and ordinary review; reserve Sol Max for main-control, execution Grill decisions, high-risk reasoning, and explicitly triggered critical review.
+- Minimize `25*Sol + 10*Terra + 1*Luna` weighted token cost without weakening acceptance criteria. Send bounded labor-heavy code, tests, experiment plumbing, logs, data work, and commands to Luna first; use Terra for semantic escalation and ordinary review; use `terra_debugger` directly only for unknown-root-cause, hypothesis-driven diagnosis, then return mechanical execution to Luna where practical; reserve Sol Max for main-control, execution Grill decisions, high-risk reasoning, and explicitly triggered critical review.
+- Per tier, permit an initial attempt plus at most one compact correction only when the contract is unchanged and the failure is local. A second failure or semantic pressure requires evidence-backed escalation or block. Every child returns a compact evidence packet, not a raw transcript.
 
 ## Approved research proposals
 

@@ -21,7 +21,7 @@ python3 scripts/install_codex_runtime.py
 
 The installer:
 
-- preserves the repository as the source of truth by linking both AGENTS files, seven role TOMLs, the Research Execution Grill, and the router Hook script;
+- preserves the repository as the source of truth by linking both AGENTS files, eight role TOMLs, the Research Execution Grill, and the router Hook script;
 - stages and validates the complete Hook JSON and TOML update before changing runtime files;
 - backs up each destination (including the original symlink target), persists a recovery manifest under `~/.codex/install-rollback/`, and automatically restores mutations in reverse order if a later step fails or is interrupted;
 - merges the router registrations into `~/.codex/hooks.json` instead of deleting unrelated Hooks;
@@ -49,6 +49,8 @@ codex --ask-for-approval never "List the instruction sources, custom agent roles
 codex --cd <project> --ask-for-approval never "List the instruction sources, custom agent roles, and Hooks you loaded."
 ```
 
+For behavioral verification, run the four [fresh-task routing smoke scenarios](ROUTING_ACCEPTANCE.md), then audit each captured root task as described below.
+
 Backups are local runtime files named with `.backup-<timestamp>` and must not be committed here. To restore one, copy it back to its original path, compare the result, and start a new task.
 
 ## Weighted routing
@@ -66,6 +68,7 @@ WCU is minimized subject to unchanged acceptance criteria, risk gates, and indep
 | explorer | `gpt-5.6-luna` | medium | targeted repository mapping | read-only |
 | focused_worker | `gpt-5.6-luna` | high | narrow mechanical edits | workspace-write |
 | luna_executor | `gpt-5.6-luna` | high | bounded labor-heavy code, tests, fixtures, pipelines, and docs | workspace-write |
+| terra_debugger | `gpt-5.6-terra` | high | hypothesis-first root-cause diagnosis and authorized causal fixes | workspace-write |
 | verifier | `gpt-5.6-luna` | medium | builds, tests, lint, scans, and oracles | workspace-write; no source edits |
 | worker | `gpt-5.6-terra` | high | evidence-backed semantic or cross-file escalation | workspace-write |
 | reviewer | `gpt-5.6-terra` | high | ordinary independent correctness review | read-only |
@@ -74,6 +77,16 @@ WCU is minimized subject to unchanged acceptance criteria, risk gates, and indep
 The foreground model is a user choice and is not changed by these files. When the foreground is Sol, the Hook uses a narrow structural allowlist: simple read-only shell inspection and explicit Luna/Terra Agent control are allowed; other shell/orchestration paths are denied. It blocks source mutations, lifecycle/Git delivery commands, unspecified children that could inherit Sol, full-history forks, and repeated short waits. Sol risk review requires both `HIGH_RISK_TRIGGER` and `EVIDENCE_PACK`. The Hook does not spawn agents by itself: AGENTS policy forms a coherent Luna work package, while the Hook prevents expensive violations.
 
 Escalation is Luna -> Terra -> Sol and requires failure evidence. Luna is not restricted to trivial edits: once architecture, scope, invariants, and binary acceptance criteria are frozen, it is the default for ordinary implementation and other execution-heavy work.
+
+Nested child creation has one canonical form shared by the Hook and auditor:
+
+```text
+await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"bounded implementation","model":"gpt-5.6-luna"});
+```
+
+The `model` field may be omitted or must match the configured role family; `multi_agent_v1__create_agent` is equivalent. The statement must be the complete `functions.exec` input, with strict JSON, one known `agent_type` or `role`, nonempty static `message`, and no extra fields, aliases, comments, wrappers, or second call. `risk_reviewer` messages must include `HIGH_RISK_TRIGGER:` and `EVIDENCE_PACK:`. This proof covers those exact static factories and does not prove fully dynamic `tools[method]`, `eval`, or reflection. The Hook leaves such dynamic access outside this proof boundary. The current auditor always reports detected dynamic access as `[UNCERTAIN/PARTIAL]`; captured output cannot clear it, and this repository does not claim live-runtime proof from static or synthetic evidence.
+
+The repository tests use synthetic Hook payloads and rollout logs. A live Codex tool-schema/spawn test still requires a fresh task with the installed Hook, a captured root log, and the routing smoke scenarios above; unit-test success is not live-runtime proof.
 
 ## Session audit
 
@@ -107,7 +120,7 @@ Managed symlink destinations are:
 ```text
 ~/.codex/AGENTS.md
 /Users/viking/AGENTS.md
-~/.codex/agents/{explorer,focused_worker,luna_executor,worker,verifier,reviewer,risk_reviewer}.toml
+~/.codex/agents/{explorer,focused_worker,luna_executor,terra_debugger,worker,verifier,reviewer,risk_reviewer}.toml
 ~/.codex/skills/research-execution-grill
 ~/.codex/hooks/{weighted_cost_router.py,weighted_routing_policy.py}
 ```
