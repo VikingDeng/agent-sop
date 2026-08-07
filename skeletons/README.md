@@ -4,6 +4,10 @@
 > 与 SOP 的区别:骨架是"项目长什么样",SOP 是"怎么正确做一件事"。SOP 见 ../sop/。
 > 三骨架共用地基见 ../PRINCIPLES.md。
 
+三份 `contestos-*-v1.md` 是带版本与来源身份的 provenance-locked 原件,不得在原文件上叠加运行时规则。自主执行通过 [autonomous-supervisor SOP](../sop/tier0-core/autonomous-supervisor.md) 作为 overlay:有明确契约且在授权包络内时,原骨架的 checkpoint 可记录为 autonomous checkpoint;命中产品语义、public API、重大架构或不可逆决策时仍是 mandatory HUMAN gate。该 overlay 不改写 v1 的硬锚或来源声明。
+
+项目启用骨架时,在项目级 Agent 指令文件中引用:Codex 使用 `AGENTS.md`,Claude 使用 `CLAUDE.md`。v1 原件中专指 `CLAUDE.md` 的历史启用文字保留以维护来源完整性。
+
 | 骨架 | 适用 | 落实纪律 | 硬锚 |
 |---|---|---|---|
 | [contestos-ai-research-v1.md](contestos-ai-research-v1.md) | AI 科研:LLM/agent/RL/推理期/数据中心 | P1-P4 | §6 |

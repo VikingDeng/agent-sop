@@ -4,7 +4,7 @@
 - **落实纪律**: P4(版本可追溯:变更、依赖、兼容性有据)
 - **绑定骨架**: development
 - **通用性档位**: U1(SemVer/CHANGELOG 通用,发布渠道参数化)
-- **版本**: v1
+- **版本**: v2
 
 ## 触发条件
 
@@ -18,8 +18,13 @@ development 骨架项目要对外发布一个版本(库/服务/CLI 的 release)�
 
 ## 依赖 SOP
 
-→ tier0-core/commit-and-pr.md(release 落成可追溯提交/tag)
-→ tier0-core/add-dependency.md(新依赖已按流程锁定记录)
+→ tier1-skeleton/drift-check.md(发布前确认变更未偏离契约)。
+
+→ tier0-core/lock-env.md(发布产物对应可复现锁文件)。
+
+→ tier0-core/commit-and-pr.md(release 落成可追溯提交/tag)。
+
+→ tier0-core/add-dependency.md(新依赖已按流程锁定记录)。
 
 ## 步骤
 
