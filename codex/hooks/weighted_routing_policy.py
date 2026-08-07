@@ -43,8 +43,238 @@ class FunctionsExecAnalysis:
     dynamic_tool_access: bool = False
 
 
+@dataclass(frozen=True)
+class SpawnResult:
+    succeeded: bool = False
+    unknown_luna: bool = False
+
+
+@dataclass(frozen=True)
+class SpawnRequest:
+    """Normalized identity and model evidence for one spawn request."""
+
+    role: str | None
+    model: str | None
+    identity_values: tuple[str, ...]
+    model_values: tuple[str, ...]
+    role_family: str | None
+    model_family: str | None
+    identity_alias_conflict: bool
+    model_alias_conflict: bool
+    role_model_conflict: bool
+
+    @property
+    def requested_role(self) -> str:
+        if self.identity_alias_conflict:
+            return "ambiguous"
+        return self.role or self.model_family or "unspecified"
+
+    @property
+    def luna_role(self) -> str | None:
+        if self.has_conflict:
+            return None
+        if self.role_family == "luna":
+            return self.role
+        if self.role_family is None and self.model_family == "luna":
+            return "luna"
+        return None
+
+    @property
+    def has_conflict(self) -> bool:
+        return self.identity_alias_conflict or self.model_alias_conflict or self.role_model_conflict
+
+
+POST_FAILURE_ALLOWED_ROLES = frozenset({"reviewer", "risk_reviewer"})
+SPAWN_IDENTITY_FIELDS = ("agent_type", "subagent_type", "role", "name")
+SPAWN_MODEL_FIELDS = ("model", "model_name")
+SPAWN_IDENTIFIERS = ("agent_id", "thread_id", "task_name")
+FAILED_STATUSES = frozenset({"failed", "failure", "error", "errored", "unsuccessful"})
+
+
 def _model_matches_family(model: str, family: str) -> bool:
     return re.search(rf"(?:^|[-_.:/]){re.escape(family)}(?:$|[-_.:/])", model) is not None
+
+
+def _normalized_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized or None
+
+
+def _model_family(model: str | None) -> str | None:
+    if model is None:
+        return None
+    for family in ("sol", "terra", "luna"):
+        if _model_matches_family(model, family):
+            return family
+    return None
+
+
+def _alias_values(payload: dict[str, Any], fields: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(
+        normalized
+        for key in fields
+        if (normalized := _normalized_string(payload.get(key))) is not None
+    ))
+
+
+def _classify_spawn_payload(payload: dict[str, Any]) -> SpawnRequest:
+    identity_values = _alias_values(payload, SPAWN_IDENTITY_FIELDS)
+    model_values = _alias_values(payload, SPAWN_MODEL_FIELDS)
+    identity_alias_conflict = len(identity_values) > 1
+    model_alias_conflict = len(model_values) > 1
+    role = identity_values[0] if len(identity_values) == 1 else None
+    model = model_values[0] if len(model_values) == 1 else None
+    role_family = ROLE_MODEL_FAMILIES.get(role or "")
+    model_family = _model_family(model)
+    return SpawnRequest(
+        role=role,
+        model=model,
+        identity_values=identity_values,
+        model_values=model_values,
+        role_family=role_family,
+        model_family=model_family,
+        identity_alias_conflict=identity_alias_conflict,
+        model_alias_conflict=model_alias_conflict,
+        role_model_conflict=bool(
+            not identity_alias_conflict
+            and not model_alias_conflict
+            and role_family is not None
+            and model is not None
+            and not _model_matches_family(model, role_family)
+        ),
+    )
+
+
+def classify_spawn_request(tool_name: str, payload: dict[str, Any]) -> SpawnRequest | None:
+    """Classify direct and canonical nested spawn inputs identically for all consumers."""
+    leaf = normalize_tool_name(tool_name)
+    if leaf in {"agent", "spawn_agent", "create_agent"}:
+        return _classify_spawn_payload(payload)
+    if leaf != "exec":
+        return None
+    analysis = analyze_functions_exec(command_text(payload))
+    if analysis.canonical_call is None:
+        return None
+    return _classify_spawn_payload(analysis.canonical_call.payload)
+
+
+def post_failure_role_allowed(request: SpawnRequest | None) -> bool:
+    return bool(
+        request is not None
+        and not request.has_conflict
+        and request.role in POST_FAILURE_ALLOWED_ROLES
+    )
+
+
+def _contains_unknown_luna(value: Any) -> bool:
+    if isinstance(value, str):
+        text = value.lower()
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False).lower()
+        except (TypeError, ValueError):
+            return False
+    return bool(
+        re.search(r"unknown\s+model[^\n]*gpt-5\.6-luna", text)
+        or re.search(r"gpt-5\.6-luna[^\n]*(?:unknown|unavailable|not available|not found)", text)
+    )
+
+
+def _failure_context_payload(payload: dict[str, Any]) -> bool:
+    status = payload.get("status")
+    return bool(
+        payload.get("isError")
+        or payload.get("is_error")
+        or payload.get("failed")
+        or (isinstance(status, str) and status.strip().lower() in FAILED_STATUSES)
+    )
+
+
+def _error_content_values(content: Any, *, enclosing_failure: bool = False) -> list[Any]:
+    blocks = content if isinstance(content, list) else [content]
+    values: list[Any] = []
+    for block in blocks:
+        if isinstance(block, str):
+            if enclosing_failure:
+                values.append(block)
+            continue
+        if not isinstance(block, dict):
+            continue
+        block_type = _normalized_string(block.get("type"))
+        block_is_error = enclosing_failure or bool(
+            block.get("isError")
+            or block.get("is_error")
+            or block.get("failed")
+            or block.get("error") not in (None, False, "")
+            or block_type in {"error", "error_text", "tool_error"}
+        )
+        if not block_is_error:
+            continue
+        for key in ("error", "message", "text"):
+            if block.get(key) not in (None, False, ""):
+                values.append(block[key])
+        if "content" in block:
+            values.extend(_error_content_values(block["content"], enclosing_failure=True))
+    return values
+
+
+def _structured_error_values(payload: dict[str, Any]) -> list[Any]:
+    values: list[Any] = []
+    failed = _failure_context_payload(payload)
+    if payload.get("error") not in (None, False, ""):
+        values.append(payload["error"])
+    if failed and payload.get("message") not in (None, False, ""):
+        values.append(payload["message"])
+    if "content" in payload:
+        values.extend(_error_content_values(payload["content"], enclosing_failure=failed))
+    return values
+
+
+def unknown_luna_failure(value: Any, *, luna_role: str | None) -> bool:
+    """Recognize Luna unavailability only from plain errors or structured error evidence."""
+    if luna_role is None or (luna_role != "luna" and ROLE_MODEL_FAMILIES.get(luna_role) != "luna"):
+        return False
+    payload = _spawn_result_object(value)
+    if payload is not None:
+        return any(_contains_unknown_luna(item) for item in _structured_error_values(payload))
+    return isinstance(value, str) and _contains_unknown_luna(value)
+
+
+def _spawn_result_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def classify_spawn_result(value: Any, *, luna_role: str | None = None) -> SpawnResult:
+    """Classify only explicit supported spawn results; unknown Luna wins over success."""
+    if unknown_luna_failure(value, luna_role=luna_role):
+        return SpawnResult(unknown_luna=True)
+    payload = _spawn_result_object(value)
+    if payload is None:
+        return SpawnResult()
+    if payload.get("isError") or payload.get("is_error"):
+        return SpawnResult()
+    if payload.get("error") not in (None, False, ""):
+        return SpawnResult()
+    status = payload.get("status")
+    if isinstance(status, str) and status.lower() in FAILED_STATUSES:
+        return SpawnResult()
+    if payload.get("failed"):
+        return SpawnResult()
+    for key in SPAWN_IDENTIFIERS:
+        identifier = payload.get(key)
+        if isinstance(identifier, str) and identifier.strip():
+            return SpawnResult(succeeded=True)
+    return SpawnResult()
 
 
 def _reject_json_constant(value: str) -> None:

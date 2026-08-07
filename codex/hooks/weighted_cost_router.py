@@ -16,16 +16,19 @@ from weighted_routing_policy import (
     MAX_FUNCTIONS_EXEC_SOURCE,
     ROLE_MODEL_FAMILIES,
     analyze_functions_exec,
+    classify_spawn_request,
+    classify_spawn_result,
     command_text,
     is_sol_execution,
     normalize_tool_name,
+    post_failure_role_allowed,
 )
 
 
 SESSION_CONTEXT = """Weighted-cost routing is active.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens subject to unchanged acceptance criteria and review gates.
 Before execution, record LUNA_ELIGIBLE=yes/no. Use Luna first for bounded labor-heavy implementation, tests, fixtures, commands, logs, and data plumbing; use Terra for semantic cross-file work or evidence-backed Luna escalation; reserve Sol for architecture, research design, ambiguity resolution, final judgment, and explicitly triggered high-risk review.
-Do not use Sol for source edits, builds, tests, installs, repetitive inspection, or bulk output. Escalation must name prior role, failure evidence, scope delta, and unchanged/changed acceptance criteria. risk_reviewer requires HIGH_RISK_TRIGGER and a compact EVIDENCE_PACK. Return summaries instead of large raw tool output.
+Do not use Sol for source edits, builds, tests, installs, repetitive inspection, or bulk output. If runtime evidence says gpt-5.6-luna is unavailable, stop the package and refresh/start a new task/turn; do not silently escalate to Terra or direct Sol. Escalation must name prior role, failure evidence, scope delta, and unchanged/changed acceptance criteria. risk_reviewer requires HIGH_RISK_TRIGGER and a compact EVIDENCE_PACK. Return summaries instead of large raw tool output.
 """
 
 ROLE_CONTEXT = {
@@ -65,6 +68,18 @@ def _deny(reason: str) -> dict[str, Any]:
     }
 
 
+def _posttool_block(reason: str) -> dict[str, Any]:
+    return {
+        "decision": "block",
+        "reason": reason,
+        "continue": False,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": reason,
+        }
+    }
+
+
 def _tool_input(data: dict[str, Any]) -> dict[str, Any]:
     value = data.get("tool_input")
     if isinstance(value, dict):
@@ -82,33 +97,8 @@ def _active_model(data: dict[str, Any]) -> str:
     return ""
 
 
-def _role(tool_input: dict[str, Any]) -> str:
-    for key in ("agent_type", "subagent_type", "role", "name"):
-        value = tool_input.get(key)
-        if isinstance(value, str):
-            return value.lower()
-    return ""
-
-
-def _model_override(tool_input: dict[str, Any]) -> str | None:
-    for key in ("model", "model_name"):
-        if key in tool_input:
-            value = tool_input[key]
-            return value.lower() if isinstance(value, str) else ""
-    return None
-
-
 def _model_matches_family(model: str, family: str) -> bool:
     return re.search(rf"(?:^|[-_.:/]){re.escape(family)}(?:$|[-_.:/])", model) is not None
-
-
-def _role_model_mismatch(role: str, model: str | None) -> bool:
-    expected_family = ROLE_MODEL_FAMILIES.get(role)
-    return (
-        expected_family is not None
-        and model is not None
-        and not _model_matches_family(model, expected_family)
-    )
 
 
 def _prompt(tool_input: dict[str, Any]) -> str:
@@ -126,10 +116,90 @@ def _has_full_fork(tool_input: dict[str, Any]) -> bool:
     return str(tool_input.get("fork_turns", "")).lower() in {"all", "full"}
 
 
+def _request_conflict_reason(request: Any) -> str:
+    if request.identity_alias_conflict:
+        return "Weighted router: spawn identity aliases disagree; this lifecycle call is ambiguous and blocked."
+    if request.model_alias_conflict:
+        return "Weighted router: spawn model aliases disagree; this lifecycle call is ambiguous and blocked."
+    expected_family = ROLE_MODEL_FAMILIES[request.role].title()
+    return (
+        f"Weighted router: {request.role} is configured for the {expected_family} family; "
+        "omit the model override or select a matching family."
+    )
+
+
 def _state_path(session_id: str) -> Path:
     safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id or "unknown")
     base = Path(os.environ.get("CODEX_ROUTER_STATE_DIR", Path.home() / ".codex" / "router-state"))
     return base / f"{safe_id}.json"
+
+
+def _load_state(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError("router state is not an object")
+    return payload
+
+
+def _write_state(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as handle:
+        json.dump(payload, handle, separators=(",", ":"))
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
+
+
+def _turn_id(data: dict[str, Any]) -> str:
+    candidate = data.get("turn_id")
+    return candidate if isinstance(candidate, str) and candidate else ""
+
+
+def _record_luna_capability(session_id: str, turn_id: str, *, unavailable: bool, verified: bool) -> bool:
+    safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id or "unknown")
+    safe_turn = re.sub(r"[^A-Za-z0-9_.-]", "_", turn_id or "unknown")
+    capability_dir = _state_path("capability").parent / "capability"
+    try:
+        capability_dir.mkdir(parents=True, exist_ok=True)
+        markers = []
+        if unavailable:
+            markers.append(capability_dir / f"{safe_session}--{safe_turn}.unavailable")
+        if verified:
+            markers.append(capability_dir / f"{safe_session}--{safe_turn}.verified")
+        for marker in markers:
+            try:
+                with marker.open("x") as handle:
+                    handle.write(f"session_id={session_id}\nturn_id={turn_id}\n")
+            except FileExistsError:
+                pass
+        return True
+    except OSError as exc:
+        _record_error(f"Luna capability state failure: {type(exc).__name__}: {exc}")
+        return False
+
+
+def _luna_gate(data: dict[str, Any], request: Any) -> str | None:
+    session_id = str(data.get("session_id", ""))
+    turn_id = _turn_id(data)
+    if not turn_id:
+        return "Weighted router: lifecycle call is missing the documented top-level turn_id; this call is blocked without persisting capability state."
+    if not session_id:
+        return None
+    try:
+        safe_session = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)
+        safe_turn = re.sub(r"[^A-Za-z0-9_.-]", "_", turn_id)
+        capability_dir = _state_path("capability").parent / "capability"
+        unavailable_marker = capability_dir / f"{safe_session}--{safe_turn}.unavailable"
+        unavailable = unavailable_marker.exists()
+    except OSError as exc:
+        _record_error(f"Luna capability read failure: {type(exc).__name__}: {exc}")
+        return "Weighted router: Luna capability state is uncertain; stop this package and refresh/start a new task/turn."
+    if not unavailable:
+        return None
+    if post_failure_role_allowed(request):
+        return None
+    return "Weighted router: runtime evidence rejected gpt-5.6-luna in this turn. Stop the package; do not escalate to Terra or execute directly on Sol. Refresh/start a new task/turn."
 
 
 def _record_error(message: str) -> None:
@@ -147,7 +217,7 @@ def _too_many_waits(session_id: str, signature: str, now: float) -> bool:
     path = _state_path(session_id)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        previous = json.loads(path.read_text()) if path.exists() else {}
+        previous = _load_state(path)
         waits = [
             value for value in previous.get("waits", [])
             if isinstance(value, dict) and now - float(value.get("time", 0)) < 90
@@ -155,11 +225,8 @@ def _too_many_waits(session_id: str, signature: str, now: float) -> bool:
         matching = [value for value in waits if value.get("signature") == signature]
         deny = len(matching) >= 2
         waits.append({"time": now, "signature": signature})
-        payload = {"waits": waits[-4:]}
-        with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as handle:
-            json.dump(payload, handle)
-            temporary = Path(handle.name)
-        os.replace(temporary, path)
+        previous["waits"] = waits[-4:]
+        _write_state(path, previous)
         return deny
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         _record_error(f"wait-state failure: {type(exc).__name__}: {exc}")
@@ -171,7 +238,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(event_value, str) or not event_value:
         raise ValueError("hook_event_name is missing or not a string")
     event = event_value
-    if event not in {"SessionStart", "SubagentStart", "PreToolUse"}:
+    if event not in {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse"}:
         raise ValueError(f"unsupported hook event: {event}")
     if event == "SessionStart":
         return _context(event, SESSION_CONTEXT)
@@ -180,6 +247,42 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
         role = str(data.get("agent_type", "")).lower()
         message = ROLE_CONTEXT.get(role)
         return _context(event, message) if message else None
+
+    if event == "PostToolUse":
+        if not isinstance(data.get("tool_name"), str):
+            _record_error("PostToolUse missing string tool_name")
+            return _posttool_block("Weighted router: PostToolUse schema is uncertain; stop this package and refresh/start a new task/turn.")
+        if not isinstance(data.get("tool_input"), (dict, str)) or "tool_response" not in data:
+            _record_error("PostToolUse missing or malformed tool_input/tool_response")
+            return _posttool_block("Weighted router: PostToolUse result schema is uncertain; stop this package and refresh/start a new task/turn.")
+        tool_name = data["tool_name"]
+        tool_input = _tool_input(data)
+        try:
+            request = classify_spawn_request(tool_name, tool_input)
+        except ValueError:
+            request = None
+        if request is not None and request.has_conflict:
+            reason = _request_conflict_reason(request)
+            _record_error(reason)
+            return _posttool_block(reason)
+        response = data["tool_response"]
+        result = classify_spawn_result(response, luna_role=request.luna_role if request else None)
+        if request is not None and request.luna_role is not None and (result.unknown_luna or result.succeeded):
+            turn_id = _turn_id(data)
+            session_id = str(data.get("session_id", ""))
+            if not session_id or not turn_id:
+                _record_error("PostToolUse Luna evidence missing session_id or turn_id")
+                return _posttool_block("Weighted router: Luna runtime evidence is unscoped; stop this package and refresh/start a new task/turn.")
+            if not _record_luna_capability(
+                session_id,
+                turn_id,
+                unavailable=result.unknown_luna,
+                verified=result.succeeded,
+            ):
+                return _posttool_block("Weighted router: Luna capability state could not be persisted; stop this package and refresh/start a new task/turn.")
+            if result.unknown_luna:
+                return _posttool_block("Weighted router: gpt-5.6-luna was rejected as unavailable. Stop this package; do not escalate to Terra or execute directly on Sol. Refresh/start a new task/turn.")
+        return None
 
     if event != "PreToolUse":
         return None
@@ -201,17 +304,17 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
         return _deny("Weighted router: active model is outside the configured Sol/Terra/Luna families; routing cost and permissions are uncertain.")
 
     if tool_leaf in {"agent", "spawn_agent", "create_agent"}:
-        role = _role(tool_input)
-        model_override = _model_override(tool_input)
+        request = classify_spawn_request(tool_name, tool_input)
+        role = request.role or ""
+        model_override = request.model
+        if request.has_conflict:
+            return _deny(_request_conflict_reason(request))
+        capability_denial = _luna_gate(data, request)
+        if capability_denial:
+            return _deny(capability_denial)
         if _has_full_fork(tool_input):
             return _deny(
                 "Weighted router: do not fork the full parent history. Send a compact work package and use fork_turns=none/fork_context=false."
-            )
-        if _role_model_mismatch(role, model_override):
-            expected_family = ROLE_MODEL_FAMILIES[role].title()
-            return _deny(
-                f"Weighted router: {role} is configured for the {expected_family} family; "
-                "omit the model override or select a matching family."
             )
         if role == "risk_reviewer":
             prompt = _prompt(tool_input)
@@ -232,9 +335,15 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if tool_leaf == "exec":
         raw = command_text(tool_input)
         try:
-            analyze_functions_exec(raw)
+            analysis = analyze_functions_exec(raw)
         except ValueError as exc:
             return _deny(f"Weighted router: nested agent factory syntax is not policy-verifiable: {exc}.")
+        request = classify_spawn_request(tool_name, tool_input)
+        if request is not None and request.has_conflict:
+            return _deny(_request_conflict_reason(request))
+        capability_denial = _luna_gate(data, request)
+        if capability_denial:
+            return _deny(capability_denial)
         if re.search(r"tools\.[A-Za-z0-9_]*(?:wait_agent|wait_for_agent|wait_for_subagent)\s*\(", raw):
             session_id = str(data.get("session_id", "unknown"))
             if _too_many_waits(session_id, raw, time.time()):
@@ -249,6 +358,9 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
             )
 
     if "gpt-5.6-sol" in active_model:
+        capability_denial = _luna_gate(data, None)
+        if capability_denial and is_sol_execution(tool_name, tool_input):
+            return _deny(capability_denial)
         if is_sol_execution(tool_name, tool_input):
             command = command_text(tool_input)
             if tool_leaf in {"bash", "exec", "exec_command", "shell", "terminal"} and command:

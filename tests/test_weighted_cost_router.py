@@ -21,14 +21,37 @@ ROUTER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ROUTER)
 
 
-def pretool(model: str, tool_name: str, tool_input: dict | str) -> dict:
-    return {
+def pretool(model: str, tool_name: str, tool_input: dict | str, *, session_id: str = "test-session", turn_id: str | None = "turn-a") -> dict:
+    event = {
         "hook_event_name": "PreToolUse",
-        "session_id": "test-session",
+        "session_id": session_id,
         "model": model,
         "tool_name": tool_name,
         "tool_input": tool_input,
     }
+    if turn_id is not None:
+        event["turn_id"] = turn_id
+    return event
+
+
+def posttool(
+    tool_input: dict | str,
+    response: object,
+    *,
+    tool_name: str = "spawn_agent",
+    session_id: str = "test-session",
+    turn_id: str | None = "turn-a",
+) -> dict:
+    event = {
+        "hook_event_name": "PostToolUse",
+        "session_id": session_id,
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+        "tool_response": response,
+    }
+    if turn_id is not None:
+        event["turn_id"] = turn_id
+    return event
 
 
 def nested_spawn(
@@ -181,6 +204,404 @@ class WeightedCostRouterTests(unittest.TestCase):
     def test_luna_can_edit_and_test(self) -> None:
         self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-luna", "apply_patch", {"patch": "x"})))
         self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-luna", "exec_command", {"cmd": "pytest"})))
+
+    def test_unknown_luna_posttool_blocks_and_preserves_wait_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            state_path = Path(directory) / "test-session.json"
+            state_path.write_text(json.dumps({"waits": [{"signature": "keep", "time": 1}], "other": "keep"}))
+            result = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                "Unknown model `gpt-5.6-luna` for spawn_agent. Available models: gpt-5.6-sol, gpt-5.6-terra",
+            ))
+            self.assertEqual(result["decision"], "block")
+            self.assertFalse(result["continue"])
+            self.assertIn("Refresh/start", result["reason"])
+            state = json.loads(state_path.read_text())
+            self.assertEqual(state["waits"][0]["signature"], "keep")
+            self.assertEqual(state["other"], "keep")
+            marker = Path(directory) / "capability" / "test-session--turn-a.unavailable"
+            self.assertTrue(marker.exists())
+            self.assertNotIn("luna_capability", state)
+
+    def test_successful_luna_posttool_records_verified_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            self.assertIsNone(ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                {"agent_id": "luna-child"},
+            )))
+            self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.verified").exists())
+
+    def test_task_name_is_a_supported_luna_spawn_success_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            self.assertIsNone(ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                {"task_name": "/root/bounded-luna-task"},
+            )))
+            self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.verified").exists())
+
+    def test_capability_markers_are_monotonic_across_success_and_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            success = ROUTER.handle(posttool({"agent_type": "luna_executor"}, {"agent_id": "child"}))
+            failure = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                "Unknown model gpt-5.6-luna",
+            ))
+            self.assertIsNone(success)
+            self.assertEqual(failure["decision"], "block")
+            capability = Path(directory) / "capability"
+            self.assertTrue((capability / "test-session--turn-a.verified").exists())
+            self.assertTrue((capability / "test-session--turn-a.unavailable").exists())
+            blocked = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "worker", "message": "retry", "fork_context": False,
+                },
+            ))
+            self.assertEqual(blocked["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_unavailable_marker_wins_when_success_arrives_later(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            failure = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"}, "Unknown model gpt-5.6-luna"
+            ))
+            success = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"}, {"agent_id": "late-child"}
+            ))
+            self.assertEqual(failure["decision"], "block")
+            self.assertIsNone(success)
+            capability = Path(directory) / "capability"
+            self.assertTrue((capability / "test-session--turn-a.unavailable").exists())
+            self.assertTrue((capability / "test-session--turn-a.verified").exists())
+            blocked = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "worker", "message": "retry", "fork_context": False,
+                },
+            ))
+            self.assertEqual(blocked["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_failure_marker_survives_wait_state_write(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            ROUTER.handle(posttool({"agent_type": "luna_executor"}, "Unknown model gpt-5.6-luna"))
+            event = pretool("gpt-5.6-sol", "wait_agent", {})
+            ROUTER.handle(event)
+            self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.unavailable").exists())
+
+    def test_unknown_luna_is_only_classified_for_positive_luna_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            self.assertIsNone(ROUTER.handle(posttool(
+                {"agent_type": "reviewer"},
+                "Unknown model gpt-5.6-luna; reviewer response mentions Luna",
+            )))
+            self.assertFalse((Path(directory) / "capability").exists())
+
+    def test_outer_functions_exec_only_classifies_canonical_luna_spawn(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            blocked = ROUTER.handle(posttool(
+                nested_spawn("luna_executor"),
+                "Unknown model gpt-5.6-luna",
+                tool_name="functions.exec",
+            ))
+            self.assertEqual(blocked["decision"], "block")
+            self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.unavailable").exists())
+            self.assertIsNone(ROUTER.handle(posttool(
+                'await tools.exec_command({"cmd":"echo Unknown model gpt-5.6-luna"})',
+                "Unknown model gpt-5.6-luna",
+                tool_name="functions.exec",
+                session_id="other-session",
+            )))
+            self.assertFalse((Path(directory) / "capability" / "other-session--turn-a.unavailable").exists())
+
+    def test_missing_top_level_turn_id_fails_closed_without_poison(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            post = posttool(
+                {"agent_type": "luna_executor"},
+                {
+                    "status": "failed",
+                    "message": "Unknown model gpt-5.6-luna",
+                    "turn_id": "nested-do-not-use",
+                },
+                turn_id=None,
+            )
+            result = ROUTER.handle(post)
+            self.assertEqual(result["decision"], "block")
+            self.assertFalse((Path(directory) / "capability").exists())
+            later = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "worker", "message": "later turn", "fork_context": False,
+                }, turn_id="turn-b",
+            ))
+            self.assertIsNone(later)
+
+    def test_missing_turn_id_blocks_agent_and_canonical_outer_exec_only_for_that_call(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            agent = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "luna_executor", "message": "bounded", "fork_context": False,
+                }, turn_id=None,
+            ))
+            outer = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "functions.exec", nested_spawn("luna_executor"), turn_id=None,
+            ))
+            self.assertEqual(agent["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertEqual(outer["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertFalse((Path(directory) / "capability").exists())
+            later = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "reviewer", "message": "review", "fork_context": False,
+                }, turn_id="turn-b",
+            ))
+            self.assertIsNone(later)
+
+    def test_posttool_matcher_covers_outer_functions_exec(self) -> None:
+        hooks = json.loads((ROOT / "codex/hooks/hooks.json").read_text())
+        matcher = hooks["hooks"]["PostToolUse"][0]["matcher"]
+        self.assertIn("functions\\.exec", matcher)
+
+    def test_strict_spawn_result_matrix_is_fail_closed_and_serializable(self) -> None:
+        cases = (
+            ({"agent_id": "child"}, True),
+            ('{"thread_id":"thread-1"}', True),
+            ({"task_name": "/root/bounded-task"}, True),
+            ({"agent_id": ""}, False),
+            ({"nickname": None}, False),
+            ({"nickname": "not-a-documented-standalone-id"}, False),
+            ({"isError": True, "agent_id": "child"}, False),
+            ({"error": "failed", "agent_id": "child"}, False),
+            ({"status": "failed", "agent_id": "child"}, False),
+            ("{malformed", False),
+            ("", False),
+        )
+        for response, expected in cases:
+            with self.subTest(response=response):
+                self.assertEqual(
+                    ROUTER.classify_spawn_result(response, luna_role="luna_executor").succeeded,
+                    expected,
+                )
+
+    def test_unknown_luna_result_matrix_inspects_only_error_evidence(self) -> None:
+        cases = (
+            ({"task_name": "gpt-5.6-luna-unavailable-repro"}, True, False),
+            ({
+                "message": "Unknown model gpt-5.6-luna",
+                "task_name": "gpt-5.6-luna-unavailable-repro",
+            }, True, False),
+            ({
+                "error": "Unknown model gpt-5.6-luna",
+                "task_name": "gpt-5.6-luna-unavailable-repro",
+            }, False, True),
+            ({
+                "error": "spawn failed",
+                "message": "Unknown model gpt-5.6-luna",
+                "task_name": "bounded",
+            }, False, False),
+            ({
+                "status": "failed",
+                "message": "gpt-5.6-luna is unavailable",
+                "task_name": "bounded",
+            }, False, True),
+            ({
+                "isError": True,
+                "content": [{"type": "text", "text": "Unknown model gpt-5.6-luna"}],
+                "task_name": "bounded",
+            }, False, True),
+            ({
+                "content": [{"type": "error", "text": "gpt-5.6-luna not found"}],
+                "task_name": "bounded",
+            }, False, True),
+            ("Unknown model gpt-5.6-luna", False, True),
+        )
+        for response, succeeded, unknown_luna in cases:
+            with self.subTest(response=response):
+                result = ROUTER.classify_spawn_result(response, luna_role="luna_executor")
+                self.assertEqual(result.succeeded, succeeded)
+                self.assertEqual(result.unknown_luna, unknown_luna)
+
+    def test_task_name_luna_text_marks_success_but_error_evidence_marks_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            success = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                {"task_name": "gpt-5.6-luna-unavailable-repro"},
+                session_id="success-session",
+            ))
+            failure = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                {
+                    "error": "Unknown model gpt-5.6-luna",
+                    "task_name": "gpt-5.6-luna-unavailable-repro",
+                },
+                session_id="failure-session",
+            ))
+            capability = Path(directory) / "capability"
+            self.assertIsNone(success)
+            self.assertEqual(failure["decision"], "block")
+            self.assertTrue((capability / "success-session--turn-a.verified").exists())
+            self.assertFalse((capability / "success-session--turn-a.unavailable").exists())
+            self.assertTrue((capability / "failure-session--turn-a.unavailable").exists())
+
+    def test_request_aliases_and_unknown_luna_model_share_lifecycle_classification(self) -> None:
+        cases = (
+            ("agent_type", "luna_executor"),
+            ("subagent_type", "luna_executor"),
+            ("role", "luna_executor"),
+            ("name", "luna_executor"),
+            ("name", "custom-worker"),
+        )
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            for index, (field, value) in enumerate(cases):
+                with self.subTest(field=field, value=value):
+                    request = {field: value, "model": "gpt-5.6-luna", "fork_context": False}
+                    pre = ROUTER.handle(pretool(
+                        "gpt-5.6-sol", "spawn_agent", request,
+                        session_id=f"alias-{index}",
+                    ))
+                    self.assertIsNone(pre)
+                    post = ROUTER.handle(posttool(
+                        request,
+                        "Unknown model gpt-5.6-luna",
+                        session_id=f"alias-{index}",
+                    ))
+                    self.assertEqual(post["decision"], "block")
+                    self.assertTrue((
+                        Path(directory) / "capability" / f"alias-{index}--turn-a.unavailable"
+                    ).exists())
+
+    def test_conflicting_request_aliases_fail_closed_without_markers(self) -> None:
+        cases = (
+            ({
+                "agent_type": "reviewer",
+                "role": "luna_executor",
+                "model": "gpt-5.6-luna",
+                "fork_context": False,
+            }, "identity aliases disagree"),
+            ({
+                "agent_type": "luna_executor",
+                "model": "gpt-5.6-luna",
+                "model_name": "gpt-5.6-sol",
+                "fork_context": False,
+            }, "model aliases disagree"),
+        )
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            for index, (request, reason) in enumerate(cases):
+                with self.subTest(request=request):
+                    session_id = f"conflict-{index}"
+                    pre = ROUTER.handle(pretool(
+                        "gpt-5.6-sol", "spawn_agent", request, session_id=session_id,
+                    ))
+                    post = ROUTER.handle(posttool(
+                        request,
+                        {"task_name": "/root/ambiguous-task"},
+                        session_id=session_id,
+                    ))
+                    self.assertIn(reason, pre["hookSpecificOutput"]["permissionDecisionReason"])
+                    self.assertEqual(post["decision"], "block")
+                    self.assertIn(reason, post["reason"])
+                    self.assertFalse((Path(directory) / "capability").exists())
+
+    def test_identical_request_aliases_remain_valid_across_pre_and_posttool(self) -> None:
+        request = {
+            "agent_type": " luna_executor ",
+            "subagent_type": "LUNA_EXECUTOR",
+            "role": "luna_executor",
+            "name": "luna_executor",
+            "model": "gpt-5.6-luna",
+            "model_name": " GPT-5.6-LUNA ",
+            "fork_context": False,
+        }
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
+            self.assertIsNone(ROUTER.handle(posttool(
+                request, {"task_name": "/root/duplicate-alias-task"},
+            )))
+            self.assertTrue((
+                Path(directory) / "capability" / "test-session--turn-a.verified"
+            ).exists())
+
+    def test_same_turn_execution_escalation_is_blocked_but_review_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                "Unknown model gpt-5.6-luna; available models are gpt-5.6-sol and gpt-5.6-terra",
+            ))
+            blocked = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "worker", "message": "escalate", "fork_context": False,
+                }, turn_id="turn-a",
+            ))
+            reviewer = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "reviewer", "message": "review", "fork_context": False,
+                }, turn_id="turn-a",
+            ))
+            direct_sol = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "apply_patch", {"patch": "x"}, turn_id="turn-a",
+            ))
+            self.assertEqual(blocked["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertIn("do not escalate to Terra", blocked["hookSpecificOutput"]["permissionDecisionReason"])
+            self.assertIsNone(reviewer)
+            self.assertEqual(direct_sol["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_luna_unavailable_state_does_not_block_a_later_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"},
+                "Unknown model gpt-5.6-luna",
+            ))
+            later = ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", {
+                    "agent_type": "worker", "message": "new task", "fork_context": False,
+                }, turn_id="turn-b",
+            ))
+            self.assertIsNone(later)
+
+    def test_malformed_posttool_response_fails_closed_without_poisoning_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            missing = ROUTER.handle({
+                "hook_event_name": "PostToolUse",
+                "session_id": "test-session",
+                "turn_id": "turn-a",
+                "tool_name": "spawn_agent",
+                "tool_input": {"agent_type": "luna_executor"},
+            })
+            irrelevant = ROUTER.handle(posttool(
+                {"agent_type": "luna_executor"}, {"unexpected": [object(), None]},
+            ))
+            self.assertEqual(missing["decision"], "block")
+            self.assertIsNone(irrelevant)
+            self.assertFalse((Path(directory) / "test-session.json").exists())
+            self.assertFalse((Path(directory) / "capability").exists())
 
     def test_risk_reviewer_requires_trigger_and_evidence_pack(self) -> None:
         missing = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", {

@@ -1,6 +1,6 @@
 # Routing acceptance smoke scenarios
 
-These four manual smoke scenarios are behavioral acceptance tests for the routing policy. A prompt can reveal whether the supervisor and Hook choose the intended role, context, fork mode, and handoff, but prompts are not proof by themselves. Proof requires the captured session evidence and the post-session WCU audit.
+These five manual smoke scenarios are behavioral acceptance tests for the routing policy. A prompt can reveal whether the supervisor and Hook choose the intended role, context, fork mode, and handoff, but prompts are not proof by themselves. Proof requires the captured session evidence and the post-session WCU audit.
 
 Run each scenario in a fresh task. Replace bracketed placeholders with a real repository path, bounded change, failing test, or risk contract as appropriate. Keep the substituted work harmless, reversible, and small enough to inspect manually.
 
@@ -67,3 +67,17 @@ Expected role: `risk_reviewer` on Sol, only because the explicit high-risk trigg
 Forbidden behavior: Sol implementation, tests, builds, installs, Git delivery, or broad rediscovery; missing either required marker; using Sol for ordinary review; a full-history fork; ignoring an unresolved high-severity finding; raw transcript output.
 
 Evidence to collect: both literal markers in the spawn prompt; Hook allow/deny result; read-only role/model evidence; risk finding packet and disposition; proof that no Sol execution tools were used; WCU audit output with any routing violation treated as failure.
+
+## 5. Luna runtime-unavailable stop
+
+Prompt:
+
+```text
+Make this bounded Luna-eligible change in [allowed files]. Use the configured Luna executor and stop immediately if the App reports that gpt-5.6-luna is unknown or unavailable. Do not retry Luna, escalate execution to Terra, or perform the package directly on Sol. Report the blocked result and start a fresh task/turn only after the runtime capability is available.
+```
+
+Expected behavior: `PostToolUse` sees the failed `Agent`/spawn result, records the session/turn capability failure, returns `decision=block` with `continue=false`, and prevents same-turn `worker`, `terra_debugger`, or Luna execution retries. A later fresh turn is not blocked by stale state; only an existing read-only `reviewer` or explicit `risk_reviewer` gate may proceed under its contract.
+
+Forbidden behavior: silently treating the error as a normal failed worker, escalating the same package to Terra, direct Sol execution, retrying Luna in the blocked turn, or allowing malformed evidence to clear the gate.
+
+Evidence to collect: spawn request and exact tool response; PostToolUse block result; separate per-session/per-turn capability markers with existing atomic wait state preserved; same-turn PreToolUse deny result; later-turn non-block result; auditor output reporting any failed-Luna-to-Terra/direct-Sol sequence as a routing violation. A live installed-Hook capture remains required; synthetic unit tests do not prove the installed runtime registration or nested hook delivery.

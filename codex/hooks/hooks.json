@@ -38,6 +38,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Agent|spawn_agent|create_agent|functions\\.exec|multi_agent_v1__spawn_agent|multi_agent_v1__create_agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

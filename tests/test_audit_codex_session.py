@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 
@@ -45,11 +46,13 @@ def successful_spawn(role: str, call_id: str = "spawn") -> str:
             "name": "spawn_agent",
             "call_id": call_id,
             "arguments": json.dumps({"agent_type": role}),
+            "turn_id": "turn-a",
         }),
         record("response_item", {
             "type": "function_call_output",
             "call_id": call_id,
             "output": json.dumps({"agent_id": f"{role}-child"}),
+            "turn_id": "turn-a",
         }),
     ])
 
@@ -200,17 +203,374 @@ class AuditCodexSessionTests(unittest.TestCase):
                     "name": "spawn_agent",
                     "call_id": "spawn",
                     "arguments": json.dumps({"agent_type": "worker"}),
+                    "turn_id": "turn-a",
                 }),
                 record("response_item", {
                     "type": "function_call_output",
                     "call_id": "spawn",
                     "output": json.dumps({"agent_id": "missing-child"}),
+                    "turn_id": "turn-a",
                 }),
             ])
             path = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
             report = AUDIT.audit_session_tree(str(path), root)
             self.assertEqual(report["cost_status"], "partial_uncertain")
             self.assertTrue(any("successful spawn" in item for item in report["routing_violations"]))
+
+    def test_unavailable_luna_followed_by_terra_or_sol_is_a_routing_violation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            turn = "turn-a"
+            metadata = {"turn_id": turn}
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "luna-failed",
+                    "arguments": json.dumps({"agent_type": "luna_executor"}),
+                    **metadata,
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "luna-failed",
+                    "output": "Unknown model `gpt-5.6-luna` for spawn_agent. Available models: gpt-5.6-sol, gpt-5.6-terra",
+                    **metadata,
+                }),
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "terra-escalation",
+                    "arguments": json.dumps({"agent_type": "worker"}),
+                    **metadata,
+                }),
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "apply_patch",
+                    "call_id": "sol-direct",
+                    "arguments": "{\"patch\":\"x\"}",
+                    **metadata,
+                }),
+                record("turn_context", {"model": "gpt-5.6-sol", "turn_id": "turn-b"}),
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "later-worker",
+                    "arguments": json.dumps({"agent_type": "worker"}),
+                    "turn_id": "turn-b",
+                }),
+            ])
+            path = self.write_log(root, "parent", "root", "gpt-5.6-sol", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            violations = "\n".join(report["routing_violations"])
+            self.assertIn("retry/escalation followed an unavailable gpt-5.6-luna", violations)
+            self.assertIn("direct Sol execution followed an unavailable gpt-5.6-luna", violations)
+            self.assertNotIn("later-worker", violations)
+
+    def test_shared_spawn_result_matrix_is_strict_and_non_luna_mentions_do_not_poison(self) -> None:
+        cases = (
+            ({"agent_id": "child"}, True),
+            ('{"thread_id":"thread-1"}', True),
+            ({"task_name": "/root/bounded-task"}, True),
+            ({"isError": True, "agent_id": "child"}, False),
+            ({"status": "failed", "agent_id": "child"}, False),
+            ({"agent_id": ""}, False),
+            ({"nickname": None}, False),
+            ({"nickname": "not-a-documented-standalone-id"}, False),
+            ("{malformed", False),
+            ("", False),
+        )
+        for output, expected in cases:
+            with self.subTest(output=output):
+                self.assertEqual(
+                    AUDIT.classify_spawn_result(output, luna_role="luna_executor").succeeded,
+                    expected,
+                )
+        self.assertFalse(AUDIT.classify_spawn_result(
+            "Unknown model gpt-5.6-luna; this is only a Terra reviewer mention",
+            luna_role="worker",
+        ).unknown_luna)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "terra-mention",
+                    "arguments": json.dumps({"agent_type": "worker"}),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "terra-mention",
+                    "output": "Unknown model gpt-5.6-luna; reviewer mention only",
+                    "turn_id": "turn-a",
+                }),
+            ])
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertFalse(any("unavailable gpt-5.6-luna" in item for item in report["routing_violations"]))
+
+    def test_unknown_luna_result_matrix_matches_runtime_error_evidence_rules(self) -> None:
+        cases = (
+            ({"task_name": "gpt-5.6-luna-unavailable-repro"}, True, False),
+            ({
+                "message": "Unknown model gpt-5.6-luna",
+                "task_name": "gpt-5.6-luna-unavailable-repro",
+            }, True, False),
+            ({
+                "error": "Unknown model gpt-5.6-luna",
+                "task_name": "gpt-5.6-luna-unavailable-repro",
+            }, False, True),
+            ({
+                "error": "spawn failed",
+                "message": "Unknown model gpt-5.6-luna",
+                "task_name": "bounded",
+            }, False, False),
+            ({
+                "status": "failed",
+                "message": "gpt-5.6-luna is unavailable",
+                "task_name": "bounded",
+            }, False, True),
+            ({
+                "isError": True,
+                "content": [{"type": "text", "text": "Unknown model gpt-5.6-luna"}],
+                "task_name": "bounded",
+            }, False, True),
+            ({
+                "content": [{"type": "error", "text": "gpt-5.6-luna not found"}],
+                "task_name": "bounded",
+            }, False, True),
+            ("Unknown model gpt-5.6-luna", False, True),
+        )
+        for output, succeeded, unknown_luna in cases:
+            with self.subTest(output=output):
+                result = AUDIT.classify_spawn_result(output, luna_role="luna_executor")
+                self.assertEqual(result.succeeded, succeeded)
+                self.assertEqual(result.unknown_luna, unknown_luna)
+
+    def test_request_aliases_and_unknown_role_luna_model_are_audited_like_runtime(self) -> None:
+        cases = (
+            ("agent_type", "luna_executor", None),
+            ("subagent_type", "luna_executor", None),
+            ("role", "luna_executor", None),
+            ("name", "luna_executor", None),
+            ("name", "custom-worker", "gpt-5.6-luna"),
+        )
+        for field, value, model in cases:
+            with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                request = {field: value}
+                if model:
+                    request["model"] = model
+                extra = "".join([
+                    record("response_item", {
+                        "type": "function_call",
+                        "name": "spawn_agent",
+                        "call_id": "luna-failed",
+                        "arguments": json.dumps(request),
+                        "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call_output",
+                        "call_id": "luna-failed",
+                        "output": "Unknown model gpt-5.6-luna",
+                        "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call",
+                        "name": "spawn_agent",
+                        "call_id": "retry",
+                        "arguments": json.dumps({"name": "worker"}),
+                        "turn_id": "turn-a",
+                    }),
+                ])
+                path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+                report = AUDIT.audit_session_tree(str(path), root)
+                self.assertTrue(any("retry/escalation followed" in item for item in report["routing_violations"]))
+
+    def test_known_role_model_conflict_is_uncertain_in_the_auditor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "conflict",
+                    "arguments": json.dumps({
+                        "subagent_type": "luna_executor",
+                        "model": "gpt-5.6-terra",
+                    }),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "conflict",
+                    "output": json.dumps({"task_name": "/root/conflicted-task"}),
+                    "turn_id": "turn-a",
+                }),
+            ])
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertTrue(any("conflicts with explicit model" in item for item in report["routing_violations"]))
+
+    def test_alias_conflicts_are_uncertain_but_identical_duplicates_remain_valid(self) -> None:
+        cases = (
+            ({
+                "agent_type": "reviewer",
+                "role": "luna_executor",
+                "model": "gpt-5.6-luna",
+            }, "spawn identity aliases disagree"),
+            ({
+                "agent_type": "luna_executor",
+                "model": "gpt-5.6-luna",
+                "model_name": "gpt-5.6-sol",
+            }, "spawn model aliases disagree"),
+        )
+        for index, (request, expected) in enumerate(cases):
+            with self.subTest(request=request), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                extra = record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": f"conflict-{index}",
+                    "arguments": json.dumps(request),
+                    "turn_id": "turn-a",
+                })
+                path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+                report = AUDIT.audit_session_tree(str(path), root)
+                self.assertTrue(any(expected in item for item in report["routing_violations"]))
+                self.assertEqual(report["sessions"][0]["successful_spawns"], {})
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = {
+                "agent_type": " luna_executor ",
+                "subagent_type": "LUNA_EXECUTOR",
+                "role": "luna_executor",
+                "name": "luna_executor",
+                "model": "gpt-5.6-luna",
+                "model_name": " GPT-5.6-LUNA ",
+            }
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "duplicates",
+                    "arguments": json.dumps(request),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "duplicates",
+                    "output": json.dumps({"task_name": "/root/duplicate-alias-task"}),
+                    "turn_id": "turn-a",
+                }),
+            ])
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertEqual(report["sessions"][0]["successful_spawns"], {"luna_executor": 1})
+            self.assertFalse(any("aliases disagree" in item for item in report["routing_violations"]))
+
+    def test_task_name_success_is_counted_but_nickname_is_not(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "task-name",
+                    "arguments": json.dumps({"agent_type": "worker"}),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "task-name",
+                    "output": json.dumps({"task_name": "gpt-5.6-luna-unavailable-repro"}),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "nickname",
+                    "arguments": json.dumps({"agent_type": "worker"}),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "nickname",
+                    "output": json.dumps({"nickname": "not-a-documented-standalone-id"}),
+                    "turn_id": "turn-a",
+                }),
+            ])
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertEqual(report["sessions"][0]["successful_spawns"], {"worker": 1})
+
+    def test_outer_functions_exec_requires_canonical_luna_spawn_for_failure_state(self) -> None:
+        canonical = 'await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"bounded"});'
+        extra = "".join([
+            record("response_item", {
+                "type": "custom_tool_call",
+                "name": "functions.exec",
+                "call_id": "outer-luna",
+                "input": canonical,
+                "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "custom_tool_call_output",
+                "call_id": "outer-luna",
+                "output": "Unknown model gpt-5.6-luna",
+                "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call",
+                "name": "spawn_agent",
+                "call_id": "outer-retry",
+                "arguments": json.dumps({"agent_type": "worker"}),
+                "turn_id": "turn-a",
+            }),
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertTrue(any("retry/escalation followed" in item for item in report["routing_violations"]))
+
+    def test_historical_metadata_turn_id_tracks_unavailable_luna_without_overriding_top_level(self) -> None:
+        metadata = {"internal_chat_message_metadata_passthrough": {"turn_id": "historical-turn"}}
+        extra = "".join([
+            record("response_item", {
+                "type": "function_call",
+                "name": "spawn_agent",
+                "call_id": "missing-turn",
+                "arguments": json.dumps({"agent_type": "luna_executor"}),
+                **metadata,
+            }),
+            record("response_item", {
+                "type": "function_call_output",
+                "call_id": "missing-turn",
+                "output": "Unknown model gpt-5.6-luna",
+                **metadata,
+            }),
+            record("response_item", {
+                "type": "function_call",
+                "name": "spawn_agent",
+                "call_id": "later-worker",
+                "arguments": json.dumps({"agent_type": "worker"}),
+                **metadata,
+            }),
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertTrue(any("retry/escalation followed" in item for item in report["routing_violations"]))
+            self.assertFalse(any("lacks the documented top-level turn_id" in item for item in report["routing_violations"]))
+        self.assertEqual(AUDIT._turn_id({
+            "turn_id": "live-turn",
+            "internal_chat_message_metadata_passthrough": {"turn_id": "historical-turn"},
+        }), "live-turn")
 
     def test_requested_role_must_match_child_role_and_actual_model_family(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -306,6 +666,20 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["cost_status"], "partial_uncertain")
             self.assertTrue(any("token/schema" in item for item in report["routing_violations"]))
 
+    def test_null_token_info_is_reported_as_uncertain_not_a_crash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "null-info.jsonl"
+            path.write_text("".join([
+                record("session_meta", {"id": "root", "session_id": "root"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", {"type": "token_count", "info": None}),
+                record("event_msg", {"type": "task_complete"}),
+            ]))
+            report = AUDIT.audit_session_tree(str(path), root)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+            self.assertTrue(any("token/schema" in item for item in report["routing_violations"]))
+
     def test_corrupt_selected_line_is_not_silently_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -327,6 +701,26 @@ class AuditCodexSessionTests(unittest.TestCase):
             path = self.write_log(root, "parent", "root", "gpt-5.6-sol", [100], extra=extra)
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(AUDIT.main([str(path), "--sessions-root", str(root), "--json"]), 1)
+
+    def test_historical_audit_cli_reports_violations_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = record("response_item", {
+                "type": "custom_tool_call",
+                "name": "functions.exec",
+                "call_id": "mutation",
+                "input": 'await tools.apply_patch("patch")',
+                "turn_id": "turn-a",
+            })
+            path = self.write_log(root, "parent", "root", "gpt-5.6-sol", [100], extra=extra)
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), str(path), "--sessions-root", str(root)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertNotIn("Traceback", completed.stderr)
 
     def test_computed_sol_mutation_is_detected_by_auditor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

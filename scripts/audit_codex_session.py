@@ -19,9 +19,12 @@ if str(HOOKS_DIR) not in sys.path:
 from weighted_routing_policy import (  # noqa: E402
     ROLE_MODEL_FAMILIES,
     analyze_functions_exec,
+    classify_spawn_request,
+    classify_spawn_result,
     command_text,
     is_sol_execution,
     normalize_tool_name,
+    post_failure_role_allowed,
 )
 
 
@@ -188,36 +191,17 @@ def _output_size(payload: dict[str, Any]) -> int:
     return len(_output_text(payload.get("output")))
 
 
-def _spawn_role(name: str, arguments: dict[str, Any]) -> str | None:
-    leaf = normalize_tool_name(name)
-    raw = command_text(arguments)
-    if leaf == "exec":
-        try:
-            analysis = analyze_functions_exec(raw)
-        except ValueError:
-            return None
-        return analysis.canonical_call.role if analysis.canonical_call else None
-    if leaf not in {"spawn_agent", "agent", "create_agent"}:
-        return None
-    direct = arguments.get("agent_type") or arguments.get("role")
-    if isinstance(direct, str):
-        return direct
-    match = re.search(r"(?:agent_type|role)\s*:\s*['\"]([^'\"]+)['\"]", raw)
-    return match.group(1) if match else "unspecified"
-
-
-def _spawn_output_succeeded(output: Any) -> bool:
-    text = _output_text(output).strip()
-    lowered = text.lower()
-    if not text or any(marker in lowered for marker in ("full-history forked", "not found", "permission denied")):
-        return False
-    if any(marker in text for marker in ('"agent_id"', '"task_name"', '"nickname"', "agent_id")):
-        return True
-    try:
-        parsed = json.loads(text)
-        return isinstance(parsed, dict) and not parsed.get("error")
-    except json.JSONDecodeError:
-        return False
+def _turn_id(payload: dict[str, Any]) -> str:
+    value = payload.get("turn_id")
+    if isinstance(value, str) and value:
+        return value
+    # Historical session JSONL stores the turn ID here; the live Hook reads
+    # only its documented top-level field and does not use this parser.
+    metadata = payload.get("internal_chat_message_metadata_passthrough")
+    if not isinstance(metadata, dict):
+        return ""
+    value = metadata.get("turn_id")
+    return value if isinstance(value, str) and value else ""
 
 
 def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, Any]:
@@ -226,7 +210,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     usage_by_model: dict[str, Counter[str]] = defaultdict(Counter)
     calls_by_model: dict[str, Counter[str]] = defaultdict(Counter)
     call_index: dict[str, tuple[str, str]] = {}
-    pending_spawns: dict[str, str] = {}
+    pending_spawns: dict[str, tuple[Any, str]] = {}
     successful_spawns: Counter[str] = Counter()
     successful_spawn_roles: list[str] = []
     failed_spawns: Counter[str] = Counter()
@@ -240,6 +224,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     last_substantive_line = 0
     nested_policy_violations: list[str] = []
     nested_policy_uncertainties: list[str] = []
+    luna_routing_violations: list[str] = []
+    luna_unavailable_turns: set[str] = set()
 
     try:
         handle = meta.path.open()
@@ -264,6 +250,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "task_complete": False,
             "nested_policy_violations": [],
             "nested_policy_uncertainties": [],
+            "luna_routing_violations": [],
         }
 
     with handle:
@@ -277,6 +264,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 parse_errors += 1
                 continue
             payload = record.get("payload", {})
+            observed_turn_id = _turn_id(payload)
             is_task_complete = record.get("type") == "event_msg" and payload.get("type") == "task_complete"
             substantive_after_completion = (
                 record.get("type") in {"turn_context", "response_item"}
@@ -295,7 +283,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             if is_task_complete:
                 task_complete = True
             if record.get("type") == "event_msg" and payload.get("type") == "token_count":
-                current, errors = _normalize_usage(payload.get("info", {}).get("total_token_usage"), line_number)
+                info = payload.get("info")
+                usage_payload = info.get("total_token_usage") if isinstance(info, dict) else None
+                current, errors = _normalize_usage(usage_payload, line_number)
                 usage_schema_errors.extend(errors)
                 if current is not None:
                     token_snapshot_count += 1
@@ -314,12 +304,42 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 call_id = str(payload.get("call_id") or payload.get("id") or "")
                 if call_id:
                     call_index[call_id] = (active_model, name)
-                role = _spawn_role(name, arguments)
-                if role is not None:
-                    if call_id:
-                        pending_spawns[call_id] = role
+                leaf = normalize_tool_name(name)
+                try:
+                    request = classify_spawn_request(name, arguments)
+                except ValueError:
+                    request = None
+                lifecycle_call = leaf in {"agent", "spawn_agent", "create_agent"} or request is not None
+                if lifecycle_call and not observed_turn_id:
+                    luna_routing_violations.append(
+                        f"line {line_number}: lifecycle call {name!r} lacks the documented top-level turn_id; enforcement is fail-closed"
+                    )
+                if request is not None:
+                    role = request.requested_role
+                    if request.identity_alias_conflict:
+                        luna_routing_violations.append(
+                            f"line {line_number}: spawn identity aliases disagree {request.identity_values!r}; routing is uncertain"
+                        )
+                    elif request.model_alias_conflict:
+                        luna_routing_violations.append(
+                            f"line {line_number}: spawn model aliases disagree {request.model_values!r}; routing is uncertain"
+                        )
+                    elif request.role_model_conflict:
+                        luna_routing_violations.append(
+                            f"line {line_number}: known role {role!r} conflicts with explicit model {request.model!r}; routing is uncertain"
+                        )
+                    if request.has_conflict:
+                        failed_spawns[role] += 1
+                    elif call_id and observed_turn_id:
+                        pending_spawns[call_id] = (request, observed_turn_id)
+                    elif not observed_turn_id:
+                        failed_spawns[role] += 1
                     else:
                         failed_spawns[role] += 1
+                    if observed_turn_id in luna_unavailable_turns and not post_failure_role_allowed(request):
+                        luna_routing_violations.append(
+                            f"line {line_number}: {role!r} retry/escalation followed an unavailable gpt-5.6-luna result in turn {observed_turn_id}"
+                        )
                 if normalize_tool_name(name) == "exec":
                     raw = command_text(arguments)
                     try:
@@ -333,6 +353,10 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                             )
                 if model_family(active_model) == "sol" and is_sol_execution(name, arguments):
                     sol_execution_calls.append({"tool": name, "line": str(line_number)})
+                    if observed_turn_id in luna_unavailable_turns:
+                        luna_routing_violations.append(
+                            f"line {line_number}: direct Sol execution followed an unavailable gpt-5.6-luna result in turn {observed_turn_id}"
+                        )
                 continue
 
             if item_type in {"function_call_output", "custom_tool_call_output"}:
@@ -341,13 +365,26 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 size = _output_size(payload)
                 if size >= large_output_chars:
                     large_outputs.append({"model": model, "tool": name, "chars": size, "line": line_number})
-                role = pending_spawns.pop(call_id, None)
-                if role is not None:
-                    if _spawn_output_succeeded(payload.get("output")):
+                spawn = pending_spawns.pop(call_id, None)
+                if spawn is not None:
+                    request, spawn_turn_id = spawn
+                    role = request.requested_role
+                    classification = classify_spawn_result(
+                        payload.get("output"),
+                        luna_role=request.luna_role,
+                    )
+                    if classification.succeeded:
                         successful_spawns[role] += 1
                         successful_spawn_roles.append(role)
                     else:
                         failed_spawns[role] += 1
+                        if classification.unknown_luna:
+                            if spawn_turn_id:
+                                luna_unavailable_turns.add(spawn_turn_id)
+                            else:
+                                luna_routing_violations.append(
+                                    f"line {line_number}: unavailable gpt-5.6-luna result lacks turn_id; routing is uncertain"
+                                )
     return {
         "thread_id": meta.thread_id,
         "session_id": meta.session_id,
@@ -370,6 +407,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "last_substantive_line": last_substantive_line,
         "nested_policy_violations": nested_policy_violations,
         "nested_policy_uncertainties": nested_policy_uncertainties,
+        "luna_routing_violations": luna_routing_violations,
     }
 
 
@@ -447,6 +485,8 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
         for item in session["nested_policy_violations"]:
             completeness_violations.append(f"thread {thread_id}: {item}")
         for item in session["nested_policy_uncertainties"]:
+            completeness_violations.append(f"thread {thread_id}: {item}")
+        for item in session["luna_routing_violations"]:
             completeness_violations.append(f"thread {thread_id}: {item}")
         if not session["token_snapshot_count"]:
             completeness_violations.append(f"thread {thread_id}: no valid token snapshot")
