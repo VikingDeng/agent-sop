@@ -41,7 +41,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|spawn_agent|create_agent|functions\\.exec|multi_agent_v1__spawn_agent|multi_agent_v1__create_agent",
+        "matcher": "Agent|spawn_agent|create_agent|close_agent|functions\\.exec|multi_agent_v1__spawn_agent|multi_agent_v1__create_agent",
         "hooks": [
           {
             "type": "command",

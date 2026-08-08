@@ -12,6 +12,10 @@ python3 scripts/audit_codex_session.py <thread-id> --json > /tmp/codex-wcu.json
 
 Replace `<thread-id>` with the completed root task's thread id. Treat a nonzero exit code, `[UNCERTAIN/PARTIAL]` cost status, missing child logs, or routing violations as a failed acceptance result—not as a pass.
 
+Lifecycle and loop invariants apply to every scenario: `max_concurrent_threads_per_session` caps concurrently open spawned threads; completed threads should be closed. After integrating a child result, close it before an unrelated spawn. Count closure only when a directly recorded namespaced `close_agent` request for `{"target":"<agent-id>"}` has an output whose documented `previous_status` is not `not_found`; outer `functions.exec` JavaScript is not closure proof. A thread-limit result is nonterminal context recovered by list → confirmed close of completed/unneeded children → one retry of the same eligible spawn → matching open Luna/Terra reuse or stop; it is never Luna model unavailability. Each package allows one initial, one consolidated Luna-or-Terra correction, one review, and one re-review. Luna is the initial when eligible; Terra may be the sole initial only with nonempty objective `LUNA_ELIGIBLE=no(reason)`. Role/model changes do not reset the budget and Sol never implements. Every custom spawn message includes exactly one stable `PACKAGE_ID` and one valid `PACKAGE_PHASE`.
+
+After thread-limit, the package permits one retry only when its normalized role/model/message/phase/tool signature exactly matches the failed spawn. A changed signature is denied; a failed retry locks later spawns but not inspection, close, or matching open-thread reuse. Static acceptance must also verify the trust wording: `PACKAGE_ID` is supervisor-declared non-adversarial accounting, not cryptographic semantic proof; the Hook is a guardrail, not a security boundary; it cannot infer paraphrased identity; silent relabeling is a policy/audit violation. A real re-contract uses all six `RECONTRACT_*` lineage fields for old/new IDs and hashes, reason, and scope/acceptance delta. Valid markers establish declared lineage only.
+
 ## 1. Mapping
 
 Prompt:
@@ -34,7 +38,7 @@ Prompt:
 Make this bounded change in [allowed files]: [describe a harmless mechanical change]. Preserve unrelated edits. Acceptance requires [exact test command and expected result]. After implementation, independently review the changed behavior and its failure paths, repair any blocking issue within the same scope, and report the changed files and exact command results.
 ```
 
-Expected role: `luna_executor` for implementation and `reviewer` on Terra for the independent ordinary review; at most one compact correction at the same tier when the contract is unchanged and the failure is local.
+Expected role: `luna_executor` for the single initial implementation and `reviewer` on Terra for independent ordinary review; after findings are aggregated, at most one consolidated correction may use Luna or evidence-backed Terra under the unchanged package budget.
 
 Forbidden behavior: Sol source edits, builds, tests, or routine review; Terra implementation without documented semantic pressure; full-history fork; silently retrying after a second failure; a reviewer that edits or validates its own implementation; raw child transcript.
 

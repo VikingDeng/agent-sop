@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ import time
 from typing import Any
 
 from weighted_routing_policy import (
+    GLOBAL_LOOP_BUDGET,
     MAX_FUNCTIONS_EXEC_SOURCE,
     ROLE_MODEL_FAMILIES,
     analyze_functions_exec,
@@ -21,14 +23,20 @@ from weighted_routing_policy import (
     command_text,
     is_sol_execution,
     normalize_tool_name,
+    package_contract_error,
+    parse_recontract_evidence,
     post_failure_role_allowed,
+    spawn_request_signature,
 )
 
 
 SESSION_CONTEXT = """Weighted-cost routing is active.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens subject to unchanged acceptance criteria and review gates.
-Before execution, record LUNA_ELIGIBLE=yes/no. Use Luna first for bounded labor-heavy implementation, tests, fixtures, commands, logs, and data plumbing; use Terra for semantic cross-file work or evidence-backed Luna escalation; reserve Sol for architecture, research design, ambiguity resolution, final judgment, and explicitly triggered high-risk review.
-Do not use Sol for source edits, builds, tests, installs, repetitive inspection, or bulk output. If runtime evidence says gpt-5.6-luna is unavailable, stop the package and refresh/start a new task/turn; do not silently escalate to Terra or direct Sol. Escalation must name prior role, failure evidence, scope delta, and unchanged/changed acceptance criteria. risk_reviewer requires HIGH_RISK_TRIGGER and a compact EVIDENCE_PACK. Return summaries instead of large raw tool output.
+Before execution, record LUNA_ELIGIBLE=yes/no(reason). Use Luna for the initial implementation when eligible. A Terra worker/debugger may consume the package's sole initial only with a nonempty objective LUNA_ELIGIBLE=no(reason). Under the same package budget, use at most one consolidated correction on Luna or Terra; Sol never implements. Reserve Sol for parent judgment and at most one explicitly triggered read-only risk review.
+Every custom agent message requires compact `PACKAGE_ID: <stable-id>` and `PACKAGE_PHASE: map|initial|review|correction|re_review|verify` markers. Do not copy full history. If runtime evidence says gpt-5.6-luna is unavailable, stop the package and refresh/start a new task/turn; do not retry Luna, run a correction, or execute directly on Sol. risk_reviewer requires HIGH_RISK_TRIGGER and a compact EVIDENCE_PACK. Return summaries instead of large raw tool output.
+Lifecycle: max_concurrent_threads_per_session caps concurrently open spawned threads; completed threads should be closed. If a spawn returns agent-thread-limit, list agents, close completed/unneeded agents, retry the same eligible spawn at most once, then reuse an already-open matching Luna/Terra thread or stop. This is distinct from Luna model unavailability.
+Thread-limit recovery is package-scoped: only one exact normalized-signature retry is permitted; a changed signature under that PACKAGE_ID is denied and a failed retry locks further package spawns. PACKAGE_ID is supervisor-declared accounting identity, not cryptographic semantic proof. A new ID after recovery requires explicit old/new package IDs, old/new contract SHA-256 values, reason, and scope/acceptance delta.
+Global package loop budget: one initial implementation, one consolidated correction batch, and one independent re-review total; role escalation does not reset it and vN+1 is forbidden without explicit re-contracting.
 """
 
 ROLE_CONTEXT = {
@@ -36,8 +44,8 @@ ROLE_CONTEXT = {
     "focused_worker": "Perform only the assigned mechanical edit and declared checks. Escalate semantic ambiguity.",
     "luna_executor": "Own the bounded labor-heavy implementation. Follow the frozen architecture and binary acceptance criteria; escalate judgment-heavy ambiguity.",
     "verifier": "Run the declared oracle and return concise raw evidence plus exit codes; do not edit source.",
-    "worker": "This is a Terra escalation. Resolve the documented semantic/cross-file issue without redesigning the task.",
-    "terra_debugger": "Diagnose an unknown root cause hypothesis-first: state competing hypotheses, rank them by evidence, and run discriminating checks. Use no-fallback behavior; return a compact evidence packet and escalate when evidence or the contract is insufficient.",
+    "worker": "Resolve only the documented semantic/cross-file issue. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason); otherwise this is the single consolidated correction.",
+    "terra_debugger": "Diagnose an unknown root cause hypothesis-first: state competing hypotheses, rank them by evidence, and run discriminating checks. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason). Use no-fallback behavior; return a compact evidence packet and escalate when evidence or the contract is insufficient.",
     "reviewer": "Review independently and read-only; findings need severity, location, failure path, and minimal repair.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
 }
@@ -73,6 +81,15 @@ def _posttool_block(reason: str) -> dict[str, Any]:
         "decision": "block",
         "reason": reason,
         "continue": False,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": reason,
+        }
+    }
+
+
+def _posttool_context(reason: str) -> dict[str, Any]:
+    return {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "additionalContext": reason,
@@ -149,6 +166,300 @@ def _write_state(path: Path, payload: dict[str, Any]) -> None:
         json.dump(payload, handle, separators=(",", ":"))
         temporary = Path(handle.name)
     os.replace(temporary, path)
+
+
+def _spawn_signature(tool_name: str, tool_input: dict[str, Any]) -> str:
+    return spawn_request_signature(tool_name, tool_input)
+
+
+def _reservation_paths(session_id: str, namespace: str, key: str) -> tuple[Path, Path]:
+    base = _state_path("reservations").parent / "reservations"
+    digest = hashlib.sha256(f"{session_id}\0{namespace}\0{key}".encode("utf-8")).hexdigest()
+    return base / f"{digest}.reserved", base / f"{digest}.committed"
+
+
+def _reservation_specs(request: Any) -> list[tuple[str, str]]:
+    specs: list[tuple[str, str]] = []
+    if request.package_phase in GLOBAL_LOOP_BUDGET:
+        specs.append(("package-phase", f"{request.package_id}\0{request.package_phase}"))
+    if request.role == "risk_reviewer":
+        specs.append(("session-risk-reviewer", "max-one"))
+    return specs
+
+
+def _release_reservations(session_id: str, specs: list[tuple[str, str]]) -> None:
+    for namespace, key in specs:
+        reserved, _ = _reservation_paths(session_id, namespace, key)
+        try:
+            reserved.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _reserve_spawn_budget(data: dict[str, Any], request: Any) -> str | None:
+    if (contract_error := package_contract_error(request)) is not None:
+        return f"Weighted router: invalid package contract: {contract_error}."
+    session_id = str(data.get("session_id", ""))
+    if not session_id:
+        return "Weighted router: package budget is unscoped without session_id; spawn is blocked."
+    acquired: list[tuple[str, str]] = []
+    try:
+        for namespace, key in _reservation_specs(request):
+            reserved, committed = _reservation_paths(session_id, namespace, key)
+            reserved.parent.mkdir(parents=True, exist_ok=True)
+            if committed.exists():
+                _release_reservations(session_id, acquired)
+                label = "Sol risk_reviewer" if namespace == "session-risk-reviewer" else request.package_phase
+                return f"Weighted router: {label} budget is already committed for this session/package."
+            try:
+                with reserved.open("x") as handle:
+                    handle.write(f"session_id={session_id}\nnamespace={namespace}\n")
+            except FileExistsError:
+                _release_reservations(session_id, acquired)
+                label = "Sol risk_reviewer" if namespace == "session-risk-reviewer" else request.package_phase
+                return f"Weighted router: {label} budget already has an in-flight reservation."
+            acquired.append((namespace, key))
+        return None
+    except OSError as exc:
+        _release_reservations(session_id, acquired)
+        _record_error(f"reservation state failure: {type(exc).__name__}: {exc}")
+        return "Weighted router: package/risk reservation state is uncertain; spawn is blocked."
+
+
+def _settle_spawn_budget(data: dict[str, Any], request: Any, *, succeeded: bool) -> bool:
+    session_id = str(data.get("session_id", ""))
+    if not session_id:
+        return False
+    try:
+        for namespace, key in _reservation_specs(request):
+            reserved, committed = _reservation_paths(session_id, namespace, key)
+            if succeeded:
+                if committed.exists():
+                    continue
+                if not reserved.exists():
+                    raise FileNotFoundError(f"missing reservation for {namespace}")
+                os.replace(reserved, committed)
+            else:
+                try:
+                    reserved.unlink()
+                except FileNotFoundError:
+                    pass
+        return True
+    except OSError as exc:
+        _record_error(f"reservation settlement failure: {type(exc).__name__}: {exc}")
+        return False
+
+
+def _thread_limit_retry_marker(session_id: str, package_id: str) -> Path:
+    reserved, _ = _reservation_paths(session_id, "thread-limit-package-retry", package_id)
+    return reserved
+
+
+def _thread_limit_retry_gate(
+    data: dict[str, Any],
+    tool_name: str,
+    tool_input: dict[str, Any],
+    request: Any,
+) -> str | None:
+    session_id = str(data.get("session_id", ""))
+    if not session_id:
+        return "Weighted router: thread-limit recovery is unscoped without session_id; list/close agents manually and stop this package."
+    path = _state_path(session_id)
+    try:
+        state = _load_state(path)
+        packages = state.get("thread_limit_packages", {})
+        if not isinstance(packages, dict):
+            raise ValueError("thread_limit_packages is not an object")
+        evidence, evidence_error = parse_recontract_evidence(
+            request.message,
+            new_package_id=request.package_id,
+        )
+        if evidence_error:
+            return f"Weighted router: invalid re-contract evidence: {evidence_error}."
+        active_packages = {
+            package_id: value
+            for package_id, value in packages.items()
+            if isinstance(value, dict) and value.get("status") in {"recovery", "locked"}
+        }
+        package_state = packages.get(request.package_id)
+        signature = _spawn_signature(tool_name, tool_input)
+        if isinstance(package_state, dict) and package_state.get("status") in {"locked", "recontracted"}:
+            return (
+                f"Weighted router: package {request.package_id!r} is locked after thread-limit recovery or explicit re-contracting. "
+                "Do not spawn again; reuse an already-open matching Luna/Terra thread or stop. "
+                "Thread-limit is not Luna model unavailability."
+            )
+        if isinstance(package_state, dict) and package_state.get("status") == "recovery":
+            expected = package_state.get("signature")
+            if signature != expected:
+                return (
+                    f"Weighted router: package {request.package_id!r} is in thread-limit recovery and permits only "
+                    "one exact same-signature retry; changed role/model/message/phase/tool input is blocked."
+                )
+            if _thread_limit_retry_marker(session_id, str(request.package_id)).exists():
+                return (
+                    f"Weighted router: package {request.package_id!r} already has its single thread-limit retry in flight; "
+                    "another retry is blocked."
+                )
+            return None
+        active_other_packages = set(active_packages) - {request.package_id}
+        if active_other_packages:
+            if evidence is None:
+                return (
+                    "Weighted router: a new PACKAGE_ID after thread-limit recovery requires explicit re-contract evidence "
+                    "linking the old/new package IDs and contract hashes, reason, and scope/acceptance delta."
+                )
+            if evidence.old_package_id not in active_other_packages:
+                return (
+                    "Weighted router: RECONTRACT_OLD_PACKAGE_ID does not identify an observed package in recovery/locked state."
+                )
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        _record_error(f"thread-limit retry state failure: {type(exc).__name__}: {exc}")
+        return "Weighted router: thread-limit retry state is uncertain; list/close agents and stop this package."
+    return None
+
+
+def _commit_thread_limit_preflight(
+    data: dict[str, Any],
+    tool_name: str,
+    tool_input: dict[str, Any],
+    request: Any,
+) -> str | None:
+    """Atomically acquire retry/lineage state after every other PreTool gate passes."""
+    session_id = str(data.get("session_id", ""))
+    if not session_id:
+        return "Weighted router: thread-limit recovery is unscoped without session_id; list/close agents manually and stop this package."
+    path = _state_path(session_id)
+    try:
+        state = _load_state(path)
+        packages = state.get("thread_limit_packages", {})
+        if not isinstance(packages, dict):
+            raise ValueError("thread_limit_packages is not an object")
+        evidence, evidence_error = parse_recontract_evidence(
+            request.message,
+            new_package_id=request.package_id,
+        )
+        if evidence_error:
+            return f"Weighted router: invalid re-contract evidence: {evidence_error}."
+        package_state = packages.get(request.package_id)
+        signature = _spawn_signature(tool_name, tool_input)
+        if isinstance(package_state, dict) and package_state.get("status") in {"locked", "recontracted"}:
+            return (
+                f"Weighted router: package {request.package_id!r} is locked after thread-limit recovery or explicit re-contracting. "
+                "Do not spawn again; reuse an already-open matching Luna/Terra thread or stop. "
+                "Thread-limit is not Luna model unavailability."
+            )
+        if isinstance(package_state, dict) and package_state.get("status") == "recovery":
+            if signature != package_state.get("signature"):
+                return (
+                    f"Weighted router: package {request.package_id!r} is in thread-limit recovery and permits only "
+                    "one exact same-signature retry; changed role/model/message/phase/tool input is blocked."
+                )
+            marker = _thread_limit_retry_marker(session_id, str(request.package_id))
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with marker.open("x") as handle:
+                    handle.write(f"session_id={session_id}\npackage_id={request.package_id}\nsignature={signature}\n")
+            except FileExistsError:
+                return (
+                    f"Weighted router: package {request.package_id!r} already has its single thread-limit retry in flight; "
+                    "another retry is blocked."
+                )
+            return None
+
+        active_packages = {
+            package_id: value
+            for package_id, value in packages.items()
+            if isinstance(value, dict) and value.get("status") in {"recovery", "locked"}
+        }
+        active_other_packages = set(active_packages) - {request.package_id}
+        if active_other_packages:
+            if evidence is None:
+                return (
+                    "Weighted router: a new PACKAGE_ID after thread-limit recovery requires explicit re-contract evidence "
+                    "linking the old/new package IDs and contract hashes, reason, and scope/acceptance delta."
+                )
+            if evidence.old_package_id not in active_other_packages:
+                return (
+                    "Weighted router: RECONTRACT_OLD_PACKAGE_ID does not identify an observed package in recovery/locked state."
+                )
+            old_state = dict(packages[evidence.old_package_id])
+            old_state["status"] = "recontracted"
+            old_state["recontracted_to"] = evidence.new_package_id
+            packages[evidence.old_package_id] = old_state
+            state["thread_limit_packages"] = packages
+            _write_state(path, state)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        _record_error(f"thread-limit preflight commit failure: {type(exc).__name__}: {exc}")
+        return "Weighted router: thread-limit retry state is uncertain; list/close agents and stop this package."
+    return None
+
+
+def _settle_thread_limit_recovery(
+    data: dict[str, Any],
+    tool_name: str,
+    tool_input: dict[str, Any],
+    request: Any,
+    result: Any,
+) -> str:
+    session_id = str(data.get("session_id", ""))
+    if not session_id:
+        return "error"
+    path = _state_path(session_id)
+    try:
+        state = _load_state(path)
+        packages = state.get("thread_limit_packages", {})
+        if not isinstance(packages, dict):
+            raise ValueError("thread_limit_packages is not an object")
+        package_id = str(request.package_id)
+        signature = _spawn_signature(tool_name, tool_input)
+        package_state = packages.get(package_id)
+        if isinstance(package_state, dict) and package_state.get("status") == "recovered":
+            if not result.thread_limit:
+                return "none"
+            package_state["status"] = "locked"
+            package_state["lock_reason"] = "later_thread_limit_after_retry"
+            packages[package_id] = package_state
+            state["thread_limit_packages"] = packages
+            _write_state(path, state)
+            return "retry_failed"
+        if not isinstance(package_state, dict):
+            if not result.thread_limit:
+                return "none"
+            packages[package_id] = {
+                "status": "recovery",
+                "signature": signature,
+                "retry_count": 0,
+            }
+            state["thread_limit_packages"] = packages
+            _write_state(path, state)
+            return "entered_recovery"
+        if package_state.get("status") == "locked":
+            return "error"
+        marker = _thread_limit_retry_marker(session_id, package_id)
+        if package_state.get("signature") != signature or not marker.exists():
+            package_state["status"] = "locked"
+            package_state["lock_reason"] = "unreserved_or_changed_signature_retry_result"
+            packages[package_id] = package_state
+            state["thread_limit_packages"] = packages
+            _write_state(path, state)
+            return "error"
+        marker.unlink()
+        package_state["retry_count"] = 1
+        if result.succeeded:
+            package_state["status"] = "recovered"
+            outcome = "retry_succeeded"
+        else:
+            package_state["status"] = "locked"
+            package_state["lock_reason"] = "retry_failed"
+            outcome = "retry_failed"
+        packages[package_id] = package_state
+        state["thread_limit_packages"] = packages
+        _write_state(path, state)
+        return outcome
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        _record_error(f"thread-limit recovery settlement failure: {type(exc).__name__}: {exc}")
+        return "error"
 
 
 def _turn_id(data: dict[str, Any]) -> str:
@@ -265,8 +576,36 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
             reason = _request_conflict_reason(request)
             _record_error(reason)
             return _posttool_block(reason)
+        if request is not None and (contract_error := package_contract_error(request)) is not None:
+            reason = f"Weighted router: invalid package contract in PostToolUse: {contract_error}."
+            _record_error(reason)
+            return _posttool_block(reason)
         response = data["tool_response"]
         result = classify_spawn_result(response, luna_role=request.luna_role if request else None)
+        if request is not None and not _settle_spawn_budget(data, request, succeeded=result.succeeded):
+            return _posttool_block("Weighted router: package/risk reservation could not be settled; stop this package.")
+        recovery_outcome = (
+            _settle_thread_limit_recovery(data, tool_name, tool_input, request, result)
+            if request is not None
+            else "none"
+        )
+        if recovery_outcome == "error":
+            return _posttool_block(
+                "Weighted router: package thread-limit recovery state could not be reconciled; lock this package and stop spawning."
+            )
+        if request is not None and result.thread_limit:
+            if recovery_outcome == "retry_failed":
+                return _posttool_context(
+                    f"Weighted router: package {request.package_id!r} used its one exact-signature retry and hit "
+                    "agent-thread-limit again. The package is locked against further spawns; inspect/list and close agents, "
+                    "then reuse an already-open matching Luna/Terra thread or stop. This is not Luna model unavailability."
+                )
+            return _posttool_context(
+                "Weighted router: agent-thread-limit is a thread lifecycle/resource limit, not Luna model unavailability. "
+                f"Package {request.package_id!r} is now in recovery. List agents; close completed/unneeded agents; retry "
+                "the exact same normalized spawn signature at most once; changed role/model/message/phase is blocked. "
+                "If still blocked, reuse an already-open matching Luna/Terra thread or stop."
+            )
         if request is not None and request.luna_role is not None and (result.unknown_luna or result.succeeded):
             turn_id = _turn_id(data)
             session_id = str(data.get("session_id", ""))
@@ -282,6 +621,11 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
                 return _posttool_block("Weighted router: Luna capability state could not be persisted; stop this package and refresh/start a new task/turn.")
             if result.unknown_luna:
                 return _posttool_block("Weighted router: gpt-5.6-luna was rejected as unavailable. Stop this package; do not escalate to Terra or execute directly on Sol. Refresh/start a new task/turn.")
+        if recovery_outcome == "retry_failed":
+            return _posttool_context(
+                f"Weighted router: package {request.package_id!r} used its one exact-signature retry and the spawn failed. "
+                "The package is locked against further spawns; inspection, close, and matching open-thread reuse remain allowed."
+            )
         return None
 
     if event != "PreToolUse":
@@ -305,10 +649,14 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
 
     if tool_leaf in {"agent", "spawn_agent", "create_agent"}:
         request = classify_spawn_request(tool_name, tool_input)
+        if request is None:
+            return None
         role = request.role or ""
         model_override = request.model
         if request.has_conflict:
             return _deny(_request_conflict_reason(request))
+        if (contract_error := package_contract_error(request)) is not None:
+            return _deny(f"Weighted router: invalid package contract: {contract_error}.")
         capability_denial = _luna_gate(data, request)
         if capability_denial:
             return _deny(capability_denial)
@@ -331,6 +679,17 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
             return _deny(
                 "Weighted router: an unspecified/default child may inherit Sol. Select an explicit Luna/Terra role or model; use risk_reviewer only with its trigger and evidence pack."
             )
+        retry_denial = _thread_limit_retry_gate(data, tool_name, tool_input, request)
+        if retry_denial:
+            return _deny(retry_denial)
+        reservation_denial = _reserve_spawn_budget(data, request)
+        if reservation_denial:
+            return _deny(reservation_denial)
+        commit_denial = _commit_thread_limit_preflight(data, tool_name, tool_input, request)
+        if commit_denial:
+            _release_reservations(str(data.get("session_id", "")), _reservation_specs(request))
+            return _deny(commit_denial)
+        return None
 
     if tool_leaf == "exec":
         raw = command_text(tool_input)
@@ -341,9 +700,23 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
         request = classify_spawn_request(tool_name, tool_input)
         if request is not None and request.has_conflict:
             return _deny(_request_conflict_reason(request))
+        if request is not None and (contract_error := package_contract_error(request)) is not None:
+            return _deny(f"Weighted router: invalid package contract: {contract_error}.")
         capability_denial = _luna_gate(data, request)
         if capability_denial:
             return _deny(capability_denial)
+        if request is not None:
+            retry_denial = _thread_limit_retry_gate(data, tool_name, tool_input, request)
+            if retry_denial:
+                return _deny(retry_denial)
+            reservation_denial = _reserve_spawn_budget(data, request)
+            if reservation_denial:
+                return _deny(reservation_denial)
+            commit_denial = _commit_thread_limit_preflight(data, tool_name, tool_input, request)
+            if commit_denial:
+                _release_reservations(str(data.get("session_id", "")), _reservation_specs(request))
+                return _deny(commit_denial)
+            return None
         if re.search(r"tools\.[A-Za-z0-9_]*(?:wait_agent|wait_for_agent|wait_for_subagent)\s*\(", raw):
             session_id = str(data.get("session_id", "unknown"))
             if _too_many_waits(session_id, raw, time.time()):

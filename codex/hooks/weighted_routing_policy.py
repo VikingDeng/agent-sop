@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,25 @@ ROLE_MODEL_FAMILIES = {
     "terra_debugger": "terra",
     "reviewer": "terra",
     "risk_reviewer": "sol",
+}
+
+MAX_CONCURRENT_OPEN_THREADS = 2
+MAX_RISK_REVIEWERS_PER_SESSION = 1
+GLOBAL_LOOP_BUDGET = {
+    "initial": 1,
+    "review": 1,
+    "correction": 1,
+    "re_review": 1,
+}
+PACKAGE_PHASES = frozenset({"map", "initial", "review", "correction", "re_review", "verify"})
+PACKAGE_ID_PATTERN = r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}"
+PACKAGE_PHASE_ROLES = {
+    "map": frozenset({"explorer"}),
+    "initial": frozenset({"focused_worker", "luna_executor", "worker", "terra_debugger"}),
+    "review": frozenset({"reviewer", "risk_reviewer"}),
+    "correction": frozenset({"focused_worker", "luna_executor", "worker", "terra_debugger"}),
+    "re_review": frozenset({"reviewer", "risk_reviewer"}),
+    "verify": frozenset({"verifier"}),
 }
 
 NESTED_AGENT_FACTORIES = frozenset({
@@ -47,6 +67,7 @@ class FunctionsExecAnalysis:
 class SpawnResult:
     succeeded: bool = False
     unknown_luna: bool = False
+    thread_limit: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,6 +83,10 @@ class SpawnRequest:
     identity_alias_conflict: bool
     model_alias_conflict: bool
     role_model_conflict: bool
+    message: str | None
+    package_id: str | None
+    package_phase: str | None
+    package_error: str | None
 
     @property
     def requested_role(self) -> str:
@@ -82,6 +107,16 @@ class SpawnRequest:
     @property
     def has_conflict(self) -> bool:
         return self.identity_alias_conflict or self.model_alias_conflict or self.role_model_conflict
+
+
+@dataclass(frozen=True)
+class RecontractEvidence:
+    old_package_id: str
+    new_package_id: str
+    old_contract_sha256: str
+    new_contract_sha256: str
+    reason: str
+    scope_acceptance_delta: str
 
 
 POST_FAILURE_ALLOWED_ROLES = frozenset({"reviewer", "risk_reviewer"})
@@ -119,6 +154,95 @@ def _alias_values(payload: dict[str, Any], fields: tuple[str, ...]) -> tuple[str
     ))
 
 
+def parse_package_markers(message: Any) -> tuple[str | None, str | None, str | None]:
+    if not isinstance(message, str) or not message.strip():
+        return None, None, "spawn message requires PACKAGE_ID and PACKAGE_PHASE markers"
+    package_ids = re.findall(r"(?m)^PACKAGE_ID:\s*([^\s]+)\s*$", message)
+    phases = re.findall(r"(?m)^PACKAGE_PHASE:\s*([^\s]+)\s*$", message)
+    if len(package_ids) != 1 or len(phases) != 1:
+        return None, None, "spawn message requires exactly one PACKAGE_ID and one PACKAGE_PHASE marker"
+    package_id = package_ids[0]
+    phase = phases[0]
+    if not re.fullmatch(PACKAGE_ID_PATTERN, package_id):
+        return None, None, "PACKAGE_ID must be a stable nonempty identifier of at most 128 characters"
+    if phase not in PACKAGE_PHASES:
+        return None, None, "PACKAGE_PHASE must be one of map|initial|review|correction|re_review|verify"
+    return package_id, phase, None
+
+
+def parse_recontract_evidence(
+    message: Any,
+    *,
+    new_package_id: str | None,
+) -> tuple[RecontractEvidence | None, str | None]:
+    """Parse explicit supervisor-declared re-contract evidence without inferring semantics."""
+    if not isinstance(message, str):
+        return None, None
+    fields = {
+        "old_package_id": "RECONTRACT_OLD_PACKAGE_ID",
+        "new_package_id": "RECONTRACT_NEW_PACKAGE_ID",
+        "old_contract_sha256": "RECONTRACT_OLD_CONTRACT_SHA256",
+        "new_contract_sha256": "RECONTRACT_NEW_CONTRACT_SHA256",
+        "reason": "RECONTRACT_REASON",
+        "scope_acceptance_delta": "RECONTRACT_SCOPE_ACCEPTANCE_DELTA",
+    }
+    found: dict[str, str] = {}
+    any_marker = False
+    for field, marker in fields.items():
+        any_marker |= re.search(rf"(?m)^{marker}:", message) is not None
+        values = re.findall(rf"(?m)^{marker}:\s*(\S(?:.*\S)?)\s*$", message)
+        if len(values) > 1:
+            return None, f"re-contract evidence requires exactly one {marker} marker"
+        if values:
+            found[field] = values[0]
+    if not any_marker:
+        return None, None
+    missing = [marker for field, marker in fields.items() if field not in found]
+    if missing:
+        return None, "re-contract evidence is missing " + ", ".join(missing)
+    if not re.fullmatch(PACKAGE_ID_PATTERN, found["old_package_id"]):
+        return None, "RECONTRACT_OLD_PACKAGE_ID is invalid"
+    if not re.fullmatch(PACKAGE_ID_PATTERN, found["new_package_id"]):
+        return None, "RECONTRACT_NEW_PACKAGE_ID is invalid"
+    if found["new_package_id"] != new_package_id:
+        return None, "RECONTRACT_NEW_PACKAGE_ID must equal PACKAGE_ID"
+    if found["old_package_id"] == found["new_package_id"]:
+        return None, "re-contract evidence requires different old and new PACKAGE_ID values"
+    for field, marker in (
+        ("old_contract_sha256", "RECONTRACT_OLD_CONTRACT_SHA256"),
+        ("new_contract_sha256", "RECONTRACT_NEW_CONTRACT_SHA256"),
+    ):
+        if not re.fullmatch(r"[0-9A-Fa-f]{64}", found[field]):
+            return None, f"{marker} must be a 64-hex SHA-256"
+    if found["old_contract_sha256"].lower() == found["new_contract_sha256"].lower():
+        return None, "re-contract evidence requires different old and new contract SHA-256 values"
+    return RecontractEvidence(
+        old_package_id=found["old_package_id"],
+        new_package_id=found["new_package_id"],
+        old_contract_sha256=found["old_contract_sha256"].lower(),
+        new_contract_sha256=found["new_contract_sha256"].lower(),
+        reason=found["reason"],
+        scope_acceptance_delta=found["scope_acceptance_delta"],
+    ), None
+
+
+def package_contract_error(request: SpawnRequest) -> str | None:
+    if request.package_error:
+        return request.package_error
+    if request.role not in ROLE_MODEL_FAMILIES:
+        return "package-marked custom spawn requires a configured role"
+    allowed = PACKAGE_PHASE_ROLES.get(request.package_phase or "", frozenset())
+    if request.role not in allowed:
+        return f"role {request.role!r} is not permitted for PACKAGE_PHASE {request.package_phase!r}"
+    if (
+        request.package_phase == "initial"
+        and request.role_family == "terra"
+        and not re.search(r"LUNA_ELIGIBLE=no\([^\r\n)]*\S[^\r\n)]*\)", request.message or "")
+    ):
+        return "Terra initial requires LUNA_ELIGIBLE=no(reason) with a nonempty reason"
+    return None
+
+
 def _classify_spawn_payload(payload: dict[str, Any]) -> SpawnRequest:
     identity_values = _alias_values(payload, SPAWN_IDENTITY_FIELDS)
     model_values = _alias_values(payload, SPAWN_MODEL_FIELDS)
@@ -128,6 +252,8 @@ def _classify_spawn_payload(payload: dict[str, Any]) -> SpawnRequest:
     model = model_values[0] if len(model_values) == 1 else None
     role_family = ROLE_MODEL_FAMILIES.get(role or "")
     model_family = _model_family(model)
+    message = payload.get("message") if isinstance(payload.get("message"), str) else None
+    package_id, package_phase, package_error = parse_package_markers(message)
     return SpawnRequest(
         role=role,
         model=model,
@@ -144,6 +270,10 @@ def _classify_spawn_payload(payload: dict[str, Any]) -> SpawnRequest:
             and model is not None
             and not _model_matches_family(model, role_family)
         ),
+        message=message,
+        package_id=package_id,
+        package_phase=package_phase,
+        package_error=package_error,
     )
 
 
@@ -151,6 +281,9 @@ def classify_spawn_request(tool_name: str, payload: dict[str, Any]) -> SpawnRequ
     """Classify direct and canonical nested spawn inputs identically for all consumers."""
     leaf = normalize_tool_name(tool_name)
     if leaf in {"agent", "spawn_agent", "create_agent"}:
+        action = _normalized_string(payload.get("action") or payload.get("operation") or payload.get("mode"))
+        if leaf == "agent" and action in {"list", "inspect", "status"}:
+            return None
         return _classify_spawn_payload(payload)
     if leaf != "exec":
         return None
@@ -158,6 +291,36 @@ def classify_spawn_request(tool_name: str, payload: dict[str, Any]) -> SpawnRequ
     if analysis.canonical_call is None:
         return None
     return _classify_spawn_payload(analysis.canonical_call.payload)
+
+
+def spawn_request_signature(tool_name: str, payload: dict[str, Any]) -> str:
+    """Hash the complete canonical accepted spawn payload without persisting its prompt."""
+    request = classify_spawn_request(tool_name, payload)
+    if request is None:
+        raise ValueError("tool input is not a recognized spawn request")
+    leaf = normalize_tool_name(tool_name)
+    if leaf == "exec":
+        analysis = analyze_functions_exec(command_text(payload))
+        if analysis.canonical_call is None:
+            raise ValueError("tool input is not a canonical nested spawn request")
+        factory = analysis.canonical_call.factory
+        accepted_payload = dict(analysis.canonical_call.payload)
+    else:
+        factory = leaf
+        accepted_payload = dict(payload)
+
+    # Alias spelling is transport noise after classification. Preserve every other
+    # accepted input, including fork and reasoning controls, in the signed payload.
+    for field in (*SPAWN_IDENTITY_FIELDS, *SPAWN_MODEL_FIELDS):
+        accepted_payload.pop(field, None)
+    accepted_payload["role"] = request.role
+    accepted_payload["model"] = request.model
+    signature_payload = {
+        "factory": factory,
+        "payload": accepted_payload,
+    }
+    serialized = json.dumps(signature_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def post_failure_role_allowed(request: SpawnRequest | None) -> bool:
@@ -179,6 +342,21 @@ def _contains_unknown_luna(value: Any) -> bool:
     return bool(
         re.search(r"unknown\s+model[^\n]*gpt-5\.6-luna", text)
         or re.search(r"gpt-5\.6-luna[^\n]*(?:unknown|unavailable|not available|not found)", text)
+    )
+
+
+def _contains_thread_limit(value: Any) -> bool:
+    if isinstance(value, str):
+        text = value.lower()
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False).lower()
+        except (TypeError, ValueError):
+            return False
+    return bool(
+        re.search(r"agent[-_ ]thread[-_ ]limit", text)
+        or re.search(r"(?:maximum|max)[-_ ]?(?:number of )?(?:open )?threads", text)
+        or re.search(r"too many (?:open )?(?:agent )?threads", text)
     )
 
 
@@ -242,6 +420,16 @@ def unknown_luna_failure(value: Any, *, luna_role: str | None) -> bool:
     return isinstance(value, str) and _contains_unknown_luna(value)
 
 
+def thread_limit_failure(value: Any) -> bool:
+    """Recognize the thread-limit resource error without treating it as Luna failure."""
+    payload = _spawn_result_object(value)
+    if payload is not None:
+        if any(_contains_thread_limit(payload.get(key)) for key in ("status", "code", "error", "message")):
+            return True
+        return any(_contains_thread_limit(item) for item in _structured_error_values(payload))
+    return isinstance(value, str) and _contains_thread_limit(value)
+
+
 def _spawn_result_object(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict):
         return value
@@ -256,6 +444,8 @@ def _spawn_result_object(value: Any) -> dict[str, Any] | None:
 
 def classify_spawn_result(value: Any, *, luna_role: str | None = None) -> SpawnResult:
     """Classify only explicit supported spawn results; unknown Luna wins over success."""
+    if thread_limit_failure(value):
+        return SpawnResult(thread_limit=True)
     if unknown_luna_failure(value, luna_role=luna_role):
         return SpawnResult(unknown_luna=True)
     payload = _spawn_result_object(value)
@@ -275,6 +465,26 @@ def classify_spawn_result(value: Any, *, luna_role: str | None = None) -> SpawnR
         if isinstance(identifier, str) and identifier.strip():
             return SpawnResult(succeeded=True)
     return SpawnResult()
+
+
+def close_result_succeeded(value: Any) -> bool:
+    """Accept documented close output unless the prior agent status was not_found."""
+    payload = _spawn_result_object(value)
+    if payload is None:
+        return False
+    if (
+        payload.get("isError")
+        or payload.get("is_error")
+        or payload.get("failed")
+        or payload.get("error") not in (None, False, "")
+    ):
+        return False
+    previous_status = payload.get("previous_status")
+    if isinstance(previous_status, str):
+        return previous_status in {"pending_init", "running", "interrupted", "shutdown"}
+    if not isinstance(previous_status, dict) or not previous_status:
+        return False
+    return bool(set(previous_status) & {"completed", "errored"})
 
 
 def _reject_json_constant(value: str) -> None:
@@ -331,6 +541,9 @@ def _validate_canonical_payload(factory: str, payload: dict[str, Any]) -> Nested
         marker not in message for marker in ("HIGH_RISK_TRIGGER:", "EVIDENCE_PACK:")
     ):
         raise ValueError("risk_reviewer message requires HIGH_RISK_TRIGGER and EVIDENCE_PACK")
+    request = _classify_spawn_payload(payload)
+    if (contract_error := package_contract_error(request)) is not None:
+        raise ValueError(contract_error)
     return NestedAgentCall(factory=factory, payload=payload, role=role)
 
 

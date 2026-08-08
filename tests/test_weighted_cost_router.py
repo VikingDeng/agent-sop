@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,6 +21,36 @@ SPEC = importlib.util.spec_from_file_location("weighted_cost_router", SCRIPT)
 assert SPEC and SPEC.loader
 ROUTER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ROUTER)
+from weighted_routing_policy import close_result_succeeded
+
+
+def _marked_tool_input(tool_name: str, tool_input: dict | str) -> dict | str:
+    if not isinstance(tool_input, dict) or tool_name not in {"Agent", "spawn_agent", "create_agent"}:
+        return tool_input
+    request = ROUTER.classify_spawn_request(tool_name, tool_input)
+    if request is None or request.role is None:
+        return tool_input
+    marked = dict(tool_input)
+    message = str(marked.get("message") or marked.get("prompt") or marked.get("task") or "")
+    if "PACKAGE_ID:" in message or "PACKAGE_PHASE:" in message:
+        return marked
+    phase = {
+        "explorer": "map",
+        "luna_executor": "initial",
+        "focused_worker": "initial",
+        "reviewer": "review",
+        "risk_reviewer": "review",
+        "worker": "correction",
+        "terra_debugger": "correction",
+        "verifier": "verify",
+    }.get(request.role)
+    if phase is None:
+        return tool_input
+    digest = hashlib.sha256(
+        json.dumps(tool_input, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    marked["message"] = f"{message}\nPACKAGE_ID: test-{digest}\nPACKAGE_PHASE: {phase}".strip()
+    return marked
 
 
 def pretool(model: str, tool_name: str, tool_input: dict | str, *, session_id: str = "test-session", turn_id: str | None = "turn-a") -> dict:
@@ -27,7 +59,7 @@ def pretool(model: str, tool_name: str, tool_input: dict | str, *, session_id: s
         "session_id": session_id,
         "model": model,
         "tool_name": tool_name,
-        "tool_input": tool_input,
+        "tool_input": _marked_tool_input(tool_name, tool_input),
     }
     if turn_id is not None:
         event["turn_id"] = turn_id
@@ -46,7 +78,7 @@ def posttool(
         "hook_event_name": "PostToolUse",
         "session_id": session_id,
         "tool_name": tool_name,
-        "tool_input": tool_input,
+        "tool_input": _marked_tool_input(tool_name, tool_input),
         "tool_response": response,
     }
     if turn_id is not None:
@@ -61,13 +93,35 @@ def nested_spawn(
     message: str = "bounded canonical task",
     factory: str = "multi_agent_v1__spawn_agent",
 ) -> str:
-    payload = {"agent_type": role, "fork_context": False, "message": message}
+    phase = {
+        "explorer": "map",
+        "luna_executor": "initial",
+        "focused_worker": "initial",
+        "reviewer": "review",
+        "risk_reviewer": "review",
+        "worker": "correction",
+        "terra_debugger": "correction",
+        "verifier": "verify",
+    }.get(role, "initial")
+    marked = f"{message}\nPACKAGE_ID: nested-{role}\nPACKAGE_PHASE: {phase}"
+    payload = {"agent_type": role, "fork_context": False, "message": marked}
     if model is not None:
         payload["model"] = model
     return f"await tools.{factory}({json.dumps(payload, separators=(',', ':'))});"
 
 
 class WeightedCostRouterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._state = tempfile.TemporaryDirectory()
+        self._environment = patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": self._state.name}
+        )
+        self._environment.start()
+
+    def tearDown(self) -> None:
+        self._environment.stop()
+        self._state.cleanup()
+
     def test_session_start_injects_objective_and_luna_gate(self) -> None:
         result = ROUTER.handle({"hook_event_name": "SessionStart"})
         context = result["hookSpecificOutput"]["additionalContext"]
@@ -211,8 +265,10 @@ class WeightedCostRouterTests(unittest.TestCase):
         ):
             state_path = Path(directory) / "test-session.json"
             state_path.write_text(json.dumps({"waits": [{"signature": "keep", "time": 1}], "other": "keep"}))
+            request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
             result = ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                request,
                 "Unknown model `gpt-5.6-luna` for spawn_agent. Available models: gpt-5.6-sol, gpt-5.6-terra",
             ))
             self.assertEqual(result["decision"], "block")
@@ -229,8 +285,10 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
             self.assertIsNone(ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                request,
                 {"agent_id": "luna-child"},
             )))
             self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.verified").exists())
@@ -239,8 +297,10 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
             self.assertIsNone(ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                request,
                 {"task_name": "/root/bounded-luna-task"},
             )))
             self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.verified").exists())
@@ -249,9 +309,13 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
-            success = ROUTER.handle(posttool({"agent_type": "luna_executor"}, {"agent_id": "child"}))
+            success_request = {"agent_type": "luna_executor", "message": "PACKAGE_ID: success\nPACKAGE_PHASE: initial"}
+            failure_request = {"agent_type": "luna_executor", "message": "PACKAGE_ID: failure\nPACKAGE_PHASE: initial"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", success_request)))
+            success = ROUTER.handle(posttool(success_request, {"agent_id": "child"}))
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", failure_request)))
             failure = ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                failure_request,
                 "Unknown model gpt-5.6-luna",
             ))
             self.assertIsNone(success)
@@ -270,11 +334,15 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            failure_request = {"agent_type": "luna_executor", "message": "PACKAGE_ID: failure\nPACKAGE_PHASE: initial"}
+            late_request = {"agent_type": "luna_executor", "message": "PACKAGE_ID: late\nPACKAGE_PHASE: initial"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", failure_request)))
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", late_request)))
             failure = ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"}, "Unknown model gpt-5.6-luna"
+                failure_request, "Unknown model gpt-5.6-luna"
             ))
             success = ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"}, {"agent_id": "late-child"}
+                late_request, {"agent_id": "late-child"}
             ))
             self.assertEqual(failure["decision"], "block")
             self.assertIsNone(success)
@@ -292,7 +360,9 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
-            ROUTER.handle(posttool({"agent_type": "luna_executor"}, "Unknown model gpt-5.6-luna"))
+            request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
+            ROUTER.handle(posttool(request, "Unknown model gpt-5.6-luna"))
             event = pretool("gpt-5.6-sol", "wait_agent", {})
             ROUTER.handle(event)
             self.assertTrue((Path(directory) / "capability" / "test-session--turn-a.unavailable").exists())
@@ -301,8 +371,10 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            request = {"agent_type": "reviewer"}
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
             self.assertIsNone(ROUTER.handle(posttool(
-                {"agent_type": "reviewer"},
+                request,
                 "Unknown model gpt-5.6-luna; reviewer response mentions Luna",
             )))
             self.assertFalse((Path(directory) / "capability").exists())
@@ -311,8 +383,10 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            source = nested_spawn("luna_executor")
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "functions.exec", source)))
             blocked = ROUTER.handle(posttool(
-                nested_spawn("luna_executor"),
+                source,
                 "Unknown model gpt-5.6-luna",
                 tool_name="functions.exec",
             ))
@@ -375,6 +449,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         hooks = json.loads((ROOT / "codex/hooks/hooks.json").read_text())
         matcher = hooks["hooks"]["PostToolUse"][0]["matcher"]
         self.assertIn("functions\\.exec", matcher)
+        self.assertIn("close_agent", matcher)
 
     def test_strict_spawn_result_matrix_is_fail_closed_and_serializable(self) -> None:
         cases = (
@@ -435,17 +510,387 @@ class WeightedCostRouterTests(unittest.TestCase):
                 self.assertEqual(result.succeeded, succeeded)
                 self.assertEqual(result.unknown_luna, unknown_luna)
 
+    def test_thread_limit_is_distinct_and_allows_only_one_same_spawn_retry(self) -> None:
+        request = {
+            "agent_type": "luna_executor",
+            "message": "bounded implementation",
+            "fork_context": False,
+        }
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            result = ROUTER.classify_spawn_result(
+                "agent-thread-limit: maximum concurrent threads reached",
+                luna_role="luna_executor",
+            )
+            self.assertTrue(result.thread_limit)
+            self.assertFalse(result.unknown_luna)
+            self.assertTrue(ROUTER.classify_spawn_result(
+                {"status": "agent-thread-limit"}, luna_role="luna_executor"
+            ).thread_limit)
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
+            first = ROUTER.handle(posttool(request, "agent-thread-limit: maximum concurrent threads reached"))
+            self.assertNotIn("decision", first)
+            self.assertNotIn("continue", first)
+            self.assertIn("not Luna model unavailability", first["hookSpecificOutput"]["additionalContext"])
+            self.assertFalse((Path(directory) / "capability" / "test-session--turn-a.unavailable").exists())
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
+            second = ROUTER.handle(posttool(request, "agent-thread-limit: maximum concurrent threads reached"))
+            self.assertNotIn("decision", second)
+            self.assertIn("agent-thread-limit", second["hookSpecificOutput"]["additionalContext"])
+            denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request))
+            self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertIn("locked after thread-limit recovery", denied["hookSpecificOutput"]["permissionDecisionReason"])
+            state = json.loads((Path(directory) / "test-session.json").read_text())
+            self.assertEqual(len(state["thread_limit_packages"]), 1)
+            package_state = next(iter(state["thread_limit_packages"].values()))
+            self.assertEqual(package_state["status"], "locked")
+            self.assertEqual(package_state["retry_count"], 1)
+            self.assertRegex(package_state["signature"], r"^[0-9a-f]{64}$")
+            self.assertNotIn("bounded implementation", json.dumps(state))
+
+    def test_thread_limit_recovery_denies_changed_signature_dimensions(self) -> None:
+        original = {
+            "agent_type": "luna_executor",
+            "model": "gpt-5.6-luna",
+            "fork_context": False,
+            "message": "bounded\nPACKAGE_ID: recovery-package\nPACKAGE_PHASE: initial",
+        }
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        first = ROUTER.handle(posttool(original, "agent-thread-limit"))
+        self.assertIn("now in recovery", first["hookSpecificOutput"]["additionalContext"])
+
+        changed_requests = (
+            {**original, "message": original["message"].replace("bounded", "changed message")},
+            {**original, "model": "gpt-luna-alternate"},
+            {
+                **original,
+                "agent_type": "worker",
+                "model": "gpt-5.6-terra",
+                "message": (
+                    "bounded\nPACKAGE_ID: recovery-package\nPACKAGE_PHASE: initial\n"
+                    "LUNA_ELIGIBLE=no(semantic pressure)"
+                ),
+            },
+            {**original, "message": original["message"].replace("initial", "correction")},
+        )
+        for index, changed in enumerate(changed_requests):
+            with self.subTest(index=index):
+                denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", changed))
+                self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+                self.assertIn("exact same-signature retry", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        retry_failure = ROUTER.handle(posttool(original, {"status": "failed"}))
+        self.assertIn("locked against further spawns", retry_failure["hookSpecificOutput"]["additionalContext"])
+        denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_denied_altered_input_does_not_consume_valid_identical_retry(self) -> None:
+        original = {
+            "agent_type": "luna_executor",
+            "model": "gpt-5.6-luna",
+            "fork_context": False,
+            "message": "bounded\nPACKAGE_ID: retry-ordering\nPACKAGE_PHASE: initial",
+        }
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        ROUTER.handle(posttool(original, "agent-thread-limit"))
+
+        altered = {**original, "fork_context": True}
+        denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", altered))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("do not fork the full parent history", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        retry_marker = ROUTER._thread_limit_retry_marker("test-session", "retry-ordering")
+        self.assertTrue(retry_marker.exists())
+
+    def test_final_recovery_commit_failure_rolls_back_package_reservation(self) -> None:
+        original = {
+            "agent_type": "luna_executor",
+            "fork_context": False,
+            "message": "bounded\nPACKAGE_ID: retry-rollback\nPACKAGE_PHASE: initial",
+        }
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        ROUTER.handle(posttool(original, "agent-thread-limit"))
+
+        with patch.object(ROUTER, "_commit_thread_limit_preflight", return_value="forced commit denial"):
+            denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+
+    def test_new_package_after_recovery_requires_explicit_recontract_evidence(self) -> None:
+        original = {
+            "agent_type": "verifier",
+            "fork_context": False,
+            "message": "verify\nPACKAGE_ID: old-package\nPACKAGE_PHASE: verify",
+        }
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        ROUTER.handle(posttool(original, "agent-thread-limit"))
+
+        relabeled = {
+            "agent_type": "verifier",
+            "fork_context": False,
+            "message": "verify\nPACKAGE_ID: new-package\nPACKAGE_PHASE: verify",
+        }
+        denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", relabeled))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("explicit re-contract evidence", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+        relabeled["message"] += (
+            "\nRECONTRACT_OLD_PACKAGE_ID: old-package"
+            "\nRECONTRACT_NEW_PACKAGE_ID: new-package"
+            f"\nRECONTRACT_OLD_CONTRACT_SHA256: {'a' * 64}"
+            f"\nRECONTRACT_NEW_CONTRACT_SHA256: {'b' * 64}"
+            "\nRECONTRACT_REASON: acceptance contract materially changed"
+            "\nRECONTRACT_SCOPE_ACCEPTANCE_DELTA: added one bounded file and one new assertion"
+        )
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", relabeled)))
+
+    def test_downstream_denied_recontract_does_not_mutate_lineage(self) -> None:
+        original = {
+            "agent_type": "verifier",
+            "fork_context": False,
+            "message": "verify\nPACKAGE_ID: lineage-old\nPACKAGE_PHASE: verify",
+        }
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", original)))
+        ROUTER.handle(posttool(original, "agent-thread-limit"))
+
+        evidence = (
+            "verify\nPACKAGE_ID: lineage-new\nPACKAGE_PHASE: verify"
+            "\nRECONTRACT_OLD_PACKAGE_ID: lineage-old"
+            "\nRECONTRACT_NEW_PACKAGE_ID: lineage-new"
+            f"\nRECONTRACT_OLD_CONTRACT_SHA256: {'a' * 64}"
+            f"\nRECONTRACT_NEW_CONTRACT_SHA256: {'b' * 64}"
+            "\nRECONTRACT_REASON: acceptance contract materially changed"
+            "\nRECONTRACT_SCOPE_ACCEPTANCE_DELTA: added one bounded assertion"
+        )
+        denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", {
+            "agent_type": "verifier",
+            "fork_context": True,
+            "message": evidence,
+        }))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        state = json.loads((Path(self._state.name) / "test-session.json").read_text())
+        self.assertEqual(state["thread_limit_packages"]["lineage-old"]["status"], "recovery")
+
+        marker_free = {
+            "agent_type": "verifier",
+            "fork_context": False,
+            "message": "verify\nPACKAGE_ID: lineage-new\nPACKAGE_PHASE: verify",
+        }
+        denied_retry = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", marker_free))
+        self.assertEqual(denied_retry["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("explicit re-contract evidence", denied_retry["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_one_successful_risk_reviewer_is_the_session_maximum(self) -> None:
+        request = {
+            "agent_type": "risk_reviewer",
+            "message": "HIGH_RISK_TRIGGER: concurrency\nEVIDENCE_PACK: focused diff",
+            "fork_context": False,
+        }
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
+        ):
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request)))
+            self.assertIsNone(ROUTER.handle(posttool(request, {"agent_id": "risk-child"})))
+            denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", request))
+            self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+            self.assertRegex(
+                denied["hookSpecificOutput"]["permissionDecisionReason"],
+                r"one allowed Sol risk_reviewer|review budget is already committed",
+            )
+
+    def test_close_result_uses_documented_previous_status_schema(self) -> None:
+        successful = (
+            {"previous_status": "pending_init"},
+            {"previous_status": "running"},
+            {"previous_status": "interrupted"},
+            {"previous_status": "shutdown"},
+            {"previous_status": {"completed": "done"}},
+            {"previous_status": {"errored": "task failed"}},
+        )
+        failed = (
+            {"previous_status": "not_found"},
+            {"previous_status": "closed"},
+            {"previous_status": {}},
+            {"previous_status": {"unexpected": "value"}},
+            {"previous_status": "running", "error": "tool failure"},
+            {"isError": True, "previous_status": "shutdown"},
+            None,
+        )
+        for result in successful:
+            with self.subTest(success=result):
+                self.assertTrue(close_result_succeeded(result))
+                self.assertTrue(close_result_succeeded(json.dumps(result)))
+        for result in failed:
+            with self.subTest(failure=result):
+                self.assertFalse(close_result_succeeded(result))
+
+    def test_risk_reviewer_reservation_is_atomic_and_failed_spawn_releases_it(self) -> None:
+        request = {
+            "agent_type": "risk_reviewer",
+            "message": (
+                "HIGH_RISK_TRIGGER: concurrency\nEVIDENCE_PACK: focused diff\n"
+                "PACKAGE_ID: concurrent-risk\nPACKAGE_PHASE: review"
+            ),
+            "fork_context": False,
+        }
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(
+                lambda _: ROUTER.handle(pretool(
+                    "gpt-5.6-sol", "spawn_agent", request, session_id="risk-race"
+                )),
+                range(2),
+            ))
+        self.assertEqual(sum(result is None for result in results), 1)
+        self.assertEqual(sum(result is not None for result in results), 1)
+        self.assertIsNone(ROUTER.handle(posttool(
+            request, {"status": "failed"}, session_id="risk-race"
+        )))
+        self.assertIsNone(ROUTER.handle(pretool(
+            "gpt-5.6-sol", "spawn_agent", request, session_id="risk-race"
+        )))
+        self.assertIsNone(ROUTER.handle(posttool(
+            request, {"agent_id": "risk-child"}, session_id="risk-race"
+        )))
+        denied = ROUTER.handle(pretool(
+            "gpt-5.6-sol",
+            "spawn_agent",
+            {**request, "message": request["message"].replace("concurrent-risk", "second-risk")},
+            session_id="risk-race",
+        ))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_package_phase_budget_is_global_across_roles_and_packages_are_independent(self) -> None:
+        def request(role: str, package: str, phase: str) -> dict:
+            return {
+                "agent_type": role,
+                "fork_context": False,
+                "message": f"bounded\nPACKAGE_ID: {package}\nPACKAGE_PHASE: {phase}",
+            }
+
+        initial = request("luna_executor", "package-a", "initial")
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", initial)))
+        self.assertIsNone(ROUTER.handle(posttool(initial, {"agent_id": "initial"})))
+
+        terra_initial = request("worker", "package-a", "initial")
+        terra_initial["message"] += "\nLUNA_ELIGIBLE=no(semantic cross-file pressure)"
+        denied_initial = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", terra_initial))
+        self.assertEqual(denied_initial["hookSpecificOutput"]["permissionDecision"], "deny")
+
+        correction = request("worker", "package-a", "correction")
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", correction)))
+        self.assertIsNone(ROUTER.handle(posttool(correction, {"agent_id": "correction"})))
+        second_correction = request("luna_executor", "package-a", "correction")
+        denied_correction = ROUTER.handle(pretool(
+            "gpt-5.6-sol", "spawn_agent", second_correction
+        ))
+        self.assertEqual(denied_correction["hookSpecificOutput"]["permissionDecision"], "deny")
+
+        review = request("reviewer", "package-a", "review")
+        re_review = request("reviewer", "package-a", "re_review")
+        for spawn in (review, re_review):
+            self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", spawn)))
+            self.assertIsNone(ROUTER.handle(posttool(spawn, {"agent_id": spawn["message"]})))
+        denied_re_review = ROUTER.handle(pretool(
+            "gpt-5.6-sol", "spawn_agent", re_review
+        ))
+        self.assertEqual(denied_re_review["hookSpecificOutput"]["permissionDecision"], "deny")
+
+        independent = request("luna_executor", "package-b", "initial")
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", independent)))
+
+    def test_terra_can_be_the_single_initial_only_with_luna_ineligible_reason(self) -> None:
+        def terra_request(role: str, package: str, reason: str | None) -> dict:
+            message = f"bounded\nPACKAGE_ID: {package}\nPACKAGE_PHASE: initial"
+            if reason is not None:
+                message += f"\nLUNA_ELIGIBLE=no({reason})"
+            return {"agent_type": role, "fork_context": False, "message": message}
+
+        for role in ("worker", "terra_debugger"):
+            with self.subTest(role=role):
+                request = terra_request(role, f"terra-{role}", "semantic pressure")
+                self.assertIsNone(ROUTER.handle(pretool(
+                    "gpt-5.6-sol", "spawn_agent", request, session_id=f"session-{role}"
+                )))
+
+        for index, reason in enumerate((None, "", "   ")):
+            with self.subTest(reason=reason):
+                request = terra_request("worker", f"missing-{index}", reason)
+                denied = ROUTER.handle(pretool(
+                    "gpt-5.6-sol", "spawn_agent", request, session_id=f"missing-{index}"
+                ))
+                self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+                self.assertIn("LUNA_ELIGIBLE=no(reason)", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_successful_initial_blocks_every_later_initial_role(self) -> None:
+        first = {
+            "agent_type": "worker",
+            "fork_context": False,
+            "message": (
+                "bounded\nPACKAGE_ID: single-initial\nPACKAGE_PHASE: initial\n"
+                "LUNA_ELIGIBLE=no(semantic pressure)"
+            ),
+        }
+        self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", first)))
+        self.assertIsNone(ROUTER.handle(posttool(first, {"agent_id": "terra-initial"})))
+        for role in ("focused_worker", "luna_executor", "worker", "terra_debugger"):
+            message = "bounded\nPACKAGE_ID: single-initial\nPACKAGE_PHASE: initial"
+            if role in {"worker", "terra_debugger"}:
+                message += "\nLUNA_ELIGIBLE=no(still semantic)"
+            with self.subTest(role=role):
+                denied = ROUTER.handle(pretool(
+                    "gpt-5.6-sol", "spawn_agent",
+                    {"agent_type": role, "fork_context": False, "message": message},
+                ))
+                self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+                self.assertIn("initial budget is already committed", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_missing_package_markers_fail_closed(self) -> None:
+        result = ROUTER.handle({
+            "hook_event_name": "PreToolUse",
+            "session_id": "missing-package",
+            "turn_id": "turn-a",
+            "model": "gpt-5.6-sol",
+            "tool_name": "spawn_agent",
+            "tool_input": {
+                "agent_type": "luna_executor",
+                "message": "bounded",
+                "fork_context": False,
+            },
+        })
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("PACKAGE_ID", result["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_ordinary_reviewer_is_terra_and_sol_is_not_a_default_child(self) -> None:
+        self.assertEqual(ROUTER.ROLE_MODEL_FAMILIES["reviewer"], "terra")
+        self.assertEqual(ROUTER.ROLE_MODEL_FAMILIES["risk_reviewer"], "sol")
+        denied = ROUTER.handle(pretool("gpt-5.6-sol", "spawn_agent", {
+            "message": "ordinary review",
+            "fork_context": False,
+        }))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def test_task_name_luna_text_marks_success_but_error_evidence_marks_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            success_request = {"agent_type": "luna_executor"}
+            failure_request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", success_request, session_id="success-session"
+            )))
             success = ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                success_request,
                 {"task_name": "gpt-5.6-luna-unavailable-repro"},
                 session_id="success-session",
             ))
+            self.assertIsNone(ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", failure_request, session_id="failure-session"
+            )))
             failure = ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                failure_request,
                 {
                     "error": "Unknown model gpt-5.6-luna",
                     "task_name": "gpt-5.6-luna-unavailable-repro",
@@ -465,7 +910,6 @@ class WeightedCostRouterTests(unittest.TestCase):
             ("subagent_type", "luna_executor"),
             ("role", "luna_executor"),
             ("name", "luna_executor"),
-            ("name", "custom-worker"),
         )
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
@@ -547,8 +991,12 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            failed_request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", failed_request
+            )))
             ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                failed_request,
                 "Unknown model gpt-5.6-luna; available models are gpt-5.6-sol and gpt-5.6-terra",
             ))
             blocked = ROUTER.handle(pretool(
@@ -573,8 +1021,12 @@ class WeightedCostRouterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"CODEX_ROUTER_STATE_DIR": directory}
         ):
+            failed_request = {"agent_type": "luna_executor"}
+            self.assertIsNone(ROUTER.handle(pretool(
+                "gpt-5.6-sol", "spawn_agent", failed_request
+            )))
             ROUTER.handle(posttool(
-                {"agent_type": "luna_executor"},
+                failed_request,
                 "Unknown model gpt-5.6-luna",
             ))
             later = ROUTER.handle(pretool(
@@ -703,9 +1155,11 @@ class WeightedCostRouterTests(unittest.TestCase):
             nested_spawn("luna_executor", model="gpt-5.6-luna"),
             nested_spawn("terra_debugger", model="gpt-5.6-terra", factory="multi_agent_v1__create_agent"),
         )
-        for source in cases:
+        for index, source in enumerate(cases):
             with self.subTest(source=source):
-                self.assertIsNone(ROUTER.handle(pretool("gpt-5.6-sol", "functions.exec", source)))
+                self.assertIsNone(ROUTER.handle(pretool(
+                    "gpt-5.6-sol", "functions.exec", source, session_id=f"nested-{index}"
+                )))
 
     def test_canonical_nested_agent_payload_rejects_policy_errors(self) -> None:
         cases = (
@@ -714,9 +1168,18 @@ class WeightedCostRouterTests(unittest.TestCase):
             nested_spawn("luna_executor").replace('"agent_type":"luna_executor",', ""),
             nested_spawn("luna_executor").replace('"fork_context":false', '"fork_context":true'),
             nested_spawn("luna_executor").replace('"fork_context":false,', ""),
-            nested_spawn("luna_executor").replace('"message":"bounded canonical task"', '"message":""'),
-            nested_spawn("luna_executor").replace('"message":"bounded canonical task"', '"message":selectedMessage'),
-            nested_spawn("luna_executor").replace('"message":"bounded canonical task"', '"unknown":"x","message":"bounded canonical task"'),
+            nested_spawn("luna_executor").replace(
+                '"message":"bounded canonical task\\nPACKAGE_ID: nested-luna_executor\\nPACKAGE_PHASE: initial"',
+                '"message":""',
+            ),
+            nested_spawn("luna_executor").replace(
+                '"message":"bounded canonical task\\nPACKAGE_ID: nested-luna_executor\\nPACKAGE_PHASE: initial"',
+                '"message":selectedMessage',
+            ),
+            nested_spawn("luna_executor").replace(
+                '"message":"bounded canonical task\\nPACKAGE_ID: nested-luna_executor\\nPACKAGE_PHASE: initial"',
+                '"unknown":"x","message":"bounded canonical task\\nPACKAGE_ID: nested-luna_executor\\nPACKAGE_PHASE: initial"',
+            ),
             'await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"x","agent_type":"terra_debugger"});',
         )
         for source in cases:

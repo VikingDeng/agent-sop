@@ -17,14 +17,21 @@ HOOKS_DIR = Path(__file__).resolve().parents[1] / "codex" / "hooks"
 if str(HOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(HOOKS_DIR))
 from weighted_routing_policy import (  # noqa: E402
+    GLOBAL_LOOP_BUDGET,
+    MAX_CONCURRENT_OPEN_THREADS,
     ROLE_MODEL_FAMILIES,
+    SPAWN_IDENTIFIERS,
     analyze_functions_exec,
     classify_spawn_request,
     classify_spawn_result,
+    close_result_succeeded,
     command_text,
     is_sol_execution,
     normalize_tool_name,
+    package_contract_error,
+    parse_recontract_evidence,
     post_failure_role_allowed,
+    spawn_request_signature,
 )
 
 
@@ -191,6 +198,44 @@ def _output_size(payload: dict[str, Any]) -> int:
     return len(_output_text(payload.get("output")))
 
 
+def _identifier_values(value: Any) -> dict[str, str]:
+    payload = value if isinstance(value, dict) else _spawn_result_object(value)
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        key: str(payload[key]).strip()
+        for key in SPAWN_IDENTIFIERS
+        if isinstance(payload.get(key), str) and payload[key].strip()
+    }
+
+
+def _close_target(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    target = value.get("target")
+    return target.strip() if isinstance(target, str) else ""
+
+
+def _is_agent_inspection(tool_name: str, arguments: dict[str, Any]) -> bool:
+    leaf = normalize_tool_name(tool_name)
+    if leaf in {"list_agents", "get_agents", "agent_status", "read_thread_terminal"}:
+        return True
+    action = arguments.get("action") or arguments.get("operation") or arguments.get("mode")
+    return leaf == "agent" and isinstance(action, str) and action.lower() in {"list", "inspect", "status"}
+
+
+def _spawn_result_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _turn_id(payload: dict[str, Any]) -> str:
     value = payload.get("turn_id")
     if isinstance(value, str) and value:
@@ -210,7 +255,10 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     usage_by_model: dict[str, Counter[str]] = defaultdict(Counter)
     calls_by_model: dict[str, Counter[str]] = defaultdict(Counter)
     call_index: dict[str, tuple[str, str]] = {}
-    pending_spawns: dict[str, tuple[Any, str]] = {}
+    pending_spawns: dict[str, tuple[Any, str, str]] = {}
+    pending_closes: dict[str, tuple[str, int]] = {}
+    lifecycle_events: list[dict[str, Any]] = []
+    thread_limit_failures: list[dict[str, str]] = []
     successful_spawns: Counter[str] = Counter()
     successful_spawn_roles: list[str] = []
     failed_spawns: Counter[str] = Counter()
@@ -242,6 +290,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "successful_spawn_roles": [],
             "failed_spawns": {},
             "unresolved_spawn_calls": 0,
+            "unresolved_close_calls": [],
+            "lifecycle_events": [],
+            "thread_limit_failures": [],
             "large_outputs": [],
             "sol_execution_calls": [],
             "parse_errors": 1,
@@ -305,6 +356,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 if call_id:
                     call_index[call_id] = (active_model, name)
                 leaf = normalize_tool_name(name)
+                if _is_agent_inspection(name, arguments):
+                    lifecycle_events.append({"kind": "agent_inspection", "line": line_number})
                 try:
                     request = classify_spawn_request(name, arguments)
                 except ValueError:
@@ -316,6 +369,41 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                     )
                 if request is not None:
                     role = request.requested_role
+                    signature = spawn_request_signature(name, arguments)
+                    recontract, recontract_error = parse_recontract_evidence(
+                        request.message,
+                        new_package_id=request.package_id,
+                    )
+                    lifecycle_events.append({
+                        "kind": "spawn_request",
+                        "role": role,
+                        "call_id": call_id,
+                        "line": line_number,
+                        "package_id": request.package_id,
+                        "package_phase": request.package_phase,
+                        "signature": signature,
+                        "recontract": (
+                            {
+                                "old_package_id": recontract.old_package_id,
+                                "new_package_id": recontract.new_package_id,
+                                "old_contract_sha256": recontract.old_contract_sha256,
+                                "new_contract_sha256": recontract.new_contract_sha256,
+                                "reason": recontract.reason,
+                                "scope_acceptance_delta": recontract.scope_acceptance_delta,
+                            }
+                            if recontract is not None
+                            else None
+                        ),
+                        "recontract_error": recontract_error,
+                    })
+                    if recontract_error:
+                        luna_routing_violations.append(
+                            f"line {line_number}: invalid re-contract evidence: {recontract_error}"
+                        )
+                    if (contract_error := package_contract_error(request)) is not None:
+                        luna_routing_violations.append(
+                            f"line {line_number}: invalid package contract: {contract_error}"
+                        )
                     if request.identity_alias_conflict:
                         luna_routing_violations.append(
                             f"line {line_number}: spawn identity aliases disagree {request.identity_values!r}; routing is uncertain"
@@ -331,7 +419,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                     if request.has_conflict:
                         failed_spawns[role] += 1
                     elif call_id and observed_turn_id:
-                        pending_spawns[call_id] = (request, observed_turn_id)
+                        pending_spawns[call_id] = (request, observed_turn_id, signature)
                     elif not observed_turn_id:
                         failed_spawns[role] += 1
                     else:
@@ -351,6 +439,16 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                             nested_policy_uncertainties.append(
                                 f"line {line_number}: dynamic tools access has no authoritative captured inner evidence"
                             )
+                if leaf == "close_agent":
+                    target = _close_target(arguments)
+                    lifecycle_events.append({
+                        "kind": "close_request",
+                        "target": target,
+                        "call_id": call_id,
+                        "line": line_number,
+                    })
+                    if call_id:
+                        pending_closes[call_id] = (target, line_number)
                 if model_family(active_model) == "sol" and is_sol_execution(name, arguments):
                     sol_execution_calls.append({"tool": name, "line": str(line_number)})
                     if observed_turn_id in luna_unavailable_turns:
@@ -366,8 +464,18 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 if size >= large_output_chars:
                     large_outputs.append({"model": model, "tool": name, "chars": size, "line": line_number})
                 spawn = pending_spawns.pop(call_id, None)
+                close = pending_closes.pop(call_id, None)
+                if close is not None:
+                    target, request_line = close
+                    lifecycle_events.append({
+                        "kind": "close_result",
+                        "target": target,
+                        "request_line": request_line,
+                        "line": line_number,
+                        "succeeded": close_result_succeeded(payload.get("output")),
+                    })
                 if spawn is not None:
-                    request, spawn_turn_id = spawn
+                    request, spawn_turn_id, signature = spawn
                     role = request.requested_role
                     classification = classify_spawn_result(
                         payload.get("output"),
@@ -376,8 +484,42 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                     if classification.succeeded:
                         successful_spawns[role] += 1
                         successful_spawn_roles.append(role)
+                        lifecycle_events.append({
+                            "kind": "spawn_result",
+                            "role": role,
+                            "call_id": call_id,
+                            "identifiers": _identifier_values(payload.get("output")),
+                            "line": line_number,
+                            "package_id": request.package_id,
+                            "package_phase": request.package_phase,
+                            "signature": signature,
+                        })
                     else:
                         failed_spawns[role] += 1
+                        lifecycle_events.append({
+                            "kind": "spawn_failure",
+                            "role": role,
+                            "line": line_number,
+                            "package_id": request.package_id,
+                            "package_phase": request.package_phase,
+                            "signature": signature,
+                        })
+                        if classification.thread_limit:
+                            failure = {
+                                "role": role,
+                                "line": str(line_number),
+                                "signature": signature,
+                                "package_id": str(request.package_id),
+                            }
+                            thread_limit_failures.append(failure)
+                            lifecycle_events.append({
+                                "kind": "thread_limit",
+                                "role": role,
+                                "line": line_number,
+                                "signature": signature,
+                                "package_id": request.package_id,
+                                "package_phase": request.package_phase,
+                            })
                         if classification.unknown_luna:
                             if spawn_turn_id:
                                 luna_unavailable_turns.add(spawn_turn_id)
@@ -397,6 +539,12 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "successful_spawn_roles": successful_spawn_roles,
         "failed_spawns": dict(failed_spawns),
         "unresolved_spawn_calls": len(pending_spawns),
+        "unresolved_close_calls": [
+            {"call_id": call_id, "target": target, "line": line}
+            for call_id, (target, line) in pending_closes.items()
+        ],
+        "lifecycle_events": lifecycle_events,
+        "thread_limit_failures": thread_limit_failures,
         "large_outputs": large_outputs,
         "sol_execution_calls": sol_execution_calls,
         "parse_errors": parse_errors,
@@ -426,6 +574,174 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
     sol_execution_calls: list[dict[str, Any]] = []
     completeness_violations: list[str] = []
 
+    def lifecycle_violations(session: dict[str, Any], children: list[dict[str, Any]]) -> list[str]:
+        events = session.get("lifecycle_events", [])
+        successful_closes = [
+            event for event in events
+            if event.get("kind") == "close_result" and event.get("succeeded") and event.get("target")
+        ]
+        close_ids = {str(event["target"]) for event in successful_closes}
+        violations: list[str] = []
+        open_ids: set[str] = set()
+        peak_open = 0
+        for event in events:
+            if event.get("kind") == "spawn_result":
+                identifiers = event.get("identifiers", {})
+                child_id = identifiers.get("thread_id") or identifiers.get("agent_id")
+                if child_id:
+                    open_ids.add(child_id)
+                    peak_open = max(peak_open, len(open_ids))
+                else:
+                    violations.append(
+                        f"thread {session['thread_id']}: successful spawn at line {event.get('line')} lacks a recognized child identifier; lifecycle closure is [UNCERTAIN/PARTIAL]"
+                    )
+            elif event.get("kind") == "close_result" and event.get("succeeded"):
+                open_ids.discard(str(event.get("target", "")))
+        if peak_open > MAX_CONCURRENT_OPEN_THREADS:
+            violations.append(
+                f"thread {session['thread_id']}: peak concurrently open spawned threads was {peak_open}, above max_concurrent_threads_per_session={MAX_CONCURRENT_OPEN_THREADS}"
+            )
+        completed_children = [child for child in children if child.get("task_complete")]
+        for child in completed_children:
+            child_id = str(child["thread_id"])
+            if child_id not in close_ids:
+                violations.append(
+                    f"thread {session['thread_id']}: completed child {child_id} has no confirmed successful close_agent result; close requests alone are not proof"
+                )
+
+        package_recovery: dict[str, dict[str, Any]] = {}
+        for event in events:
+            kind = event.get("kind")
+            package_id = event.get("package_id")
+            if not package_id:
+                continue
+            package_id = str(package_id)
+            signature = event.get("signature")
+            package_state = package_recovery.get(package_id)
+            if kind == "spawn_request":
+                active_others = {
+                    old_package: state
+                    for old_package, state in package_recovery.items()
+                    if old_package != package_id and state.get("status") in {"recovery", "locked"}
+                }
+                if package_state is None and active_others:
+                    recontract = event.get("recontract")
+                    old_package = recontract.get("old_package_id") if isinstance(recontract, dict) else None
+                    if event.get("recontract_error") or old_package not in active_others:
+                        violations.append(
+                            f"thread {session['thread_id']}: line {event.get('line')} silently relabeled work to package {package_id!r} after thread-limit without valid re-contract evidence"
+                        )
+                    else:
+                        active_others[str(old_package)]["status"] = "recontracted"
+                        active_others[str(old_package)]["recontracted_to"] = package_id
+                package_state = package_recovery.get(package_id)
+                if package_state is None:
+                    continue
+                if package_state.get("status") == "recovery":
+                    package_state["retry_requests"] = int(package_state.get("retry_requests", 0)) + 1
+                    if signature != package_state.get("signature"):
+                        violations.append(
+                            f"thread {session['thread_id']}: package {package_id!r} changed normalized spawn signature during thread-limit recovery at line {event.get('line')}"
+                        )
+                        package_state["status"] = "locked"
+                    elif int(package_state["retry_requests"]) > 1:
+                        violations.append(
+                            f"thread {session['thread_id']}: package {package_id!r} exceeded one same-signature retry after thread-limit"
+                        )
+                        package_state["status"] = "locked"
+                elif package_state.get("status") in {"locked", "recontracted"}:
+                    violations.append(
+                        f"thread {session['thread_id']}: package {package_id!r} spawned at line {event.get('line')} after recovery was locked"
+                    )
+            elif kind == "spawn_result" and package_state is not None:
+                if (
+                    package_state.get("status") == "recovery"
+                    and signature == package_state.get("signature")
+                    and int(package_state.get("retry_requests", 0)) == 1
+                ):
+                    package_state["status"] = "recovered"
+            elif kind == "spawn_failure" and package_state is not None:
+                if (
+                    package_state.get("status") == "recovery"
+                    and signature == package_state.get("signature")
+                    and int(package_state.get("retry_requests", 0)) == 1
+                ):
+                    package_state["status"] = "locked"
+            elif kind == "thread_limit":
+                if package_state is None:
+                    package_recovery[package_id] = {
+                        "status": "recovery",
+                        "signature": signature,
+                        "retry_requests": 0,
+                    }
+                elif package_state.get("status") == "recovered":
+                    package_state["status"] = "locked"
+
+        completed_ids = {str(child["thread_id"]) for child in children if child.get("task_complete")}
+        for failure in (event for event in events if event.get("kind") == "thread_limit"):
+            failure_line = int(failure["line"])
+            package_id = failure.get("package_id")
+            later = [event for event in events if int(event.get("line", 0)) > failure_line]
+            inspections = [event for event in later if event.get("kind") == "agent_inspection"]
+            package_attempts = [
+                event for event in later
+                if event.get("kind") == "spawn_request" and event.get("package_id") == package_id
+            ]
+            first_retry_line = min((int(event["line"]) for event in package_attempts), default=sys.maxsize)
+            if not inspections or int(inspections[0]["line"]) >= first_retry_line:
+                violations.append(
+                    f"thread {session['thread_id']}: agent-thread-limit at line {failure_line} lacks agent listing/inspection before retry or stop"
+                )
+                continue
+            inspection_line = int(inspections[0]["line"])
+            open_at_failure: set[str] = set()
+            for event in events:
+                if int(event.get("line", 0)) >= failure_line:
+                    break
+                if event.get("kind") == "spawn_result":
+                    identifiers = event.get("identifiers", {})
+                    child_id = identifiers.get("thread_id") or identifiers.get("agent_id")
+                    if child_id:
+                        open_at_failure.add(str(child_id))
+                elif event.get("kind") == "close_result" and event.get("succeeded"):
+                    open_at_failure.discard(str(event.get("target", "")))
+            completed_open = completed_ids & open_at_failure
+            if completed_open:
+                recovery_closes = [
+                    event for event in successful_closes
+                    if inspection_line < int(event["line"]) < first_retry_line
+                    and str(event["target"]) in completed_open
+                ]
+                if not recovery_closes:
+                    violations.append(
+                        f"thread {session['thread_id']}: agent-thread-limit at line {failure_line} had completed open children but no confirmed successful close after inspection and before retry/stop"
+                    )
+        return violations
+
+    successful_phase_counts: Counter[tuple[str, str, str]] = Counter()
+    successful_risk_counts: Counter[str] = Counter()
+    for session in sessions:
+        root_session = str(session["session_id"])
+        for event in session.get("lifecycle_events", []):
+            if event.get("kind") != "spawn_result":
+                continue
+            package_id = event.get("package_id")
+            phase = event.get("package_phase")
+            if package_id and phase in GLOBAL_LOOP_BUDGET:
+                successful_phase_counts[(root_session, str(package_id), str(phase))] += 1
+            if event.get("role") == "risk_reviewer":
+                successful_risk_counts[root_session] += 1
+    for (root_session, package_id, phase), count in sorted(successful_phase_counts.items()):
+        if count > GLOBAL_LOOP_BUDGET[phase]:
+            completeness_violations.append(
+                f"session {root_session}: package {package_id!r} has {count} successful {phase} spawns; maximum is {GLOBAL_LOOP_BUDGET[phase]}"
+            )
+    for root_session, count in sorted(successful_risk_counts.items()):
+        if count > 1:
+            completeness_violations.append(
+                f"session {root_session}: {count} successful risk_reviewer spawns; maximum is one"
+            )
+
     for session in sessions:
         thread_id = str(session["thread_id"])
         if session["agent_role"]:
@@ -441,6 +757,7 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
         requested_roles = Counter(session["successful_spawn_roles"])
         expected_children = sum(requested_roles.values())
         children = children_by_parent[thread_id]
+        completeness_violations.extend(lifecycle_violations(session, children))
         discovered_children = len(children)
         if expected_children > discovered_children:
             completeness_violations.append(
@@ -475,6 +792,10 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
         if session["unresolved_spawn_calls"]:
             completeness_violations.append(
                 f"thread {thread_id}: {session['unresolved_spawn_calls']} spawn call(s) have no output"
+            )
+        if session["unresolved_close_calls"]:
+            completeness_violations.append(
+                f"thread {thread_id}: {len(session['unresolved_close_calls'])} close_agent call(s) have no output and are not closure proof"
             )
         if session["parse_errors"]:
             completeness_violations.append(f"thread {thread_id}: {session['parse_errors']} corrupt JSON line(s)")

@@ -21,7 +21,41 @@ sys.modules[SPEC.name] = AUDIT
 SPEC.loader.exec_module(AUDIT)
 
 
-def record(record_type: str, payload: dict) -> str:
+def record(record_type: str, payload: dict, *, add_package_markers: bool = True) -> str:
+    if (
+        add_package_markers
+        and record_type == "response_item"
+        and payload.get("type") == "function_call"
+        and payload.get("name") in {"Agent", "spawn_agent", "create_agent"}
+    ):
+        payload = dict(payload)
+        try:
+            arguments = json.loads(payload.get("arguments", "{}"))
+        except (TypeError, json.JSONDecodeError):
+            arguments = None
+        if isinstance(arguments, dict):
+            role = next(
+                (arguments.get(key) for key in ("agent_type", "subagent_type", "role", "name") if arguments.get(key)),
+                None,
+            )
+            phases = {
+                "explorer": "map",
+                "luna_executor": "initial",
+                "focused_worker": "initial",
+                "reviewer": "review",
+                "risk_reviewer": "review",
+                "worker": "correction",
+                "terra_debugger": "correction",
+                "verifier": "verify",
+            }
+            if role in phases:
+                message = str(arguments.get("message") or arguments.get("prompt") or arguments.get("task") or "")
+                if "PACKAGE_ID:" not in message and "PACKAGE_PHASE:" not in message:
+                    package = str(payload.get("call_id") or "fixture").replace("_", "-")
+                    arguments["message"] = (
+                        f"{message}\nPACKAGE_ID: test-{package}\nPACKAGE_PHASE: {phases[role]}"
+                    ).strip()
+                    payload["arguments"] = json.dumps(arguments)
     return json.dumps({"type": record_type, "payload": payload}) + "\n"
 
 
@@ -51,10 +85,64 @@ def successful_spawn(role: str, call_id: str = "spawn") -> str:
         record("response_item", {
             "type": "function_call_output",
             "call_id": call_id,
-            "output": json.dumps({"agent_id": f"{role}-child"}),
+            "output": json.dumps({"agent_id": "child"}),
+            "turn_id": "turn-a",
+        }),
+        record("response_item", {
+            "type": "function_call",
+            "name": "multi_agent_v1__close_agent",
+            "call_id": f"close-{call_id}",
+            "arguments": json.dumps({"target": "child"}),
+            "turn_id": "turn-a",
+        }),
+        record("response_item", {
+            "type": "function_call_output",
+            "call_id": f"close-{call_id}",
+            "output": json.dumps({"previous_status": {"completed": "done"}}),
             "turn_id": "turn-a",
         }),
     ])
+
+
+def spawn_and_close(
+    role: str,
+    *,
+    call_id: str = "spawn",
+    child_id: str = "child",
+    close_output: object | None = None,
+    include_close_output: bool = True,
+) -> str:
+    output = {"previous_status": {"completed": "done"}} if close_output is None else close_output
+    lines = [
+        record("response_item", {
+            "type": "function_call",
+            "name": "spawn_agent",
+            "call_id": call_id,
+            "arguments": json.dumps({"agent_type": role}),
+            "turn_id": "turn-a",
+        }),
+        record("response_item", {
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"agent_id": child_id}),
+            "turn_id": "turn-a",
+        }),
+        record("response_item", {
+            "type": "function_call",
+            "name": "multi_agent_v1__close_agent",
+            "call_id": f"close-{call_id}",
+            "arguments": json.dumps({"target": child_id}),
+            "turn_id": "turn-a",
+        }),
+    ]
+    if include_close_output:
+        lines.append(record("response_item", {
+            "type": "function_call_output",
+            "call_id": f"close-{call_id}",
+            "output": json.dumps(output),
+            "turn_id": "turn-a",
+        }))
+    return "".join(lines)
 
 
 class AuditCodexSessionTests(unittest.TestCase):
@@ -508,7 +596,7 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["sessions"][0]["successful_spawns"], {"worker": 1})
 
     def test_outer_functions_exec_requires_canonical_luna_spawn_for_failure_state(self) -> None:
-        canonical = 'await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"bounded"});'
+        canonical = 'await tools.multi_agent_v1__spawn_agent({"agent_type":"luna_executor","fork_context":false,"message":"bounded\\nPACKAGE_ID: outer\\nPACKAGE_PHASE: initial"});'
         extra = "".join([
             record("response_item", {
                 "type": "custom_tool_call",
@@ -626,6 +714,392 @@ class AuditCodexSessionTests(unittest.TestCase):
             report = AUDIT.audit_session_tree(str(parent), root)
             self.assertEqual(report["cost_status"], "complete")
             self.assertFalse(report["routing_violations"])
+
+    def test_completed_child_without_explicit_close_is_a_lifecycle_violation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "spawn_agent",
+                    "call_id": "spawn",
+                    "arguments": json.dumps({"agent_type": "luna_executor"}),
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "spawn",
+                    "output": json.dumps({"agent_id": "child"}),
+                    "turn_id": "turn-a",
+                }),
+            ])
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "root", "luna_executor")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any("no confirmed successful close_agent result" in item for item in report["routing_violations"]))
+
+    def test_close_agent_requires_target_and_confirmed_success_output(self) -> None:
+        cases = (
+            ("completed", {"previous_status": {"completed": "done"}}, True, False),
+            ("running", {"previous_status": "running"}, True, False),
+            ("shutdown", {"previous_status": "shutdown"}, True, False),
+            ("errored", {"previous_status": {"errored": "failed task"}}, True, False),
+            ("not-found", {"previous_status": "not_found"}, True, True),
+            ("malformed", {"previous_status": "unknown"}, True, True),
+            ("tool-error", {"error": "close failed"}, True, True),
+            ("missing-output", None, False, True),
+        )
+        for name, close_output, include_output, should_violate in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                extra = spawn_and_close(
+                    "luna_executor",
+                    close_output=close_output,
+                    include_close_output=include_output,
+                )
+                parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+                self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "root", "luna_executor")
+                report = AUDIT.audit_session_tree(str(parent), root)
+                closure_violations = [
+                    item for item in report["routing_violations"]
+                    if "close_agent" in item
+                ]
+                self.assertEqual(bool(closure_violations), should_violate)
+
+    def test_legacy_close_agent_id_field_is_not_closure_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call", "name": "spawn_agent", "call_id": "spawn",
+                    "arguments": json.dumps({"agent_type": "luna_executor"}), "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output", "call_id": "spawn",
+                    "output": json.dumps({"agent_id": "child"}), "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call", "name": "close_agent", "call_id": "legacy-close",
+                    "arguments": json.dumps({"agent_id": "child"}), "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output", "call_id": "legacy-close",
+                    "output": json.dumps({"previous_status": "running"}), "turn_id": "turn-a",
+                }),
+            ])
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "root", "luna_executor")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any(
+                "no confirmed successful close_agent result" in item
+                for item in report["routing_violations"]
+            ))
+
+    def test_outer_functions_exec_close_is_not_inferred_as_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extra = "".join([
+                record("response_item", {
+                    "type": "function_call", "name": "spawn_agent", "call_id": "spawn",
+                    "arguments": json.dumps({"agent_type": "luna_executor"}), "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "function_call_output", "call_id": "spawn",
+                    "output": json.dumps({"agent_id": "child"}), "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "custom_tool_call", "name": "exec", "call_id": "outer-close",
+                    "input": 'await tools.multi_agent_v1__close_agent({target:"child"});',
+                    "turn_id": "turn-a",
+                }),
+                record("response_item", {
+                    "type": "custom_tool_call_output", "call_id": "outer-close",
+                    "output": json.dumps({"previous_status": "running"}), "turn_id": "turn-a",
+                }),
+            ])
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "root", "luna_executor")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any(
+                "no confirmed successful close_agent result" in item
+                for item in report["routing_violations"]
+            ))
+
+    def test_thread_limit_recovery_accepts_inspect_confirmed_close_and_one_retry(self) -> None:
+        request = {
+            "agent_type": "verifier",
+            "message": "verify\nPACKAGE_ID: recovery\nPACKAGE_PHASE: verify",
+            "fork_context": False,
+        }
+        extra = "".join([
+            spawn_and_close("luna_executor", include_close_output=False),
+            record("response_item", {
+                "type": "function_call", "name": "spawn_agent", "call_id": "limited",
+                "arguments": json.dumps(request), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call_output", "call_id": "limited",
+                "output": "agent-thread-limit", "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call", "name": "Agent", "call_id": "inspect",
+                "arguments": json.dumps({"action": "list"}), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call", "name": "close_agent", "call_id": "close-child",
+                "arguments": json.dumps({"target": "child"}), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call_output", "call_id": "close-child",
+                "output": json.dumps({"previous_status": {"completed": "done"}}), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call", "name": "spawn_agent", "call_id": "retry",
+                "arguments": json.dumps(request), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call_output", "call_id": "retry",
+                "output": json.dumps({"agent_id": "retry-child"}), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call", "name": "close_agent", "call_id": "close-retry",
+                "arguments": json.dumps({"target": "retry-child"}), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call_output", "call_id": "close-retry",
+                "output": json.dumps({"previous_status": "shutdown"}), "turn_id": "turn-a",
+            }),
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+            self.write_log(root, "child", "child", "gpt-5.6-luna", [200], "root", "luna_executor")
+            self.write_log(root, "retry", "retry-child", "gpt-5.6-luna", [200], "root", "verifier")
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertFalse(any(
+                "agent-thread-limit" in item for item in report["routing_violations"]
+            ))
+
+    def test_thread_limit_recovery_fails_without_inspection(self) -> None:
+        request = {
+            "agent_type": "verifier",
+            "message": "verify\nPACKAGE_ID: no-inspect\nPACKAGE_PHASE: verify",
+            "fork_context": False,
+        }
+        extra = "".join([
+            record("response_item", {
+                "type": "function_call", "name": "spawn_agent", "call_id": "limited",
+                "arguments": json.dumps(request), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call_output", "call_id": "limited",
+                "output": "agent-thread-limit", "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call", "name": "spawn_agent", "call_id": "retry",
+                "arguments": json.dumps(request), "turn_id": "turn-a",
+            }),
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any(
+                "agent-thread-limit" in item and "inspection" in item
+                for item in report["routing_violations"]
+            ))
+
+    def test_thread_limit_recovery_rejects_more_than_one_matching_retry(self) -> None:
+        request = {
+            "agent_type": "verifier",
+            "message": "verify\nPACKAGE_ID: repeated\nPACKAGE_PHASE: verify",
+            "fork_context": False,
+        }
+        entries = [
+            record("response_item", {
+                "type": "function_call", "name": "spawn_agent", "call_id": "limited",
+                "arguments": json.dumps(request), "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call_output", "call_id": "limited",
+                "output": "agent-thread-limit", "turn_id": "turn-a",
+            }),
+            record("response_item", {
+                "type": "function_call", "name": "Agent", "call_id": "inspect",
+                "arguments": json.dumps({"action": "list"}), "turn_id": "turn-a",
+            }),
+        ]
+        for index in (1, 2):
+            entries.append(record("response_item", {
+                "type": "function_call", "name": "spawn_agent", "call_id": f"retry-{index}",
+                "arguments": json.dumps(request), "turn_id": "turn-a",
+            }))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root, "parent", "root", "gpt-5.6-luna", [100], extra="".join(entries)
+            )
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any(
+                "exceeded one same-signature retry" in item
+                for item in report["routing_violations"]
+            ))
+
+    def test_thread_limit_recovery_audits_changed_role_message_and_model(self) -> None:
+        original = {
+            "agent_type": "luna_executor",
+            "fork_context": False,
+            "message": "bounded\nPACKAGE_ID: adversarial\nPACKAGE_PHASE: initial",
+        }
+        changed_requests = (
+            {
+                **original,
+                "agent_type": "focused_worker",
+            },
+            {
+                **original,
+                "message": "changed\nPACKAGE_ID: adversarial\nPACKAGE_PHASE: initial",
+            },
+            {
+                **original,
+                "model": "gpt-luna-alternate",
+            },
+            {
+                **original,
+                "fork_context": True,
+            },
+        )
+        for index, changed in enumerate(changed_requests):
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                extra = "".join([
+                    record("response_item", {
+                        "type": "function_call", "name": "spawn_agent", "call_id": "limited",
+                        "arguments": json.dumps(original), "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call_output", "call_id": "limited",
+                        "output": "agent-thread-limit", "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call", "name": "Agent", "call_id": "inspect",
+                        "arguments": json.dumps({"action": "list"}), "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call", "name": "spawn_agent", "call_id": "changed",
+                        "arguments": json.dumps(changed), "turn_id": "turn-a",
+                    }),
+                ])
+                parent = self.write_log(
+                    root, "parent", "root", "gpt-5.6-luna", [100], extra=extra
+                )
+                report = AUDIT.audit_session_tree(str(parent), root)
+                self.assertTrue(any(
+                    "changed normalized spawn signature" in item
+                    for item in report["routing_violations"]
+                ))
+
+    def test_auditor_requires_recontract_evidence_for_new_package_after_limit(self) -> None:
+        original = {
+            "agent_type": "verifier",
+            "fork_context": False,
+            "message": "verify\nPACKAGE_ID: old-package\nPACKAGE_PHASE: verify",
+        }
+        for include_evidence in (False, True):
+            with self.subTest(include_evidence=include_evidence), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                message = "verify\nPACKAGE_ID: new-package\nPACKAGE_PHASE: verify"
+                if include_evidence:
+                    message += (
+                        "\nRECONTRACT_OLD_PACKAGE_ID: old-package"
+                        "\nRECONTRACT_NEW_PACKAGE_ID: new-package"
+                        f"\nRECONTRACT_OLD_CONTRACT_SHA256: {'a' * 64}"
+                        f"\nRECONTRACT_NEW_CONTRACT_SHA256: {'b' * 64}"
+                        "\nRECONTRACT_REASON: contract changed"
+                        "\nRECONTRACT_SCOPE_ACCEPTANCE_DELTA: changed one assertion"
+                    )
+                extra = "".join([
+                    record("response_item", {
+                        "type": "function_call", "name": "spawn_agent", "call_id": "limited",
+                        "arguments": json.dumps(original), "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call_output", "call_id": "limited",
+                        "output": "agent-thread-limit", "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call", "name": "Agent", "call_id": "inspect",
+                        "arguments": json.dumps({"action": "list"}), "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call", "name": "spawn_agent", "call_id": "new-package",
+                        "arguments": json.dumps({
+                            "agent_type": "verifier", "fork_context": False, "message": message,
+                        }),
+                        "turn_id": "turn-a",
+                    }),
+                ])
+                parent = self.write_log(
+                    root, "parent", "root", "gpt-5.6-luna", [100], extra=extra
+                )
+                report = AUDIT.audit_session_tree(str(parent), root)
+                relabel_violations = [
+                    item for item in report["routing_violations"]
+                    if "silently relabeled work" in item
+                ]
+                self.assertEqual(bool(relabel_violations), not include_evidence)
+
+    def test_auditor_rejects_second_successful_risk_reviewer(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            extras = []
+            for index in (1, 2):
+                child = f"risk-{index}"
+                message = (
+                    "HIGH_RISK_TRIGGER: concurrency\nEVIDENCE_PACK: diff\n"
+                    f"PACKAGE_ID: risk-{index}\nPACKAGE_PHASE: review"
+                )
+                extras.extend([
+                    record("response_item", {
+                        "type": "function_call", "name": "spawn_agent", "call_id": f"risk-call-{index}",
+                        "arguments": json.dumps({"agent_type": "risk_reviewer", "message": message}),
+                        "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call_output", "call_id": f"risk-call-{index}",
+                        "output": json.dumps({"agent_id": child}), "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call", "name": "close_agent", "call_id": f"close-risk-{index}",
+                        "arguments": json.dumps({"target": child}), "turn_id": "turn-a",
+                    }),
+                    record("response_item", {
+                        "type": "function_call_output", "call_id": f"close-risk-{index}",
+                        "output": json.dumps({"previous_status": "interrupted"}), "turn_id": "turn-a",
+                    }),
+                ])
+                self.write_log(root, child, child, "gpt-5.6-sol", [200], "root", "risk_reviewer")
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra="".join(extras))
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any(
+                "successful risk_reviewer" in item for item in report["routing_violations"]
+            ))
+
+    def test_auditor_fails_closed_on_missing_package_markers(self) -> None:
+        extra = record("response_item", {
+            "type": "function_call",
+            "name": "spawn_agent",
+            "call_id": "unmarked",
+            "arguments": json.dumps({"agent_type": "luna_executor", "message": "bounded"}),
+            "turn_id": "turn-a",
+        }, add_package_markers=False)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=extra)
+            report = AUDIT.audit_session_tree(str(parent), root)
+            self.assertTrue(any(
+                "invalid package contract" in item for item in report["routing_violations"]
+            ))
 
     def test_escaped_dotted_nested_factory_is_an_audit_violation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

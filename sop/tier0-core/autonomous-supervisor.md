@@ -4,7 +4,7 @@
 - **落实纪律**: P1(先冻结任务契约) P2(确定性验证与独立 Review) P3(失败显式升级,禁止静默 fallback) P4(工作包、证据、决策与 Git 结果可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1(编排不变式跨项目通用;角色配置、命令和工具由运行环境以 `{参数}` 注入)
-- **版本**: v3
+- **版本**: v4
 
 ## 触发条件
 
@@ -50,13 +50,20 @@
    - 优化目标固定为 `WCU = 25*T_sol + 10*T_terra + 1*T_luna`,其中 `T_*` 是本任务树各模型族的总 token。WCU 只能在验收标准、风险门禁和独立 oracle 不降低的约束下优化;缓存 token 仍按所属模型计入,不得靠改变统计口径制造节省。
    - `LUNA_ELIGIBLE=yes`:架构和语义已冻结、允许文件和不变量明确、验收为二值、失败可被工具或 Review 检出。此类工作必须优先交给 explorer/focused_worker/luna_executor/verifier,包括普通代码、测试、fixture、实验管线、日志分析、数据整理和批量文档;“要写代码”不是排除 Luna 的理由。
    - `LUNA_ELIGIBLE=no(reason)`:工作包仍需架构取舍、研究/实验设计、产品语义解释、高风险边界判断,或缺少可靠 oracle。主 Agent先完成这些判断,再重新切出 Luna 可执行包;只有不可切分的语义跨文件实现才路由 Terra worker/reviewer。
-   - 升级顺序固定为 `Luna -> Terra -> Sol`。升级必须附原角色失败证据、未满足判据、scope delta 与 criteria delta;没有低价尝试或客观不适用理由不得直接使用更贵执行角色。Sol 只保留规划、架构、研究设计、歧义消解、最终判断和明确触发的 HIGH_RISK 审查,不直接写源文件、跑构建/测试/安装/部署或处理大段原始输出。
+   - `LUNA_ELIGIBLE=yes` 的执行从 Luna initial 开始。只有工作包明确记录非空 `LUNA_ELIGIBLE=no(reason)` 时,Terra worker 或 terra_debugger 才可作为该 package 唯一的 initial;无论角色如何,initial 总计仍只有一次。同一 package 最多有一次聚合后的 correction,可由 Luna 或有证据支持的 Terra 执行,但换模型或角色不重置预算。Sol 只保留父级规划、架构、研究设计、歧义消解、最终判断和最多一次明确触发的只读 HIGH_RISK 审查;Sol never implements,不直接写源文件、跑构建/测试/安装/部署或处理大段原始输出。
    - `terra_debugger` 只能直接用于未知根因、假设驱动的诊断:它必须列出并排序竞争假设,运行能区分假设的检查,并在证据不足时显式升级或阻断。根因与修复契约一旦变成机械性工作,应在可行时把执行交还 Luna;不得用 Terra debugger 承接普通实现。
    - HIGH_RISK 的 Sol risk_reviewer 必须收到 `HIGH_RISK_TRIGGER` 和紧凑 `EVIDENCE_PACK`;普通正确性审查使用 Terra reviewer。禁止把完整父会话复制给 subagent,只传工作包和必要证据。
    - 每个 child 必须返回紧凑 evidence packet,至少包含角色/任务契约状态、关键假设或观察、检查及 exit code、改动定位、未决风险和升级/交接结论;不得返回 raw transcript、无界日志或整段上下文。
    - trivial 不机械委派:仅当预计委派开销按 WCU 折算后高于直接完成,且不包含劳动密集写入/命令时,主 Agent 才直接处理。工作包应足够大到可独立验收,不得把单个搜索、单行编辑或每条命令分别拆成 Agent。
    - 主 Agent 不重复 subagent 已完成的宽扫描;多个 Agent 不重复读取同一批大文件;Agent 返回摘要、定位和证据,不回传无界日志/图片/文件全文;同一文件同一时间只有一个 writer;默认最多 `{MAX_CONCURRENT_SUBAGENTS=2}` 个 subagent 并发。
    - verifier 与 reviewer 必须独立于被审实现路径;“使用了 subagent”本身不是质量证据。
+   - 每个 custom Agent spawn message 必须包含恰好一个稳定非空的 `PACKAGE_ID: <id>` 和一个 `PACKAGE_PHASE: map|initial|review|correction|re_review|verify`。`initial` 与 `correction` 分别全局最多一次 writer spawn,`review` 与 `re_review` 分别最多一次 reviewer spawn;`map`/`verify` 不重置任何计数。失败 spawn 释放预留,成功 spawn 提交预留。
+   - `max_concurrent_threads_per_session` caps concurrently open spawned threads; completed threads should be closed. Completed agents remain open until an explicit close is recorded. After integrating a child result, close that child before spawning an unrelated child; keep at most two concurrently open.
+   - If a spawn returns `agent-thread-limit`, list agents, close completed/unneeded agents, then retry the same eligible spawn at most once. If it remains blocked, reuse an already-open eligible Luna/Terra thread only when its contract and role match; otherwise stop. A thread limit is a lifecycle/resource result, never Luna model unavailability, token exhaustion, or compute exhaustion. A new top-level task is last resort, not first.
+   - Thread-limit recovery is package-scoped. After the first failure, that `PACKAGE_ID` permits at most one retry and only with the exact same normalized role/model/message/phase/tool signature; any changed signature is denied, and a failed identical retry locks all later spawns for that package while inspection, close, and matching open-thread reuse remain allowed. `PACKAGE_ID` is a supervisor-declared, non-adversarial accounting identity, not cryptographic proof of semantic equivalence; the Hook is a guardrail, not a security boundary, and cannot infer paraphrased identity. Silent relabeling of unchanged work is a policy/audit violation.
+   - A genuine re-contract records exactly one `RECONTRACT_OLD_PACKAGE_ID`, `RECONTRACT_NEW_PACKAGE_ID`, `RECONTRACT_OLD_CONTRACT_SHA256`, `RECONTRACT_NEW_CONTRACT_SHA256`, `RECONTRACT_REASON`, and `RECONTRACT_SCOPE_ACCEPTANCE_DELTA`; the new ID must equal `PACKAGE_ID`, hashes are distinct 64-hex values, and reason/delta are nonempty. These markers make declared lineage auditable but do not prove semantic change.
+   - Each execution package has one total loop budget: one initial implementation, one consolidated correction batch, and one independent re-review. Escalation does not reset it. Aggregate reviewer findings before correction; if re-review remains blocked, preserve evidence and stop. `vN+1` requires explicit re-contracting and is not an implicit retry.
+   - Child Sol budget defaults to zero. At most one `risk_reviewer` may be spawned per root task/session, and only for a concrete security, concurrency, irreversible/production-data, public protocol/API, or architecture-commitment trigger carrying `HIGH_RISK_TRIGGER` and `EVIDENCE_PACK`. Research importance, validator hashes, Git cleanliness, artifact provenance, reviewer disagreement, or an ordinary high-severity correctness finding alone do not justify Sol. Ordinary gate/validator review is Terra; Sol never implements.
 
 6. **执行状态机(P3/P4)**:工作包只能按以下显式状态转换并留痕:
 
@@ -70,7 +77,7 @@
 
    escalation 必须记录原角色失败原因与证据、为何超出工作包或能力边界、升级角色、修改范围是否扩大、验收标准是否变化和升级后的 WCU 预算影响。同一失败包不得由同一低能力角色无界重试。显式、有证据的升级不是 P3 禁止的 fallback;未记录地换角色、跳过验证或改变成功定义才是 fallback。
 
-7. **按所有权实施**:主 Agent 合并架构与最终决策;Luna/Terra writer 只修改工作包允许的文件并保留用户改动。前台为 Sol 时不得因“自己改更快”夺回可委派执行;运行时允许用 Hook 阻断 Sol 写入、重型命令、完整上下文 fork 和短周期轮询。方向或验收标准发生物质变化时返回步骤 1 重新冻结契约,不得边做边猜。每个 tier 对同一契约只允许 initial attempt 加至多一次 compact correction;仅当契约未变且失败是局部、可定位的实现/验证错误时才可 correction。第二次失败或出现 semantic pressure 必须携带证据显式 escalation 或 block,不得静默 fallback。
+7. **按所有权实施**:主 Agent 合并架构与最终决策;Luna/Terra writer 只修改工作包允许的文件并保留用户改动。前台为 Sol 时不得因“自己改更快”夺回可委派执行;运行时允许用 Hook 阻断 Sol 写入、重型命令、完整上下文 fork 和短周期轮询。方向或验收标准发生物质变化时返回步骤 1 重新冻结契约,不得边做边猜。每个执行包总计只允许一次 initial implementation、一次 consolidated correction batch 和一次 independent re-review；不要按 tier、模型或角色分别重置计数。第二次失败、re-review blocked 或出现 semantic pressure 必须携带证据显式 escalation 或 block,不得静默 fallback 或创建 vN+1。
 
 8. **确定性验证与独立 Review(P2)**:严格按 `契约 -> 定向调查 -> 实现 -> 确定性验证 -> 独立 Review -> 修复 -> 重新验证 -> 证据汇总` 执行。真实命令退出码和输出是 source of truth。Reviewer 不修改被审对象;finding 必须含 severity、文件/符号或位置、失败路径/证据和最小修复。纯风格 finding 不阻断;高风险 finding 未解决不得交付。找不到独立 oracle 时明确记录“未能独立验证”,不得让实现自证。
 
