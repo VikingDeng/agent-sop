@@ -38,6 +38,14 @@ Keep tool returns compact (target <=20k chars when practical); preserve full log
 Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
 """
 
+STRICT_SESSION_CONTEXT = """Weighted-cost routing is active in strict enforcement mode.
+Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
+Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance.
+Use Luna for fixed Luna-eligible implementation packages, Terra only for explicitly permitted semantic/debugging work or ordinary review, and Sol for read-only architecture, research design, ambiguity, and final judgment.
+Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
+Preserve real evidence and never lower acceptance criteria silently. If a strict invariant or required runtime capability is uncertain, stop the affected package and report the uncertainty.
+"""
+
 ROLE_CONTEXT = {
     "explorer": "Stay targeted and read-only. Return a compact file/symbol map; do not dump large files.",
     "focused_worker": "Perform only the assigned mechanical edit and declared checks. Escalate semantic ambiguity.",
@@ -62,6 +70,10 @@ LOWER_COST_ROLES = set(ROLE_MODEL_FAMILIES) - {"risk_reviewer"}
 
 def _strict_enforcement() -> bool:
     return os.environ.get("CODEX_ROUTER_ENFORCEMENT", "advisory").strip().lower() == "strict"
+
+
+def _session_context() -> str:
+    return STRICT_SESSION_CONTEXT if _strict_enforcement() else SESSION_CONTEXT
 
 def _emit(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, separators=(",", ":"))
@@ -786,7 +798,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if event not in {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "Stop"}:
         raise ValueError(f"unsupported hook event: {event}")
     if event == "SessionStart":
-        return _context(event, SESSION_CONTEXT)
+        return _context(event, _session_context())
 
     if event == "SubagentStart":
         role = str(data.get("agent_type", "")).lower()

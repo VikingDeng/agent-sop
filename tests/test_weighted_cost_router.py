@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -125,11 +126,46 @@ class WeightedCostRouterTests(unittest.TestCase):
         self._environment.stop()
         self._state.cleanup()
 
-    def test_session_start_injects_objective_and_adaptive_routing(self) -> None:
-        result = ROUTER.handle({"hook_event_name": "SessionStart"})
-        context = result["hookSpecificOutput"]["additionalContext"]
+    def _session_start_context(self, enforcement: str) -> str:
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": enforcement}):
+            result = ROUTER.handle({"hook_event_name": "SessionStart"})
+        return result["hookSpecificOutput"]["additionalContext"]
+
+    def test_session_start_strict_context_matches_enforced_routing(self) -> None:
+        context = self._session_start_context("strict")
+
+        for required in (
+            "Sol non-read-only direct execution is denied",
+            "Fixed Luna-eligible packages must start with Luna",
+            "Luna unavailable/unknown fails closed for that package",
+            "no Terra/Sol substitution",
+            "Read-only planning/judgment remains allowed",
+            "Lifecycle/spawn coverage may still require supervisor compliance",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, context)
         self.assertIn("25*Sol", context)
+        self.assertNotIn("adaptive advisory", context)
+        self.assertNotIn("These are preferences, not permission gates", context)
+        self.assertNotIn("normally Terra", context)
+
+    def test_session_start_advisory_context_has_no_strict_permission_claims(self) -> None:
+        context = self._session_start_context("advisory")
+
         self.assertIn("adaptive advisory", context)
+        self.assertIn("These are preferences, not permission gates", context)
+        self.assertIn("transparently use the lowest-cost available capable role, normally Terra", context)
+        self.assertIn("25*Sol", context)
+        for strict_term in (
+            "Sol non-read-only direct execution is denied",
+            "Fixed Luna-eligible packages must start with Luna",
+            "Luna unavailable/unknown fails closed for that package",
+            "no Terra/Sol substitution",
+            "Read-only planning/judgment remains allowed",
+            "Lifecycle/spawn coverage may still require supervisor compliance",
+        ):
+            with self.subTest(strict_term=strict_term):
+                self.assertNotIn(strict_term, context)
 
     def _stop_transcript(
         self,
@@ -789,6 +825,37 @@ class WeightedCostRouterTests(unittest.TestCase):
         matcher = hooks["hooks"]["PostToolUse"][0]["matcher"]
         self.assertIn("functions\\.exec", matcher)
         self.assertIn("close_agent", matcher)
+
+    def test_managed_pretool_command_enforces_strict_with_clean_environment(self) -> None:
+        configured = json.loads((ROOT / "codex/hooks/hooks.json").read_text())
+        command = configured["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        self.assertTrue(command.startswith("CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 "))
+        command = command.replace(
+            '\"$HOME/.codex/hooks/weighted_cost_router.py\"',
+            shlex.quote(str(SCRIPT)),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            environment = {"HOME": directory, "PATH": os.environ.get("PATH", "")}
+            denied = subprocess.run(
+                ["/bin/sh", "-c", command],
+                input=json.dumps(pretool("gpt-5.6-sol", "exec_command", {"cmd": "python -m pytest"})),
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+            )
+            allowed = subprocess.run(
+                ["/bin/sh", "-c", command],
+                input=json.dumps(pretool("gpt-5.6-sol", "exec_command", {"cmd": "rg --files codex"})),
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+            )
+        self.assertEqual(denied.returncode, 0, denied.stderr)
+        self.assertEqual(json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+        self.assertEqual(allowed.stdout, "")
 
     def test_strict_spawn_result_matrix_is_fail_closed_and_serializable(self) -> None:
         cases = (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -53,6 +54,20 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("only when they materially improve coordination", global_text)
         self.assertIn("只在运行时协调确有帮助", supervisor)
         self.assertIn("CODEX_ROUTER_ENFORCEMENT=strict", self.read("codex/README.md"))
+        self.assertIn("CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3", self.read("codex/hooks/hooks.json"))
+        self.assertIn("not machine-verifiable", self.read("codex/README.md"))
+        hooks = json.loads(self.read("codex/hooks/hooks.json"))
+        managed_commands = [
+            hook["command"]
+            for registrations in hooks["hooks"].values()
+            for registration in registrations
+            for hook in registration["hooks"]
+            if hook.get("type") == "command"
+        ]
+        self.assertEqual(len(managed_commands), 5)
+        self.assertTrue(
+            all(command.startswith("CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 ") for command in managed_commands)
+        )
         self.assertIn("--profile sol-supervisor", self.read("codex/README.md"))
         self.assertIn('"Stop"', self.read("codex/hooks/hooks.json"))
 

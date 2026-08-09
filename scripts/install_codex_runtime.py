@@ -42,6 +42,9 @@ PROFILE_SETTINGS = {
         "model_reasoning_effort": '"high"',
     },
 }
+STRICT_ENV_ASSIGNMENT = "CODEX_ROUTER_ENFORCEMENT=strict"
+MANAGED_PYTHON_LAUNCHER = "/usr/bin/python3"
+MANAGED_ROUTER_RELATIVE_PATH = Path(".codex/hooks/weighted_cost_router.py")
 
 
 @dataclass(frozen=True)
@@ -229,23 +232,46 @@ class Installer:
         return entry
 
     @staticmethod
-    def _is_router_registration(registration: Any) -> bool:
+    def _is_managed_router_command(command: str, home: Path | None = None) -> bool:
+        try:
+            words = shlex.split(command)
+        except ValueError:
+            return False
+        if words and words[0] == STRICT_ENV_ASSIGNMENT:
+            words.pop(0)
+        if len(words) != 2 or words[0] != MANAGED_PYTHON_LAUNCHER:
+            return False
+        managed_paths = {"$HOME/.codex/hooks/weighted_cost_router.py"}
+        if home is not None:
+            managed_paths.add(str(home.resolve() / MANAGED_ROUTER_RELATIVE_PATH))
+        return words[1] in managed_paths
+
+    @staticmethod
+    def _is_router_registration(registration: Any, home: Path | None = None) -> bool:
         if not isinstance(registration, dict):
             return False
         for hook in registration.get("hooks", []):
             if not isinstance(hook, dict) or not isinstance(hook.get("command"), str):
                 continue
-            try:
-                words = shlex.split(hook["command"])
-            except ValueError:
-                continue
-            if (
-                len(words) >= 2
-                and Path(words[0]).name in {"python", "python3"}
-                and Path(words[1]).name == "weighted_cost_router.py"
-            ):
+            if Installer._is_managed_router_command(hook["command"], home):
                 return True
         return False
+
+    @staticmethod
+    def _without_managed_router_commands(registration: Any, home: Path) -> Any:
+        if not isinstance(registration, dict):
+            return registration
+        retained = dict(registration)
+        retained["hooks"] = [
+            hook
+            for hook in registration.get("hooks", [])
+            if not (
+                isinstance(hook, dict)
+                and isinstance(hook.get("command"), str)
+                and Installer._is_managed_router_command(hook["command"], home)
+            )
+        ]
+        return retained
 
     @staticmethod
     def _validate_hook_shape(payload: Any, label: str) -> None:
@@ -271,7 +297,12 @@ class Installer:
         merged = json.loads(json.dumps(current))
         for event, registrations in source["hooks"].items():
             existing = merged["hooks"].setdefault(event, [])
-            existing[:] = [item for item in existing if not self._is_router_registration(item)]
+            retained = []
+            for item in existing:
+                filtered = self._without_managed_router_commands(item, self.home)
+                if not isinstance(filtered, dict) or filtered.get("hooks"):
+                    retained.append(filtered)
+            existing[:] = retained
             existing.extend(registrations)
         self._validate_hook_shape(merged, "staged hooks.json")
         return json.dumps(merged, ensure_ascii=False, indent=2) + "\n"

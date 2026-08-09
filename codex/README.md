@@ -43,9 +43,9 @@ max_depth = 1
 
 The foreground profile is selected only at installation time. Start a new task (or restart Codex) after changing it; an existing task keeps its current model configuration.
 
-Codex discovers AGENTS guidance at task startup. After installation, start a new task. Non-managed Hooks must also be approved by exact hash in the Codex `/hooks` interface; this trust step is intentionally not bypassed by the installer. Specialized tool paths may bypass Hooks, so post-run auditing remains mandatory rather than treating the Hook as a security boundary.
+Codex discovers AGENTS guidance at task startup. After installation, start a new task. The App's `/hooks` trust step still requires exact-hash approval; that trust is not machine-verifiable by the installer, which cannot bypass it. Specialized tool paths may bypass Hooks, so post-run auditing remains mandatory rather than treating the Hook as a security boundary.
 
-The router is advisory by default. It records diagnostics under `~/.codex/router-state/` and injects routing guidance without turning package metadata, model availability, or a preferred loop shape into permission gates. A project that genuinely needs mechanical enforcement may set `CODEX_ROUTER_ENFORCEMENT=strict` before starting Codex; strict mode preserves the fail-closed policy used by the router's contract tests.
+Managed installed Hooks embed `CODEX_ROUTER_ENFORCEMENT=strict` before the documented `/usr/bin/python3 "$HOME/.codex/hooks/weighted_cost_router.py"` invocation, so they enforce strict routing even with a clean inherited environment. The router is advisory only when invoked directly or through an unmanaged diagnostic command; that is not the post-install default. Strict mode preserves the fail-closed policy used by the router's contract tests.
 
 The Stop Hook is a delivery guardrail: for a substantial current turn (at least three tool calls or at least 100,000 current-turn tokens) it may continue once when the final message omits outcome, evidence/commands, review disposition, routing/WCU, remaining risks, or repo-relevant Git/delivery state. It accepts semantically complete English or Chinese reports, fails open for missing or malformed evidence or one-shot keys, and never continues when `stop_hook_active` is true.
 
@@ -56,7 +56,7 @@ codex --ask-for-approval never "List the instruction sources, custom agent roles
 codex --cd <project> --ask-for-approval never "List the instruction sources, custom agent roles, and Hooks you loaded."
 ```
 
-For behavioral verification, run the four [fresh-task routing smoke scenarios](ROUTING_ACCEPTANCE.md), then audit each captured root task as described below.
+For behavioral verification, complete the [fresh-task strict acceptance and advisory diagnostics](ROUTING_ACCEPTANCE.md), then audit each captured root task as described below.
 
 Backups are local runtime files named with `.backup-<timestamp>` and must not be committed here. To restore one, copy it back to its original path, compare the result, and start a new task.
 
@@ -64,9 +64,9 @@ Backups are local runtime files named with `.backup-<timestamp>` and must not be
 
 The optimization target is `WCU = 25*T_sol + 10*T_terra + 1*T_luna`, subject to unchanged acceptance quality. Luna is preferred for labor-heavy bounded execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment.
 
-The foreground model remains a user choice. The router does not spawn agents; in its default `advisory` mode it highlights expensive Sol execution, full-context forks, repeated polling, role/model conflicts, and Luna capability failures without blocking the task. Luna unavailability should normally reroute the unchanged work to Terra or another lowest-cost capable role. Package IDs, phase markers, exact retry signatures, and one-loop budgets remain available as coordination metadata but are not required by the default policy.
+The foreground model remains a user choice. The router does not spawn agents; in direct or unmanaged `advisory` mode it highlights expensive Sol execution, full-context forks, repeated polling, role/model conflicts, and Luna capability failures without blocking the task. Luna unavailability may reroute unchanged work to Terra or another lowest-cost capable role only in that advisory diagnostic mode. Package IDs, phase markers, exact retry signatures, and one-loop budgets remain available as coordination metadata but are not required by the advisory policy.
 
-Set `CODEX_ROUTER_ENFORCEMENT=strict` only for a project that explicitly values mechanical process enforcement over adaptive execution. Strict mode retains the historical package-marker, loop-budget, Sol-write, risk-review, thread-recovery, and Luna fail-closed behavior; its unit tests exercise that mode. This separation keeps a deterministic high-assurance option without imposing it on everyday work.
+The managed Hook command selects `CODEX_ROUTER_ENFORCEMENT=strict` for installed Hooks. Strict mode retains the historical package-marker, loop-budget, Sol-write, risk-review, thread-recovery, and Luna fail-closed behavior; its unit tests exercise that mode. Direct router invocations remain advisory unless their caller sets the variable. In a fresh strict task, Luna unavailability fails closed and must be reported; it must not be silently rerouted.
 
 The auditor is process-advisory by default. Model choice, package metadata, loop shape, lifecycle preferences, and direct Sol work are observations rather than exit failures. Evidence-integrity problems—corrupt/truncated logs, missing descendants or outputs, invalid token schemas, unknown model attribution, and incomplete task evidence—remain nonzero because WCU and completion claims would be unreliable. Pass `--strict` when a task explicitly selected strict routing and its process findings must also fail the audit. Live behavior still requires a fresh-task smoke test; synthetic tests establish code behavior, not service-side model availability.
 

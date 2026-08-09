@@ -48,7 +48,11 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             )
             (codex_home / "hooks.json").write_text(json.dumps({
                 "description": "existing",
-                "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "existing-hook"}]}]},
+                "hooks": {"PreToolUse": [
+                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "existing-hook"}]},
+                    {"matcher": ".*", "hooks": [{"type": "command", "command": "/usr/bin/python3 \\\"$HOME/.codex/hooks/weighted_cost_router.py\\\""}]},
+                    {"matcher": ".*", "hooks": [{"type": "command", "command": "CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 \\\"$HOME/.codex/hooks/weighted_cost_router.py\\\""}]},
+                ]},
             }), encoding="utf-8")
 
             installer = INSTALL.Installer(ROOT, home, workspace)
@@ -68,6 +72,10 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             rendered = json.dumps(hooks)
             self.assertIn("existing-hook", rendered)
             self.assertIn(str(codex_home / "hooks" / "weighted_cost_router.py"), rendered)
+            self.assertEqual(
+                sum(INSTALL.Installer._is_router_registration(registration, home) for registration in hooks["hooks"]["PreToolUse"]),
+                1,
+            )
             self.assertTrue((codex_home / "agents" / "luna_executor.toml").is_symlink())
             terra_debugger = codex_home / "agents" / "terra_debugger.toml"
             self.assertTrue(terra_debugger.is_symlink())
@@ -183,7 +191,11 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             command = hooks["hooks"]["PreToolUse"][-1]["hooks"][0]["command"]
             self.assertEqual(
                 shlex.split(command),
-                ["/usr/bin/python3", str(home.resolve() / ".codex" / "hooks" / "weighted_cost_router.py")],
+                [
+                    "CODEX_ROUTER_ENFORCEMENT=strict",
+                    "/usr/bin/python3",
+                    str(home.resolve() / ".codex" / "hooks" / "weighted_cost_router.py"),
+                ],
             )
 
     def test_agents_header_with_comment_remains_valid_toml(self) -> None:
@@ -238,6 +250,118 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             "hooks": [{"type": "command", "command": "python3 other.py"}],
         }
         self.assertFalse(INSTALL.Installer._is_router_registration(registration))
+
+    def test_router_registration_detector_accepts_unprefixed_and_env_prefixed_commands(self) -> None:
+        for command in (
+            '/usr/bin/python3 "$HOME/.codex/hooks/weighted_cost_router.py"',
+            'CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 "$HOME/.codex/hooks/weighted_cost_router.py"',
+        ):
+            with self.subTest(command=command):
+                self.assertTrue(INSTALL.Installer._is_router_registration({"hooks": [{"command": command}]}))
+
+    def test_custom_weighted_router_path_survives(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home = base / "home"
+            workspace = base / "workspace"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            workspace.mkdir()
+            hooks_path = codex_home / "hooks.json"
+            hooks_path.write_text(json.dumps({
+                "description": "existing",
+                "hooks": {"PreToolUse": [{
+                    "matcher": ".*",
+                    "hooks": [{"type": "command", "command": "/usr/bin/python3 /custom/weighted_cost_router.py"}],
+                }]},
+            }), encoding="utf-8")
+
+            installer = INSTALL.Installer(ROOT, home, workspace)
+            installer.install()
+            merged = json.loads(hooks_path.read_text())
+            commands = [
+                hook.get("command")
+                for registration in merged["hooks"]["PreToolUse"]
+                for hook in registration["hooks"]
+            ]
+            self.assertIn("/usr/bin/python3 /custom/weighted_cost_router.py", commands)
+            self.assertEqual(sum("weighted_cost_router.py" in command for command in commands), 2)
+
+    def test_router_registration_detector_rejects_non_exact_launcher_or_env(self) -> None:
+        for command in (
+            'python3 "$HOME/.codex/hooks/weighted_cost_router.py"',
+            'CODEX_ROUTER_ENFORCEMENT=advisory /usr/bin/python3 "$HOME/.codex/hooks/weighted_cost_router.py"',
+            'OTHER_SETTING=yes /usr/bin/python3 "$HOME/.codex/hooks/weighted_cost_router.py"',
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(INSTALL.Installer._is_router_registration({"hooks": [{"command": command}]}))
+
+    def test_mixed_registration_preserves_sibling_metadata_and_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home = base / "home"
+            workspace = base / "workspace"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            workspace.mkdir()
+            original = {
+                "description": "existing",
+                "hooks": {"PreToolUse": [
+                    {"matcher": "first", "hooks": [{"type": "command", "command": "first-hook"}]},
+                    {
+                        "matcher": "mixed",
+                        "metadata": {"owner": "user"},
+                        "hooks": [
+                            {"type": "command", "command": 'CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 "$HOME/.codex/hooks/weighted_cost_router.py"'},
+                            {"type": "command", "command": "user-notify", "timeout": 17},
+                        ],
+                    },
+                    {"matcher": "last", "hooks": [{"type": "command", "command": "last-hook"}]},
+                ]},
+            }
+            hooks_path = codex_home / "hooks.json"
+            hooks_path.write_text(json.dumps(original), encoding="utf-8")
+
+            installer = INSTALL.Installer(ROOT, home, workspace)
+            installer.install()
+            merged = json.loads(hooks_path.read_text())
+            pretool = merged["hooks"]["PreToolUse"]
+            self.assertEqual([item["matcher"] for item in pretool[:3]], ["first", "mixed", "last"])
+            mixed = pretool[1]
+            self.assertEqual(mixed["metadata"], {"owner": "user"})
+            self.assertEqual(mixed["hooks"], [{"type": "command", "command": "user-notify", "timeout": 17}])
+            self.assertEqual(pretool[-1]["hooks"][0]["command"].split()[0], "CODEX_ROUTER_ENFORCEMENT=strict")
+
+            dry_run = INSTALL.Installer(ROOT, home, workspace, dry_run=True)
+            dry_run.install()
+            staged = json.loads(dry_run.staged_hooks)
+            self.assertEqual(staged["hooks"]["PreToolUse"][1], mixed)
+            self.assertIn("user-notify", json.dumps(staged))
+
+    def test_repeated_install_and_dry_run_are_idempotent_for_each_profile(self) -> None:
+        for profile in ("preserve", "sol-supervisor"):
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                home = base / "home"
+                workspace = base / "workspace"
+                (home / ".codex").mkdir(parents=True)
+                workspace.mkdir()
+                installer = INSTALL.Installer(ROOT, home, workspace, profile=profile)
+                installer.install()
+
+                repeated = INSTALL.Installer(ROOT, home, workspace, profile=profile)
+                repeated.install()
+                dry_run = INSTALL.Installer(ROOT, home, workspace, dry_run=True, profile=profile)
+                dry_run.install()
+
+                self.assertFalse(any(action.startswith("backup") for action in repeated.actions))
+                self.assertFalse(any(action.startswith("backup") for action in dry_run.actions))
+                staged = json.loads(dry_run.staged_hooks)
+                pretool = staged["hooks"]["PreToolUse"]
+                self.assertEqual(
+                    sum("weighted_cost_router.py" in hook.get("command", "") for item in pretool for hook in item["hooks"]),
+                    1,
+                )
 
     def test_router_filename_as_non_script_argument_is_not_managed(self) -> None:
         registration = {
