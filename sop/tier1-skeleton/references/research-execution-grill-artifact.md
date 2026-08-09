@@ -1,223 +1,191 @@
-# Research execution Grill artifact contract
+# Research Execution Grill v3 event and artifact contract
 
-`execution-grill.json` 是已经批准的 proposal 到实现/实验之间的阻断型契约。它不评价 idea 是否值得做。
+Schema `3` with protocol `research-execution-grill-v3` is the only authorizing
+contract. Schema v1 and v2 are historical and require matching `--audit-v1` or
+`--audit-v2`; a successful audit exits `4` and never authorizes an action.
 
-## 顶层字段
+## Authority split
 
-| 字段 | 要求 |
-|---|---|
-| `schema_version` | 固定为 `1` |
-| `proposal_id` | 稳定 ID,非空 |
-| `proposal_source` | 本地权威 proposal 文件路径 |
-| `proposal_hash` | 当前 proposal 文件的实际 SHA-256 |
-| `controller_context_id` | 生成/实施契约的主控 context ID |
-| `checkpoint` | `pre_implementation` 或 `pre_scale` |
-| `status` | `blocked`、`implementation_ready` 或 `scale_ready` |
-| `claims` | 非空 claim 列表,每项有 `id` 与 `text` |
-| `non_goals` | 非空字符串列表 |
-| `ambiguities` | 歧义列表;ready 时不得有未解决的 P0/critical/high 项;blocking resolution 必须由 `proposal:<locator>` 或带 SHA-256 的 human decision artifact 授权 |
-| `claim_experiment_matrix` | 每个核心 claim 的 experiment/metric/oracle/success/kill 映射 |
-| `baseline_fairness` | 每个 baseline 的七个 `comparability` 对象;每项只有一个 `status`,可取 `matched`、`not_applicable`、`mismatch_mitigated`,并绑定 evidence/mitigation |
-| `design` | 实验/replication 单位、assignment、blocking、nuisance、estimand、MDE、分析、multiplicity、missing data、单一结构化 holdout 与 sequential-analysis 对象 |
-| `oracle_attack` | 单一 `independence` 对象要求 independent=true、shared implementation path=false 并绑定证据;另含带 control type 的 shortcut controls |
-| `pilot_scale` | 结构化 pilot pass、scale、kill condition 列表;要求 all scale conditions、any kill stop,且 look schedule 长度等于 max;`pre_scale` 还绑定可机器重算的 pilot evidence JSON 及 SHA-256 |
-| `reproducibility` | 环境、代码、数据与 manifest 策略 |
-| `budget` | 至少一个正数资源上限和触顶停止规则 |
-| `review_plan` | 生成 review 前预冻结的 reviewer 列表;每项绑定唯一 ID、type、隔离 context 与 allowlisted GPT model;它属于 Grill core,不得在看到 verdict 后删 reviewer |
-| `reviews` | 必须完整兑现 `review_plan`;输入 packet 与 review JSON 是不同非空文件,各有实际 SHA-256,并交叉绑定 proposal/checkpoint/Grill core hash;ready 时至少一份 internal pass,且全部计划内审查均不得 blocked 或保留 open blocking finding |
-| `unresolved_human_gates` | ready 时必须为空 |
+`scripts/research_grill_state_machine.py` is the pure lifecycle authority. Its
+frozen dataclasses and enums accept already validated events, enforce sequence,
+and return explicit `validation_error`, `operational_blocked`, `not_authorized`,
+or `authorized` decisions. It performs no filesystem, JSON-file, subprocess,
+OpenSSH, or scientific-metric work.
 
-## Blocking ambiguity 的 HUMAN decision
+`scripts/validate_research_execution_grill.py` is the external adapter. It
+validates artifacts, scientific contracts, trust policy, detached signatures,
+reviews, and the signed ledger before passing immutable events to the pure
+state machine. Payload `status` and `authorization` fields are informational;
+neither is an authorization input.
 
-`human_decision` 不能是任意说明文件。decision artifact 必须是严格 JSON,交叉绑定 `proposal_id`、`proposal_hash`、`ambiguity_id` 与最终 `resolution`,声明 `approved_by` 和 `evidence_source`,并再绑定一份不同文件的 `evidence_artifact` 及实际 SHA-256。`proposal_source` 裁决必须使用非空的 `proposal:<section-or-line-locator>`。
+## Two-phase CLI
+
+Prepare an unsigned canonical candidate:
+
+```sh
+python3 scripts/validate_research_execution_grill.py execution-grill.json \
+  --prepare-event action_opened \
+  --requested-action phase0_launch \
+  --candidate-out phase0-open.candidate.json \
+  --trust-policy trust-policy.json \
+  --trust-policy-sha256 sha256:<external-policy-pin> \
+  --lineage-ledger execution-grill-ledger.json \
+  --lineage-tail-sha256 sha256:<externally-observed-tail>
+```
+
+Preparation exits `5` (`PREPARED_NOT_AUTHORIZED`). `--prepare-authorization
+ACTION` is an alias for preparing `action_finalized`. Without `--candidate-out`,
+canonical JSON is written to stdout. Candidate files use exclusive creation;
+an existing path is never overwritten.
+
+The validator never signs or appends an event. An external lineage authority
+must sign the candidate envelope and atomically append the event under its own
+ledger lock. Revalidate afterward:
+
+```sh
+python3 scripts/validate_research_execution_grill.py execution-grill.json \
+  --required-authorization phase0_launch \
+  --trust-policy trust-policy.json \
+  --trust-policy-sha256 sha256:<external-policy-pin> \
+  --lineage-ledger execution-grill-ledger.json \
+  --lineage-tail-sha256 sha256:<externally-observed-tail>
+```
+
+Exit `0` means the exact action has a valid signed final event. Exit `1` is a
+malformed, invalid, stale, untrusted, or contract error. Exit `3` is operational
+unavailability or an action not yet authorized. Exit `4` is legacy audit only;
+exit `5` is candidate preparation only.
+
+## Canonical signed events
+
+The unsigned body has exact fields:
 
 ```json
 {
-  "schema_version": 1,
-  "authority": "human_decision",
-  "proposal_id": "approved-proposal-001",
-  "proposal_hash": "sha256:<actual-proposal-file-hash>",
-  "ambiguity_id": "A1",
-  "resolution": "the exact approved resolution",
-  "approved_by": "named decision owner",
-  "evidence_source": "recorded author decision",
-  "evidence_artifact": "decisions/A1-author-evidence.md",
-  "evidence_artifact_hash": "sha256:<actual-evidence-hash>"
+  "seq": 0,
+  "previous_event_hash": "EMPTY",
+  "event_type": "checkpoint_opened",
+  "checkpoint_id": "checkpoint-2026-001",
+  "proposal_id": "proposal-001",
+  "proposal_hash": "sha256:...",
+  "lineage_id": "lineage-001",
+  "protocol_version": "research-execution-grill-v3",
+  "requested_action": null,
+  "signer_principal": "lineage@example",
+  "signer_role": "lineage_authority",
+  "bindings": {
+    "action_order": "static_acquisition,human_oracle,phase0_launch,scale_launch"
+  },
+  "expected_ledger_tail": "EMPTY",
+  "outcome": null
 }
 ```
 
-## Pre-scale pilot evidence
-
-`pre_scale` 不能用任意日志、截图或“pilot 看起来不错”的说明解锁。`pilot_scale.pilot_evidence` 必须指向严格 JSON,其 SHA-256 写入 `pilot_evidence_hash`;JSON 必须绑定当前 proposal 和 `pilot_plan_hash`,并为 `pilot_pass_conditions`、`scale_conditions`、`kill_conditions` 中每个唯一 condition ID 提供恰好一个实际观测值。每个观测还必须用 `source_artifact`、实际 `source_hash` 与 RFC 6901 风格 `source_json_pointer` 绑定原始 JSON 结果;validator 从原文件重新取值、严格核对 JSON 类型,再根据冻结的 operator/threshold 重算。所有 pilot pass 与 scale condition 都成立且没有 kill condition 成立时,`scale_ready` 才合法。
-
-`pilot_plan_hash` 是 `pilot_scale` 去除 `pilot_evidence` 与 `pilot_evidence_hash` 后,按排序 key 与紧凑分隔符编码所得的 SHA-256。失败结果仍应如实写入同一结构,但顶层状态必须保持 `blocked`。
+`event_hash` is the canonical SHA-256 of the body. The detached OpenSSH
+signature covers canonical JSON `{"body": body, "event_hash": event_hash}` in
+namespace `research-execution-grill-v3-lineage`. Ledger transport is:
 
 ```json
 {
-  "schema_version": 1,
-  "proposal_id": "approved-proposal-001",
-  "proposal_hash": "sha256:<actual-proposal-file-hash>",
-  "checkpoint": "pre_scale",
-  "pilot_plan_hash": "sha256:<canonical-pilot-plan-hash>",
-  "condition_results": [
-    {"condition_id": "P1", "observed": "pass", "source_artifact": "runs/pilot-results.json", "source_hash": "sha256:<raw-results-hash>", "source_json_pointer": "/conditions/P1"},
-    {"condition_id": "S1", "observed": 0.04, "source_artifact": "runs/pilot-results.json", "source_hash": "sha256:<raw-results-hash>", "source_json_pointer": "/conditions/S1"},
-    {"condition_id": "K1", "observed": 0.05, "source_artifact": "runs/pilot-results.json", "source_hash": "sha256:<raw-results-hash>", "source_json_pointer": "/conditions/K1"}
+  "schema_version": 3,
+  "protocol_version": "research-execution-grill-v3",
+  "events": [
+    {"body": {}, "event_hash": "sha256:...", "signature_path": "event.sig"}
   ]
 }
 ```
 
-## Reviewer 类型
+Signature paths are transport metadata outside the hashed body. A canonical
+hash is deterministic content identity, not a signature, role, or permission.
+Canonical hash values never substitute for detached signatures.
 
-- `internal_blind_gpt`:隔离上下文的 GPT/Codex 只读审查;`reviewer_model` 必须是当前 allowlist 中的 `gpt-5.6-sol`、`gpt-5.6-terra` 或 `gpt-5.6-luna`;是 ready 的必需门,但不等于外部审查。
-- `human_domain_reviewer`:项目内部或合作方的人类领域审查。
-- `external_human_reviewer`:有可核验来源的真实外部人类审查。
+Every candidate binds the observed ledger tail in both `previous_event_hash`
+and `expected_ledger_tail`, and the CLI requires the same independently supplied
+`--lineage-tail-sha256`. A genesis `checkpoint_opened` candidate uses the exact
+`EMPTY` sentinel; `EMPTY`, a zero hash, a stale hash, or a malformed hash is
+invalid once any ledger event exists. Any intervening append makes a candidate stale. The external
+authority owns locking and atomic append; the validator only re-reads.
 
-不得使用 `external_review`、`simulator_review=false` 或伪造的 `gpt-*` 名称把模型审查升级成外部/允许模型。人类审查可作为追加证据,不能替代 `internal_blind_gpt`。先把完整 reviewer 集合写入 `review_plan`,再计算 Grill core hash 和发起审查;任一计划内 review 缺失、blocked,或仍有 open P0/critical/high finding,都会阻断 ready。一份 pass 不得覆盖或删除另一份反对意见;修改 review plan 会改变 core hash,使旧 review 失效。
+## Authoritative lifecycle
 
-## 最小示例
+One `checkpoint_opened` spans this exact action order:
 
-```json
-{
-  "schema_version": 1,
-  "proposal_id": "approved-proposal-001",
-  "proposal_source": "docs/proposal.md",
-  "proposal_hash": "sha256:<actual-proposal-file-hash>",
-  "controller_context_id": "controller-session-001",
-  "checkpoint": "pre_implementation",
-  "status": "implementation_ready",
-  "claims": [{"id": "C1", "text": "Method improves the primary outcome under matched budget."}],
-  "non_goals": ["Do not redesign the approved research question."],
-  "ambiguities": [],
-  "claim_experiment_matrix": [{
-    "claim_id": "C1",
-    "experiment_id": "E1",
-    "metric": "primary_metric",
-    "oracle": "independent_reference_evaluator",
-    "success_criterion": "pre-registered lower bound is exceeded",
-    "kill_criterion": "correctness fails or effect lower bound is not exceeded"
-  }],
-  "baseline_fairness": {"rows": [{
-    "baseline": "strongest_public_baseline",
-    "comparability": {
-      "data": {"status": "matched", "evidence": "same frozen split manifest"},
-      "model": {"status": "matched", "evidence": "same model hash"},
-      "tuning_budget": {"status": "matched", "evidence": "same trial cap"},
-      "inference_budget": {"status": "matched", "evidence": "same token cap"},
-      "tools": {"status": "matched", "evidence": "same tool allowlist"},
-      "stopping_rule": {"status": "matched", "evidence": "same stop rule"},
-      "judge": {"status": "matched", "evidence": "same blind judge"}
-    }
-  }]},
-  "design": {
-    "experimental_unit": "task instance",
-    "replication_unit": "independent seed by task block",
-    "assignment": "paired seeded assignment",
-    "blocking_strategy": "block by task family and checkpoint",
-    "nuisance_factors": ["task family", "model checkpoint"],
-    "primary_estimand": "paired mean primary-metric difference",
-    "target_effect_or_mde": "primary-metric delta of 0.03",
-    "variance_basis": "variance estimate from a frozen baseline pilot",
-    "sample_size_or_seed_plan": "paired power plan requires five seeds across all task blocks",
-    "analysis_plan": "paired interval with preregistered robustness analysis",
-    "multiplicity_policy": "one primary endpoint; Holm correction for secondary endpoints",
-    "missing_data_policy": "execution failures count as failures; no silent exclusion",
-    "holdout": {
-      "access": "sealed",
-      "tuning_access": false,
-      "evidence": "split manifest hash and access log",
-      "unsealing_authority": "named final-evaluation owner"
-    },
-    "sequential_analysis": {
-      "optional_stopping_allowed": false,
-      "registered_max_looks": 1,
-      "evidence": "one frozen pilot look in the preregistration"
-    }
-  },
-  "oracle_attack": {
-    "independence": {
-      "independent": true,
-      "shared_implementation_path": false,
-      "evidence": "separate reference evaluator and fixtures"
-    },
-    "rows": [{
-      "risk": "judge shortcut",
-      "detection": "blind label permutation and adversarial negative control",
-      "control_type": "both"
-    }]
-  },
-  "pilot_scale": {
-    "pilot_pass_conditions": [{"id": "P1", "measure": "correctness", "operator": "==", "threshold": "pass"}],
-    "scale_conditions": [{"id": "S1", "measure": "effect_lower_bound", "operator": ">=", "threshold": 0.0}],
-    "kill_conditions": [{"id": "K1", "measure": "failure_rate", "operator": ">=", "threshold": 0.2}],
-    "scale_requires_all_conditions": true,
-    "stop_on_any_kill": true,
-    "max_interim_looks": 1,
-    "interim_look_schedule": ["after frozen pilot completion"]
-  },
-  "reproducibility": {
-    "env_lock": "environment lock path",
-    "code_ref_policy": "clean immutable commit",
-    "data_ref_policy": "versioned data manifest",
-    "manifest_path": "runs/manifest.json"
-  },
-  "budget": {"limits": {"gpu_hours": 10}, "stop_rule": "halt at or above limit"},
-  "review_plan": [{
-    "reviewer_type": "internal_blind_gpt",
-    "reviewer_id": "isolated-review-1",
-    "reviewer_context_id": "review-session-001",
-    "reviewer_model": "gpt-5.6-sol"
-  }],
-  "reviews": [{
-    "reviewer_type": "internal_blind_gpt",
-    "reviewer_id": "isolated-review-1",
-    "reviewer_context_id": "review-session-001",
-    "reviewer_model": "gpt-5.6-sol",
-    "input_artifact": "reviews/grill-review-packet-1.json",
-    "input_hash": "sha256:<actual-review-packet-hash>",
-    "artifact": "reviews/grill-review-1.json",
-    "artifact_hash": "sha256:<actual-review-json-hash>",
-    "status": "pass"
-  }],
-  "unresolved_human_gates": []
-}
+```text
+static_acquisition -> human_oracle -> phase0_launch -> scale_launch
 ```
 
-每个 review input packet 至少是以下严格 JSON object;`grill_core_hash` 是最终 Grill JSON 去除顶层 `reviews` 后按排序 key、紧凑分隔符编码得到的 SHA-256:
+Each action has one `action_opened` and one `action_finalized`, with an optional
+single `correction_applied` between them. Finalized authorized actions form an
+exact prefix. Skips, reopen, duplicate checkpoint, second correction, branching
+from the same before-state, stale tails, out-of-order events, and events after a
+terminal result are invalid. There is no project-local reset.
 
-```json
-{
-  "schema_version": 1,
-  "proposal_id": "approved-proposal-001",
-  "proposal_hash": "sha256:<actual-proposal-file-hash>",
-  "checkpoint": "pre_implementation",
-  "grill_core_hash": "sha256:<canonical-core-hash>"
-}
-```
+`action_opened` binds the initial action core, complete action evidence
+manifest, frozen review plan, and current tail. A passing complete initial
+review may finalize directly. A blocked initial review may only prepare one
+correction binding before/after core and manifest plus the canonical
+`initial_review_cycle_hash` of the complete signed blocked initial set. The
+blocked set must remain append-only and recompute to that exact hash before a
+re-review or final event is accepted. It is followed by one complete
+re-review. Passing re-review finalizes `authorized`; blocked re-review finalizes
+`architecture_reset_required`, which revokes every earlier authorization in the
+checkpoint and after which no v3 event is legal.
 
-对应的 review artifact 必须是不同文件,并逐字段交叉绑定:
+## Evidence manifest
 
-```json
-{
-  "schema_version": 1,
-  "reviewer_type": "internal_blind_gpt",
-  "reviewer_id": "isolated-review-1",
-  "reviewer_context_id": "review-session-001",
-  "reviewer_model": "gpt-5.6-sol",
-  "input_hash": "sha256:<actual-review-packet-hash>",
-  "proposal_hash": "sha256:<actual-proposal-file-hash>",
-  "grill_core_hash": "sha256:<canonical-core-hash>",
-  "verdict": "pass",
-  "findings": []
-}
-```
+The action-specific manifest contains every relevant consumed artifact, sorted
+by stable ID. Each row contains ID, kind, exact evidence class, producer stage,
+source SHA-256, semantic SHA-256, complete attestation payload, signature
+identity, and consumed artifact IDs/semantic hashes. Paths and signature
+transport are excluded. Any evidence identity change changes the manifest and
+invalidates the review and final event.
 
-`findings` 的每项必须包含 `id`、`severity`(`p0`/`critical`/`high`/`medium`/`low`/`info`)、`status`(`open`/`resolved`)与 `summary`。ready 契约的全部当前审查都不得 blocked 或存在 open P0/critical/high finding。
+Static Acquisition requires a content-bound passed Code Readiness code-test
+contract and its complete signed action review; it does not require future
+labels. Human Oracle requires a verified static-production source registry and
+blinded audit bundle. Phase 0 requires the
+designated registry/bundle, sealed human labels and derivation, clean
+reproduction, positive finite budget, and signed runtime capability evidence.
+Scale requires the exact designated bundle, signed Phase 0 raw and summarized
+results, frozen scale conditions and kill gates, and a finite positive scale
+budget. Passed stage declarations never substitute for missing evidence.
+Another valid bundle is not interchangeable.
 
-参考验证命令:
+Well-formed, correctly signed `runtime_available: false` is
+`operational_blocked`/exit `3`. Malformed, unsigned, stale, mismatched, or
+wrong-role evidence of any class is a contract error/exit `1`. Exit `3` is
+reserved for that signed runtime denial, unavailable required external tools or
+trust/lineage infrastructure, and a valid action that is not yet authorized.
 
-```sh
-python3 scripts/validate_research_execution_grill.py execution-grill.json --required-checkpoint pre_implementation
-```
+## Review-cycle hash
 
-退出码:ready 为 `0`;结构/内容违约为 `1`;读取或解析失败为 `2`;结构完整但状态仍 blocked 为 `3`。
+Every review binds requested action, opened-event hash, action core, evidence
+manifest, frozen plan, reviewer identity/context/model/role, phase, verdict,
+and normalized findings. Reviews are detached-signed by the exact planned
+`reviewer` principal.
+
+The frozen plan is injective: every slot has a nonempty unique `reviewer_id`,
+unique `signer_identity`, and unique `reviewer_context_id`. These three values
+remain a one-to-one correspondence in every signed initial and re-review row.
+No signer or context may satisfy two reviewer IDs, and a reviewer ID may not
+swap signer or context between phases. A complete current cycle contains
+exactly one signed row for every frozen slot.
+
+`review_cycle_hash` canonically projects the complete sorted planned reviewer
+set and every signed review identity, verdict, normalized findings,
+reviewer context, `source_sha256`, `semantic_sha256`, and
+`attestation_sha256`. Signature paths
+and other transport are excluded. A final event must reference a retained,
+complete cycle whose bindings match exactly.
+
+## Trust boundary
+
+The separately supplied trust policy contains public identities, public keys,
+and roles and is pinned outside the Grill artifact with
+`--trust-policy-sha256`. Artifact roles remain `acquisition_attestor`,
+`human_oracle`, and `runtime_attestor`; review and event roles are `reviewer`
+and `lineage_authority`. Missing tools or runtime availability are operational;
+untrusted or malformed signed evidence is invalid.
+
+The skill and validator never create, request, store, or use human/reviewer private keys.
+Tests may generate ephemeral keys only in temporary directories.

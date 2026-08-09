@@ -118,6 +118,34 @@ class GateHardeningContractTests(unittest.TestCase):
         self.assertEqual(skill.count("\n8. Run:"), 1)
         self.assertEqual(skill.count("\n9. Continue"), 1)
 
+    def test_grill_v3_prepare_authorize_and_state_machine_interface_is_frozen(self) -> None:
+        validator = self.read("scripts/validate_research_execution_grill.py")
+        state_machine = self.read("scripts/research_grill_state_machine.py")
+        reference = self.read("sop/tier1-skeleton/references/research-execution-grill-artifact.md")
+        skill = self.read("codex/skills/research-execution-grill/SKILL.md")
+        for phrase in (
+            "--required-authorization",
+            "--prepare-event",
+            "--prepare-authorization",
+            "PREPARED_NOT_AUTHORIZED",
+            "--trust-policy-sha256",
+            "scale_launch",
+            "ssh-keygen",
+            "architecture_reset_required",
+            "research-execution-grill-v3",
+        ):
+            self.assertIn(phrase, validator + state_machine + reference + skill)
+        self.assertNotIn("subprocess", state_machine.split("class Action", 1)[1])
+        self.assertNotIn("open(", state_machine)
+        self.assertNotIn("implementation_ready", skill)
+        self.assertNotIn("scale_ready", skill)
+
+    def test_grill_docs_distinguish_hashes_from_signatures(self) -> None:
+        reference = self.read("sop/tier1-skeleton/references/research-execution-grill-artifact.md").lower()
+        self.assertIn("canonical hash", reference)
+        self.assertIn("not a signature", reference)
+        self.assertIn("never create, request, store, or use human/reviewer private keys", reference)
+
 
 if __name__ == "__main__":
     unittest.main()

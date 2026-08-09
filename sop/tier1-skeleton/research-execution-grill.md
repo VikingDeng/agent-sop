@@ -1,76 +1,118 @@
 # SOP-research-execution-grill: 高质量 proposal 执行前拷问
 
 - **层级**: tier1-skeleton
-- **落实纪律**: P1(把已批准 proposal 冻结为实现与实验契约) P2(独立审查 claim、oracle 与实验设计) P3(关键歧义和无效设计阻断执行) P4(问题、决议、预算与 scale 决策可追溯)
+- **落实纪律**: P1(冻结执行契约) P2(独立签名审查) P3(状态机硬阻断) P4(事件与证据可追溯)
 - **绑定骨架**: research
-- **通用性档位**: U2(拷问维度通用,但 proposal 路径、指标、基线、算力、命令与证据由具体研究项目注入)
-- **版本**: v2
+- **通用性档位**: U2
+- **版本**: v4 (`research-execution-grill-v3` / artifact schema v3)
 
 ## 触发条件
 
-- `[信号自触发]` 用户提供或指定一个已经批准、准备实施的科研 proposal,且下一步将写实现、构建实验或消耗算力时;
-- `[信号自触发]` pilot 已完成,准备扩大数据、seed、模型、环境或算力规模时;
-- `[显式]` 用户要求 grill、red-team、把 proposal 问清楚或检查是否可以进入实现/扩容时。
+- 已批准 proposal 即将进入证据获取、人工 oracle、Phase 0 或物质性扩容;
+- 用户显式要求 grill、red-team 或检查 exact action authorization。
 
-本 SOP 不生成 idea、不重做 proposal admission、不以措辞偏好否决用户已经批准的研究方向。它只判断 proposal 是否已被翻译成可执行、可证伪、可复现的实现与实验契约。
+本 SOP 不生成替代 idea、不重做 proposal admission,只把已批准方向冻结为可执行、可证伪、可复现的契约。
 
 ## 前置条件
 
-- 权威 proposal 位于 `{PROPOSAL_SOURCE}`,有稳定的 `{PROPOSAL_ID}` 与版本或内容 hash;
-- 能识别 proposal 的核心 claim、方法机制、目标指标和计划使用的实验资源;
-- 项目声明 `{GRILL_ARTIFACT}`、`{GRILL_VALIDATE_CMD}`、`{HUMAN_DECISION_LOG}` 与后续实验入口;
-- 拷问者可以读取 proposal 和一手证据,但不得读取实现者对争议点的说服性自评作为独立证据。
+- proposal 有稳定 ID、source 与内容 hash;
+- 项目声明 Grill artifact、外部 pinned trust policy、signed event ledger 与实验入口;
+- reviewer、human oracle、runtime attestor 与 lineage authority 的边界明确。
 
 ## 依赖 SOP
 
-→ tier0-core/build-oracle.md(检查 metric/oracle 是否独立且能发现错误)
+→ tier0-core/build-oracle.md
 
-→ tier0-core/no-fallback-review.md(检查关键歧义、缺证据和审查失败是否被静默放行)
+→ tier0-core/no-fallback-review.md
 
 ## 步骤
 
-1. **冻结边界(P1/P4)**:在 `{GRILL_ARTIFACT}` 记录 `{PROPOSAL_ID}`、`{PROPOSAL_SOURCE}`、内容 hash、主控 context ID、核心 claims、明确 non-goals、约束和本次 checkpoint(`pre_implementation` 或 `pre_scale`)。不得在 Grill 中替用户改题或生成替代 idea。
-2. **分离证据引导与实验授权(P1/P3/P4)**:先标记本次动作是 `bootstrap/evidence_acquisition` 还是 `experiment_authorization`。bootstrap/evidence_acquisition 只可取得非实验性的 source、license、registry、raw-data、label-package 或 review-packet evidence,且不得把自己未来生成的输出作为前置条件;它 MUST NOT 运行 subpilot、pilot 或 experiment,计算 scientific metrics,inspect outcomes for adaptation,或输出 scientific claims。只有 experiment_authorization 可以消费已经冻结、哈希绑定且可独立复取的证据并授权 pilot。项目专属 DAG 必须把依赖表示为 required artifact IDs 与 provided artifact IDs,在编写 validator code 前检查二者 disjointness;若发现 dependency cycle,只修复一次契约。随后保留一个 authoritative current gate/validator;blocked review 只 append-only 追加记录,不得复制整套 Grill/validator 版本。
-3. **抽取实现歧义(P1/P3)**:逐条寻找会让两个合格实现者得到不同算法、数据流、损失、更新顺序、边界行为或默认值的表述。severity 只能取 P0/critical/high/medium/low。P0/critical/high 只有非空 `proposal:<locator>` 或结构化 HUMAN decision JSON 才能解决;后者必须交叉绑定 proposal/ambiguity/resolution 和另一份带 hash 的人类证据。否则状态必须为 `blocked`,不得用“采用常见做法”静默补全。
-4. **建立 claim–experiment 矩阵(P1/P2)**:每个核心 claim 必须绑定 experiment、metric、独立 oracle、success criterion 与 kill criterion。没有可反驳观测的 claim 不得进入正式实验;需要重写 claim 时进入 HUMAN gate,不得由执行者自行改口径。
-5. **冻结 baseline fairness(P2)**:逐 baseline 为数据、模型/骨干、调参预算、推理预算、工具权限、停止规则和 judge 各建唯一的 comparability object,其 status 只能取 `matched`、`not_applicable`、`mismatch_mitigated`,并绑定 evidence;mitigated mismatch 还必须给 mitigation。禁止再保留会与 status 冲突的平行自由文本字段。
-6. **冻结实验设计(P1/P2)**:记录实验单位与真正独立的 replication unit、assignment/randomization、blocking、nuisance factors、primary estimand、目标效应/MDE、方差依据、sample/seed plan、analysis、multiplicity 和 missing-data。holdout 与 sequential analysis 各只有一个结构化真值源:holdout 禁止 tuning access,sequential analysis 禁止 optional stopping,并将注册 look 数与 scale 契约交叉核对。
-7. **攻击 metric 与 oracle(P2)**:列出 shortcut、judge leakage、reward hacking 和数据污染,为每项指定 detection/negative control。oracle independence 只有一个结构化对象,必须同时声明 independent=true、shared implementation path=false 并绑定证据。调用 `→ tier0-core/build-oracle.md`;被测实现不得复用同一路径自证。
-8. **定义 pilot→scale 契约(P1/P3/P4)**:用带唯一 ID、operator 与 threshold 的结构化 condition 列表分别冻结 pilot pass、scale 和 kill;声明所有 scale conditions 必须满足、任一 kill condition 必须停止。interim schedule 的条目数必须等于注册 look 上限并与 design 一致。`pre_scale` evidence 必须是绑定 proposal 与 pilot-plan hash 的严格 JSON,逐 condition ID 记录 observed value,并用原始 JSON 结果文件、实际 SHA-256 与 JSON Pointer 绑定其数据来源,交给 validator 重新取值和重算;任意文本、agent 自报数字、幸运单点或事后切片不得解锁 scale。
-9. **冻结复现与预算(P3/P4)**:记录环境锁、代码引用策略、数据版本、manifest、GPU/token/wall-clock 上限和触顶动作。缺少任一适用上限时保持 `blocked`;不得以“先跑再补”为由放行。
-10. **独立内部审查(P2)**:发起审查前先在 Grill core 内冻结完整 `review_plan`,逐项写唯一 reviewer ID、type、隔离 context 与 allowlisted GPT model。再由计划中的只读 GPT/Codex reviewer 只读 proposal、一手证据和 `{GRILL_ARTIFACT}` 后给出 pass/blocked 与结构化 findings。输入 packet 和 review JSON 必须是不同的非空文件,分别带 SHA-256并交叉绑定 proposal/checkpoint/Grill core hash。每项 finding 记录 severity 与 open/resolved;reviewer context 必须不同于主控 context,类型必须是 `internal_blind_gpt`,model 只能取契约 allowlist。ready 时计划内审查必须全部出现,且均不得 blocked 或保留 open P0/critical/high finding;一份 pass 不得覆盖或删除另一份反对意见。修改 review plan 会使旧 review hash 失效;人类审查可追加,不能替代。
-11. **机器判门(P3/P4)**:运行 `{GRILL_VALIDATE_CMD} {GRILL_ARTIFACT} --required-checkpoint {REQUIRED_CHECKPOINT}`。实现/pilot 要求 `pre_implementation`,物质性扩容要求 `pre_scale`;退出码 `0` 才允许对应动作。结构错误、blocked 状态、P0 未清零、审查缺失或 validator 崩溃均阻断。修改 proposal、claim、metric、数据划分、baseline 预算或 scale 判据后,必须更新 hash 并重跑本 SOP。
+1. **选择唯一授权协议(P1/P3)**:新授权只能使用 `schema_version: 3` 与
+   `research-execution-grill-v3`。v1/v2 只能分别用 `--audit-v1`/`--audit-v2`
+   审计并退出 `4`,绝不进入 v3 authorization。
+2. **冻结 checkpoint 与动作顺序(P1/P4)**:authoritative pure state machine 中一个 signed `checkpoint_opened`
+   覆盖 exact order `static_acquisition -> human_oracle -> phase0_launch -> scale_launch`。
+   finalized actions 必须形成 exact prefix;禁止 skip、reopen、duplicate open、out-of-order、
+   terminal 后追加和 project-local reset。
+3. **分离 acquisition 与实验(P1/P3)**:`bootstrap/evidence_acquisition` 与
+   `experiment_authorization` 分离。bootstrap MUST NOT 运行 subpilot/pilot/experiment、
+   计算 scientific metrics、inspect outcomes for adaptation 或输出 scientific claims。
+   检查 required artifact IDs、provided artifact IDs、disjointness 与 dependency cycle。
+4. **冻结 action evidence(P1/P4)**:`action_opened` 绑定 action-specific immutable
+   core、完整 evidence manifest、frozen review-plan hash 和当前 ledger tail。manifest
+   逐 consumed artifact 记录 ID、kind/class、producer、source/semantic hash、完整
+   attestation payload、signature identity 与 consumed hashes。任何 identity 漂移都改变 manifest。
+5. **保持四个能力边界(P3)**:Code Readiness 是 synthetic/nonauthorizing evidence,
+   只支持 Static Acquisition,且不需要 future labels;其 content-bound code-test contract
+   与完整 signed code review 缺一不可。Human Oracle 至少消费 verified source registry 与
+   blinded audit bundle。Phase 0 需要 exact registry/bundle、sealed human labels/derivation、clean
+   reproduction、finite positive budget 与 signed runtime capability。Scale 还必须包含 exact
+   designated bundle、Phase 0 raw/result identities、condition 重算、kill gates 与 finite scale budget。
+6. **独立签名审查(P2/P4)**:完整 planned reviewer set 的每份 review 必须绑定 action、
+   opened-event hash、core、manifest、plan、reviewer identity/role/context/model、phase、verdict、
+   normalized findings 与 source/semantic/attestation hashes。冻结计划中的 `reviewer_id`、
+   `signer_identity` 与 `reviewer_context_id` 分别非空且各自唯一,三者形成一对一 slot;
+   signer/context 不得跨 reviewer 共用或在 initial/re-review 间交换。`review_cycle_hash` 对排序后的
+   planned set 与完整 signed reviews 做 canonical projection,排除 path/signature transport。
+7. **执行单次修正收敛(P3)**:initial pass 可直接 finalization。initial blocked 只允许一次
+   `correction_applied`,绑定 opened event、完整 blocked `initial_review_cycle_hash` 与
+   before/after core+manifest,随后只允许一次完整
+   re-review。re-review pass → `authorized`;blocked → terminal
+   `architecture_reset_required`。禁止 second correction、A→B/A→C branching 或 reopen。
+8. **两阶段外部授权(P3/P4)**:validator 用 `--prepare-event` 或
+   `--prepare-authorization ACTION` 生成 canonical candidate,以 exit `5`
+   `PREPARED_NOT_AUTHORIZED` 返回。candidate path 必须 exclusive/no-overwrite。
+   validator 不签名、不 append ledger;外部 `lineage_authority` 在 lock 下 atomic append。
+   prepare 与 required authorization 都必须提供 observed tail 的 external
+   `--lineage-tail-sha256`;空 ledger 只接受显式 `EMPTY` sentinel。
+9. **验证 canonical event(P3/P4)**:event body 冻结 seq、previous hash、event type、
+   checkpoint/proposal/lineage/protocol、requested action、signer principal/role、event bindings、
+   expected tail 与 outcome。`event_hash` 是 body canonical SHA-256。OpenSSH detached signature
+   覆盖 canonical `{"body": body, "event_hash": event_hash}`,使用 v3 lineage namespace;
+   signature path 在 hash body 外。canonical hash 不是 signature 或 permission。
+10. **重读后授权(P3)**:运行
+    `{GRILL_VALIDATE_CMD} {GRILL_ARTIFACT} --required-authorization {ACTION} --trust-policy
+    {TRUST_POLICY} --trust-policy-sha256 {EXTERNAL_PIN} --lineage-ledger {LEDGER}
+    --lineage-tail-sha256 {EXTERNAL_LEDGER_TAIL}`。
+    只有 exact action 的 signed final event、core、manifest、review cycle 与完整 evidence
+    全部重验后 exit `0` 才是 permission。
+11. **分离错误通道(P3)**:malformed/invalid/stale/untrusted/contract error → exit `1`;
+    operational unavailable 或 action 尚未授权 → exit `3`;legacy audit → `4`;candidate prepared → `5`。
+    correctly signed `runtime_available=false` 是 `operational_blocked`;任何 evidence class 的
+    malformed/unsigned/hash-mismatched/forged/wrong-role envelope 都是 contract error。
+    不得把 operational failure 写成 scientific no-go。
+12. **保留 approved-proposal 语义(P1)**:Grill 可阻断歧义、无效设计、不公平 baseline、
+    弱 oracle、缺预算或证据漂移,但不得生成 replacement idea 或擅自降低 success criterion。
 
-字段契约与示例见 [references/research-execution-grill-artifact.md](references/research-execution-grill-artifact.md)。仓库提供的参考 validator 为 `scripts/validate_research_execution_grill.py`。
+字段与 event 示例见
+[references/research-execution-grill-artifact.md](references/research-execution-grill-artifact.md)。
 
 ## 门禁
 
-- `[AUTO][阻断型]` `{PROPOSAL_ID}`、source/hash、checkpoint、claims 与 non-goals 已冻结;
-- `[AUTO][阻断型]` 每个 claim 都有 experiment/metric/oracle/success/kill 映射;
-- `[REVIEW][阻断型]` baseline fairness、实验单位、replication、holdout、interim look、metric shortcut 和 negative control 均有显式结论;
-- `[REVIEW][阻断型]` 预冻结 review plan 已全部兑现,至少一份隔离上下文的内部盲审为 pass;GPT/Codex 审查不得标为 external review,且全部计划内审查均无 blocked verdict 或 open blocking finding;
-- `[RUNTIME][阻断型]` `{GRILL_VALIDATE_CMD}` 退出码为 `0`;缺 validator 或 validator 崩溃不是通过;
-- `[DAG][阻断型]` bootstrap/evidence-acquisition 与 experiment authorization 分离;当前 gate/validator 不依赖自身未来输出;依赖环在 validator 实现前已检测并只修复一次;blocked reviews append-only 且不克隆整套版本;
-- `[HUMAN]` 只有 P0 歧义需要改变 claim、方法语义、成功标准、资源承诺或 proposal 边界时才等待人裁决。
+- `[STATE][阻断型]` pure state machine 接受 signed ledger 后得到 valid exact prefix;
+- `[TRUST][阻断型]` trust policy external pin、artifact/review/event signatures 与 roles 全部通过;
+- `[REVIEW][阻断型]` final event 引用 retained complete signed review cycle;
+- `[EVIDENCE][阻断型]` action core 与完整 manifest 匹配当前 source/semantic/attestation identities;
+- `[RUNTIME][阻断型]` exact `--required-authorization ACTION` 实际 exit `0`;
+- `[HUMAN]` 只有改变 proposal 语义、claim 或资源承诺才进入人类决策。
 
 ## 完成判定
 
-以下条件全部为 true 才完成:
-
-- `{GRILL_ARTIFACT}` 与当前 `{PROPOSAL_SOURCE}` hash 一致;
-- 状态为 `implementation_ready` 或 pre-scale 时为 `scale_ready`;
-- unresolved P0/critical/high ambiguity 和 human gate 均为零;
-- claim–experiment、baseline fairness、实验设计、oracle attack、pilot→scale、复现和预算字段完整;pre-scale 时 validator 已从逐 condition observed values 重算出 all-pass/no-kill;
-- `review_plan` 与 Grill core hash 绑定且全部兑现;至少一份交叉哈希一致的 `internal_blind_gpt` 结构化审查为 pass,且其余计划内审查没有 blocked verdict 或 open blocking finding;人类审查是追加证据,不能替代;
-- `{GRILL_VALIDATE_CMD} {GRILL_ARTIFACT} --required-checkpoint {REQUIRED_CHECKPOINT}` 实际退出码为 `0`。
+- payload proposal/source hash、schema/protocol 与 checkpoint ID 一致;
+- external authority 已签名并 atomic append action final event;
+- validator 重读 ledger、trust、evidence 与 review cycle 后对 exact action exit `0`;
+- payload status/authorization 仅作 derived informational output,不参与决策。
 
 ## 失败处理
 
-遵守 P3:关键歧义未解决、claim 无法证伪、baseline 无法公平比较、实验单位不清、样本/seed 无依据、holdout 可被调参访问、metric 可被明显钻空子、预算无上限、独立审查不可用或 validator 非零时,状态保持 `blocked` 并列出最小待决问题;不得自动改 proposal、降低 success criterion、增加事后切片、把重复测量当独立样本、把同一 GPT 的第二次回答伪装成 external review,或绕过 Grill 直接进入实现/scale。若问题需要改变用户批准的 proposal 语义,写入 `{HUMAN_DECISION_LOG}` 后停在 HUMAN gate。
+任何非零 required-authorization 结果都不得执行相应动作。exit `5` 只是待签 candidate。
+若 tail 在 prepare 后变化,丢弃 stale candidate 并从新 tail 重新 prepare。terminal
+`architecture_reset_required` 撤销本 checkpoint 内所有先前 action authorization;此后不得
+append、复制 vN 或本地 re-contract 伪装 reset。
 
 ## 产物
 
-- `{GRILL_ARTIFACT}`:proposal hash、checkpoint、歧义与决议、claim–experiment、baseline fairness、实验设计、oracle attack、pilot→scale、复现、预算和 review 记录;
-- `{HUMAN_DECISION_LOG}`:仅包含需要改变 proposal 语义或资源承诺的待决项及最终裁决;
-- `{GRILL_VALIDATE_CMD}` 的命令、退出码与输出摘要;
-- `implementation_ready`、`scale_ready` 或 `blocked` 三者之一的可复核结论。
+- schema v3 Grill artifact 与 action evidence manifest;
+- external pinned trust policy;
+- append-only signed v3 event ledger;
+- canonical candidate、external signature、review-cycle hash 与 validator exact exit evidence。

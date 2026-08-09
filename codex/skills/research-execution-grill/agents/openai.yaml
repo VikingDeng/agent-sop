@@ -1,4 +1,4 @@
 interface:
   display_name: "Research Execution Grill"
   short_description: "Stress-test approved proposals before execution"
-  default_prompt: "Use $research-execution-grill to turn this approved proposal into a blocked-or-ready execution contract."
+  default_prompt: "Use $research-execution-grill to prepare or verify the exact schema v3 action event for this approved proposal."

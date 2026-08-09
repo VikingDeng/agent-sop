@@ -3,6 +3,10 @@
 > SOP = 一段可复用的、agent 可执行的规程。三层组织,SOP 之间可互相调用(见"依赖")。
 > 每条 SOP 用 _TEMPLATE.md 结构;每条必须映射到 ../PRINCIPLES.md 的纪律。
 > **组织判据不是"分类整齐",而是"每条 SOP 都是四条纪律的实例化"。**
+>
+> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v4**，其唯一授权
+> 协议为 **research-execution-grill-v3 / schema v3**；历史 schema v1/v2 仅可匹配显式审计。
+> `tier1-skeleton/run-experiment.md` 当前版本为 **v4**，实现/Phase 0 与物质性扩容分别要求 exact `phase0_launch` / `scale_launch` signed authorization。
 
 ## Tier 0 — 核心横切(所有场景共用)
 
