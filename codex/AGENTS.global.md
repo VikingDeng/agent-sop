@@ -22,6 +22,8 @@ Optimize `WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens` without weakeni
 
 These are routing preferences, not brittle eligibility laws. If a model or role is unavailable, reroute to the lowest-cost available role likely to preserve quality and record the substitution. Sol may perform narrow work when delegation is unavailable or would cost more than the work, but avoid using Sol for long mechanical execution. Delegate coherent outcomes rather than individual commands, avoid full-history forks and repeated polling, and normally keep no more than two child agents open.
 
+Be explicit about execution mode: a recorded “Sol-supervised” run means Sol served as the planner/judge in that session; it does not by itself mean Sol mechanically executed the work. Delegated Luna/Terra/review means those calls actually occurred. Never claim routing, independent review, or WCU that the session evidence does not show. Keep raw tool returns compact (target roughly <=20k characters when practical), preserve full logs as artifacts, and return summaries with the decisive lines and exit codes.
+
 Use package IDs, phase markers, frozen work packets, or strict loop budgets only when they materially improve coordination or when a selected strict profile requires them. Otherwise a compact objective, scope, acceptance evidence, and escalation condition are enough. Continue repair while new evidence is reducing uncertainty; stop and reconsider when the same failure class repeats without material progress, the contract changes, or expected cost becomes disproportionate.
 
 ## Verification and review
@@ -29,6 +31,8 @@ Use package IDs, phase markers, frozen work packets, or strict loop budgets only
 Use real outputs and repository state as the source of truth. Choose the strongest practical oracle for the claim: tests, reproduction, comparison with an independent implementation, invariants, statistical checks, or focused review. Independence is valuable when it can catch a plausible failure mode; it is not a ritual required for every edit.
 
 Acceptance should test the user's intended outcome, not merely artifact presence. Report limitations and unavailable checks honestly. Preserve user changes and secrets; do not force-push, bypass hooks, publish, deploy, merge, delete data, or perform irreversible work without explicit authorization.
+
+For substantial behavior, research, or competition deliverables, use a useful independent read-only second perspective when the oracle is weak or reused; skip review ceremony for trivial work. Empirical work must keep exploration/tuning separate from final holdout, freeze before inspecting hidden/test labels or post-freeze test-input anomalies unless transductive adaptation was declared, and validate post-freeze validity fixes on fresh untouched evidence. Correct earlier factual errors explicitly rather than silently changing numbers.
 
 ## Approved research proposals
 

@@ -50,6 +50,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

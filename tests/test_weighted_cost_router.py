@@ -131,6 +131,322 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIn("25*Sol", context)
         self.assertIn("adaptive advisory", context)
 
+    def _stop_transcript(
+        self,
+        directory: str,
+        *,
+        turn_id: str = "turn-stop",
+        calls: int = 3,
+        outputs: int = 3,
+        token_total: int | None = None,
+    ) -> str:
+        records = []
+        records.extend(
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": {"cmd": "pytest"}, "turn_id": turn_id}}
+            for _ in range(calls)
+        )
+        records.extend(
+            {"type": "response_item", "payload": {"type": "function_call_output", "output": "ok", "turn_id": turn_id}}
+            for _ in range(outputs)
+        )
+        if token_total is not None:
+            records.append({
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "last_token_usage": {"total_tokens": token_total},
+                    "turn_id": turn_id,
+                },
+            })
+        path = Path(directory) / "transcript.jsonl"
+        path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        return str(path)
+
+    def test_stop_guard_continues_substantial_incomplete_final_once(self) -> None:
+        transcript = self._stop_transcript(self._state.name)
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "stop-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "cwd": self._state.name,
+            "last_assistant_message": "Implemented the change.",
+            "stop_hook_active": False,
+        }
+        result = ROUTER.handle(event)
+        self.assertEqual(result["decision"], "block")
+        self.assertTrue(result["continue"])
+        self.assertIn("review disposition", result["reason"])
+        self.assertIsNone(ROUTER.handle({**event, "stop_hook_active": True}))
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_leaves_one_tool_turn_alone(self) -> None:
+        trivial = self._stop_transcript(self._state.name, calls=1, outputs=1)
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "trivial-session",
+            "turn_id": "turn-stop",
+            "transcript_path": trivial,
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_ignores_prior_turns_for_one_tool_success(self) -> None:
+        records = []
+        records.extend(
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": {"cmd": "pytest"}, "turn_id": "prior-turn"}}
+            for _ in range(3)
+        )
+        records.append(
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": {"cmd": "pytest"}, "turn_id": "current-turn"}}
+        )
+        records.append({"type": "response_item", "payload": {"type": "function_call_output", "output": "success", "turn_id": "current-turn"}})
+        transcript = Path(self._state.name) / "prior-turns.jsonl"
+        transcript.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "prior-turn-session",
+            "turn_id": "current-turn",
+            "transcript_path": str(transcript),
+            "last_assistant_message": "Success.",
+            "stop_hook_active": False,
+        }
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_uses_high_current_turn_token_usage(self) -> None:
+        transcript = self._stop_transcript(self._state.name, calls=1, outputs=1, token_total=100_000)
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "token-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "last_assistant_message": "Implemented the change.",
+            "stop_hook_active": False,
+        }
+        result = ROUTER.handle(event)
+        self.assertEqual(result["decision"], "block")
+
+    def test_stop_guard_uses_untagged_production_token_event_inside_current_task(self) -> None:
+        records = [
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-prod"}},
+            {"type": "response_item", "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": {"cmd": "pytest"},
+                "turn_id": "turn-prod",
+            }},
+            {"type": "response_item", "payload": {
+                "type": "function_call_output",
+                "output": "ok",
+                "turn_id": "turn-prod",
+            }},
+            {"type": "event_msg", "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {"total_tokens": 184_934},
+                    "total_token_usage": {"total_tokens": 1_000_000},
+                },
+            }},
+            {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "turn-prod"}},
+        ]
+        transcript = Path(self._state.name) / "production-shaped.jsonl"
+        transcript.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        result = ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "production-session",
+            "turn_id": "turn-prod",
+            "transcript_path": str(transcript),
+            "last_assistant_message": "Implemented the change.",
+            "stop_hook_active": False,
+        })
+        self.assertEqual(result["decision"], "block")
+
+    def test_stop_guard_does_not_associate_untagged_token_without_task_boundaries(self) -> None:
+        records = [
+            {"type": "response_item", "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": {"cmd": "pytest"},
+                "turn_id": "turn-prod",
+            }},
+            {"type": "response_item", "payload": {
+                "type": "function_call_output",
+                "output": "ok",
+                "turn_id": "turn-prod",
+            }},
+            {"type": "event_msg", "payload": {
+                "type": "token_count",
+                "info": {"last_token_usage": {"total_tokens": 184_934}},
+            }},
+        ]
+        transcript = Path(self._state.name) / "ambiguous-production-shaped.jsonl"
+        transcript.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        self.assertIsNone(ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "ambiguous-production-session",
+            "turn_id": "turn-prod",
+            "transcript_path": str(transcript),
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }))
+
+    def test_stop_guard_ignores_cumulative_usage_in_production_task_shape(self) -> None:
+        records = [
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-prod"}},
+            {"type": "response_item", "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": {"cmd": "pytest"},
+                "turn_id": "turn-prod",
+            }},
+            {"type": "response_item", "payload": {
+                "type": "function_call_output",
+                "output": "ok",
+                "turn_id": "turn-prod",
+            }},
+            {"type": "event_msg", "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {"total_tokens": 99_999},
+                    "total_token_usage": {"total_tokens": 1_000_000},
+                },
+            }},
+            {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "turn-prod"}},
+        ]
+        transcript = Path(self._state.name) / "production-cumulative.jsonl"
+        transcript.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        self.assertIsNone(ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "production-cumulative-session",
+            "turn_id": "turn-prod",
+            "transcript_path": str(transcript),
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }))
+
+    def test_stop_guard_fails_open_for_open_current_task_boundary(self) -> None:
+        records = [
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-prod"}},
+            {"type": "response_item", "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": {"cmd": "pytest"},
+                "turn_id": "turn-prod",
+            }},
+            {"type": "response_item", "payload": {
+                "type": "function_call_output",
+                "output": "ok",
+                "turn_id": "turn-prod",
+            }},
+            {"type": "event_msg", "payload": {
+                "type": "token_count",
+                "info": {"last_token_usage": {"total_tokens": 184_934}},
+            }},
+        ]
+        transcript = Path(self._state.name) / "open-production-task.jsonl"
+        transcript.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        self.assertIsNone(ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "open-production-session",
+            "turn_id": "turn-prod",
+            "transcript_path": str(transcript),
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }))
+
+    def test_stop_guard_ignores_cumulative_token_usage(self) -> None:
+        records = [
+            {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": {"cmd": "pytest"}, "turn_id": "turn-stop"}},
+            {"type": "response_item", "payload": {"type": "function_call_output", "output": "success", "turn_id": "turn-stop"}},
+            {"type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"total_tokens": 1_000_000}}, "turn_id": "turn-stop"}},
+        ]
+        transcript = Path(self._state.name) / "cumulative.jsonl"
+        transcript.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "cumulative-session",
+            "turn_id": "turn-stop",
+            "transcript_path": str(transcript),
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_fails_open_without_session_key(self) -> None:
+        transcript = self._stop_transcript(self._state.name)
+        event = {
+            "hook_event_name": "Stop",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "last_assistant_message": "Implemented the change.",
+            "stop_hook_active": False,
+        }
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_retry_without_stop_hook_active_cannot_loop(self) -> None:
+        transcript = self._stop_transcript(self._state.name)
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "retry-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "last_assistant_message": "Implemented the change.",
+            "stop_hook_active": False,
+        }
+        self.assertIsNotNone(ROUTER.handle(event))
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_accepts_complete_chinese_report(self) -> None:
+        transcript = self._stop_transcript(self._state.name)
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "chinese-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "last_assistant_message": "结果：已完成。证据：测试和命令均通过，退出码为 0。复核：未运行。路由/WCU：Luna，成本可追溯。风险：无。交付：Git 状态不适用。",
+            "cwd": self._state.name,
+            "stop_hook_active": False,
+        }
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_accepts_complete_english_report(self) -> None:
+        transcript = self._stop_transcript(self._state.name)
+        event = {
+            "hook_event_name": "Stop",
+            "session_id": "english-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "last_assistant_message": "Outcome: completed. Evidence: tests and commands passed with exit code 0. Review: not run. Routing/WCU: Luna cost recorded. Risks: none. Delivery: Git not applicable.",
+            "cwd": self._state.name,
+            "stop_hook_active": False,
+        }
+        self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_accepts_complete_non_git_english_report_with_code_words(self) -> None:
+        transcript = self._stop_transcript(self._state.name)
+        self.assertIsNone(ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "non-git-english-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "cwd": self._state.name,
+            "last_assistant_message": "Outcome: completed code change. Evidence: tests and commands passed. Review: not run. Routing/WCU: Luna. Risks: none.",
+            "stop_hook_active": False,
+        }))
+
+    def test_stop_guard_leaves_malformed_transcript_alone(self) -> None:
+        malformed = Path(self._state.name) / "malformed.jsonl"
+        malformed.write_text("not json\n", encoding="utf-8")
+        self.assertIsNone(ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "malformed",
+            "turn_id": "turn-stop",
+            "transcript_path": str(malformed),
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }))
+
     def test_default_advisory_mode_does_not_block_sol_or_luna_fallback(self) -> None:
         with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
             sol = ROUTER.handle(pretool("gpt-5.6-sol", "apply_patch", {"patch": "x"}))

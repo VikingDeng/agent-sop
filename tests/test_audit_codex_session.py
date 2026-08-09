@@ -156,6 +156,8 @@ class AuditCodexSessionTests(unittest.TestCase):
         parent: str | None = None,
         role: str | None = None,
         extra: str = "",
+        last_message: str = "",
+        cwd: str = "",
     ) -> Path:
         payload = {"id": thread_id, "session_id": "root" if parent else thread_id}
         if parent:
@@ -164,11 +166,11 @@ class AuditCodexSessionTests(unittest.TestCase):
             payload["agent_role"] = role
         lines = [
             record("session_meta", payload),
-            record("turn_context", {"model": model}),
+            record("turn_context", {"model": model, **({"cwd": cwd} if cwd else {})}),
             *(record("event_msg", usage(total)) for total in totals),
             extra,
             record("event_msg", usage(totals[-1])),
-            record("event_msg", {"type": "task_complete"}),
+            record("event_msg", {"type": "task_complete", "last_agent_message": last_message}),
         ]
         path = root / f"{name}.jsonl"
         path.write_text("".join(lines))
@@ -187,6 +189,70 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["weighted_cost_units"], 8_750)
             self.assertEqual(report["subagent_roles"], {"luna_executor": 1, "worker": 1})
             self.assertNotIn("no Terra or Luna tokens were observed", report["routing_violations"])
+
+    def test_completed_single_model_root_reports_delivery_and_routing_advisories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-luna",
+                [1_000_000],
+                last_message="Implemented the repository change.",
+                cwd=str(ROOT),
+            )
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+            self.assertTrue(report["delivery_report_findings"])
+            self.assertTrue(any("evidence/commands" in item for item in report["delivery_report_findings"]))
+            self.assertTrue(any("single-model" in item for item in report["routing_observations"]))
+            self.assertEqual(report["cost_status"], "complete")
+
+    def test_completed_chinese_root_report_is_semantically_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-luna",
+                [100],
+                last_message="结果：已完成。证据：测试和命令均通过，退出码为 0。复核：未运行。路由/WCU：Luna，成本可追溯。风险：无。交付：Git 状态不适用。",
+            )
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+            self.assertEqual(report["delivery_report_findings"], [])
+
+    def test_completed_non_git_english_root_report_with_code_words_is_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-luna",
+                [100],
+                last_message=(
+                    "Outcome: completed code change. Evidence: tests and commands passed. "
+                    "Review: not run. Routing/WCU: Luna. Risks: none."
+                ),
+                cwd=directory,
+            )
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+            self.assertEqual(report["delivery_report_findings"], [])
+
+    def test_single_model_observation_stays_quiet_below_one_million_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-luna",
+                [999_999],
+                last_message="Implemented the repository change.",
+            )
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+            self.assertFalse(any("single-model" in item for item in report["routing_observations"]))
 
     def test_model_switch_assigns_only_increment_to_new_model(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

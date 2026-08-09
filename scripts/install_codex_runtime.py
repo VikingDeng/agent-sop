@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the repository-owned Codex adapter without changing the main model."""
+"""Install the repository-owned Codex adapter with an explicit model profile."""
 
 from __future__ import annotations
 
@@ -35,6 +35,13 @@ AGENT_SETTINGS = {
     "max_concurrent_threads_per_session": "2",
     "max_depth": "1",
 }
+PROFILE_SETTINGS = {
+    "preserve": {},
+    "sol-supervisor": {
+        "model": '"gpt-5.6-sol"',
+        "model_reasoning_effort": '"high"',
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -44,11 +51,21 @@ class Mutation:
 
 
 class Installer:
-    def __init__(self, repo_root: Path, home: Path, workspace: Path, dry_run: bool = False):
+    def __init__(
+        self,
+        repo_root: Path,
+        home: Path,
+        workspace: Path,
+        dry_run: bool = False,
+        profile: str = "preserve",
+    ):
         self.repo_root = repo_root.resolve()
         self.home = home.resolve()
         self.workspace = workspace.resolve()
         self.dry_run = dry_run
+        if profile not in PROFILE_SETTINGS:
+            raise ValueError(f"unknown installer profile: {profile}")
+        self.profile = profile
         self.stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.actions: list[str] = []
         self.mutations: list[Mutation] = []
@@ -181,6 +198,26 @@ class Installer:
         return "\n".join(lines) + "\n"
 
     @staticmethod
+    def _replace_top_level_values(text: str, settings: dict[str, str]) -> str:
+        if not settings:
+            return text
+        lines = text.splitlines()
+        end = next(
+            (index for index, line in enumerate(lines) if re.match(r"^\s*\[", line)),
+            len(lines),
+        )
+        for key, value in settings.items():
+            pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+            existing = next((index for index in range(end) if pattern.match(lines[index])), None)
+            rendered = f"{key} = {value}"
+            if existing is None:
+                lines.insert(end, rendered)
+                end += 1
+            else:
+                lines[existing] = rendered
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
     def _hook_command(entry: Any, home: Path) -> Any:
         if isinstance(entry, dict):
             return {key: Installer._hook_command(value, home) for key, value in entry.items()}
@@ -257,7 +294,8 @@ class Installer:
             tomllib.loads(original_config)
         except tomllib.TOMLDecodeError as exc:
             raise ValueError(f"refusing to modify malformed {self.config_path}: {exc}") from exc
-        self.staged_config = self._replace_section_values(original_config, "agents", AGENT_SETTINGS)
+        staged = self._replace_top_level_values(original_config, PROFILE_SETTINGS[self.profile])
+        self.staged_config = self._replace_section_values(staged, "agents", AGENT_SETTINGS)
         try:
             tomllib.loads(self.staged_config)
         except tomllib.TOMLDecodeError as exc:
@@ -293,7 +331,7 @@ class Installer:
         self._write_staged(
             self.config_path,
             self.staged_config,
-            f"configure [agents] in {self.config_path}; preserve top-level model",
+            f"configure profile={self.profile} and [agents] in {self.config_path}",
         )
 
     def merge_hooks(self) -> None:
@@ -337,12 +375,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--home", type=Path, default=Path.home())
     parser.add_argument("--workspace", type=Path, default=Path("/Users/viking"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--profile",
+        choices=tuple(PROFILE_SETTINGS),
+        default="preserve",
+        help="configuration profile; preserve leaves the foreground model unchanged",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    installer = Installer(args.repo_root, args.home, args.workspace, dry_run=args.dry_run)
+    installer = Installer(
+        args.repo_root,
+        args.home,
+        args.workspace,
+        dry_run=args.dry_run,
+        profile=args.profile,
+    )
     try:
         installer.install()
     except BaseException as exc:

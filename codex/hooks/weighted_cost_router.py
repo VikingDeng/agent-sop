@@ -34,6 +34,7 @@ SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode u
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
 Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
 Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
 Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
 """
 
@@ -46,6 +47,14 @@ ROLE_CONTEXT = {
     "terra_debugger": "Diagnose an unknown root cause hypothesis-first: rank competing hypotheses and run discriminating checks. Adapt tools or implementation paths explicitly while preserving the outcome contract; return a compact evidence packet.",
     "reviewer": "Review independently and read-only; findings need severity, location, failure path, and minimal repair.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
+}
+
+STOP_TOKEN_THRESHOLD = 100_000
+STOP_TOOL_TYPES = {
+    "function_call",
+    "custom_tool_call",
+    "function_call_output",
+    "custom_tool_call_output",
 }
 
 LOWER_COST_ROLES = set(ROLE_MODEL_FAMILIES) - {"risk_reviewer"}
@@ -546,13 +555,235 @@ def _too_many_waits(session_id: str, signature: str, now: float) -> bool:
         return True
 
 
+def _transcript_turn_id(payload: dict[str, Any]) -> str:
+    value = payload.get("turn_id")
+    if isinstance(value, str) and value:
+        return value
+    metadata = payload.get("internal_chat_message_metadata_passthrough")
+    if isinstance(metadata, dict) and isinstance(metadata.get("turn_id"), str):
+        return metadata["turn_id"]
+    return ""
+
+
+def _event_token_total(record: dict[str, Any], payload: dict[str, Any]) -> int | None:
+    candidates: list[Any] = [
+        payload.get("last_token_usage"),
+        record.get("last_token_usage"),
+    ]
+    info = payload.get("info")
+    if isinstance(info, dict):
+        candidates.append(info.get("last_token_usage"))
+    for usage in candidates:
+        if (
+            isinstance(usage, dict)
+            and isinstance(usage.get("total_tokens"), int)
+            and not isinstance(usage.get("total_tokens"), bool)
+            and usage["total_tokens"] >= 0
+        ):
+            return usage["total_tokens"]
+    return None
+
+
+def _is_git_checkout(cwd: Any) -> bool:
+    if not isinstance(cwd, str) or not cwd:
+        return False
+    try:
+        path = Path(cwd).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    if not path.is_dir():
+        return False
+    return any((candidate / ".git").exists() for candidate in (path, *path.parents))
+
+
+def _stop_evidence(data: dict[str, Any]) -> tuple[bool, str, list[str]]:
+    """Return (substantial, uncertainty, command snippets) from the current turn only."""
+    transcript = data.get("transcript_path")
+    turn_id = data.get("turn_id")
+    if not isinstance(transcript, str) or not transcript or not isinstance(turn_id, str) or not turn_id:
+        return False, "Stop transcript path or turn_id is missing", []
+    calls = 0
+    outputs = 0
+    tagged_max_tokens = 0
+    task_max_tokens = 0
+    saw_unattributed_token = False
+    commands: list[str] = []
+    active_task_turn = ""
+    task_boundary_ambiguous = False
+    try:
+        with Path(transcript).open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    return False, "Stop transcript contains malformed JSON", []
+                if not isinstance(record, dict) or not isinstance(record.get("payload"), dict):
+                    continue
+                payload = record["payload"]
+                item_type = str(payload.get("type", ""))
+                payload_turn_id = _transcript_turn_id(payload)
+                if item_type == "task_started":
+                    if active_task_turn:
+                        task_boundary_ambiguous = True
+                    active_task_turn = payload_turn_id
+                elif item_type == "task_complete":
+                    if not payload_turn_id or active_task_turn != payload_turn_id:
+                        task_boundary_ambiguous = True
+                    active_task_turn = ""
+
+                is_current_turn = payload_turn_id == turn_id
+                untagged_current_task = (
+                    not payload_turn_id
+                    and active_task_turn == turn_id
+                    and not task_boundary_ambiguous
+                )
+                if record.get("type") == "response_item" and item_type in STOP_TOOL_TYPES:
+                    if not is_current_turn:
+                        continue
+                    if item_type.endswith("_output"):
+                        outputs += 1
+                    else:
+                        calls += 1
+                    arguments = payload.get("arguments", payload.get("input", {}))
+                    if isinstance(arguments, dict):
+                        for key in ("cmd", "command"):
+                            if isinstance(arguments.get(key), str):
+                                commands.append(arguments[key][:120])
+                    elif isinstance(arguments, str) and arguments:
+                        commands.append(arguments[:120])
+                if record.get("type") == "event_msg" and item_type == "token_count":
+                    if not (is_current_turn or untagged_current_task):
+                        if not payload_turn_id:
+                            saw_unattributed_token = True
+                        continue
+                    token_total = _event_token_total(record, payload)
+                    if token_total is not None:
+                        if is_current_turn:
+                            tagged_max_tokens = max(tagged_max_tokens, token_total)
+                        else:
+                            task_max_tokens = max(task_max_tokens, token_total)
+    except OSError as exc:
+        return False, f"Stop transcript is unreadable: {type(exc).__name__}", []
+    if active_task_turn:
+        task_boundary_ambiguous = True
+    max_tokens = tagged_max_tokens if task_boundary_ambiguous else max(tagged_max_tokens, task_max_tokens)
+    if calls >= 3 or max_tokens >= STOP_TOKEN_THRESHOLD:
+        return True, "", commands
+    if not calls and not outputs:
+        return False, "Stop transcript has no current-turn tool activity", commands
+    if max_tokens == 0:
+        if saw_unattributed_token:
+            return False, "Stop transcript has an untagged token_count without unambiguous current-task boundaries", commands
+        return False, "Stop transcript has no per-turn token usage; call-count evidence is below threshold", commands
+    return False, "Stop transcript has fewer than three current-turn tool calls and token usage is below threshold", commands
+
+
+def _stop_marker(data: dict[str, Any]) -> Path | None:
+    session_id = data.get("session_id")
+    turn_id = data.get("turn_id")
+    if not isinstance(session_id, str) or not isinstance(turn_id, str) or not session_id or not turn_id:
+        return None
+    digest = hashlib.sha256(f"{session_id}\0{turn_id}".encode("utf-8")).hexdigest()
+    return _state_path("stop-guard").parent / "stop-guard" / f"{digest}.done"
+
+
+def _report_has(message: str, category: str) -> bool:
+    lowered = message.lower()
+    patterns = {
+        "outcome": (
+            r"\b(?:outcome|result|implemented|completed|done|success(?:fully)?|passed|failed|blocked)\b",
+            r"结果|完成|实现|成功|失败|阻断|无变化|无需修改",
+        ),
+        "evidence/commands": (
+            r"\b(?:evidence|validation|validated|tests?|tested|commands?|commanded|exit codes?|checks?)\b",
+            r"证据|验证|已验证|测试|命令|退出码|检查|检验",
+        ),
+        "review disposition": (
+            r"\b(?:review|reviewer|audit|audited)\b",
+            r"审查|评审|复核|审核|未运行|不可用",
+        ),
+        "routing/WCU": (
+            r"\b(?:routing|model|wcu|weighted cost|costs?|uncertain)\b",
+            r"路由|模型|加权成本|成本|不确定",
+        ),
+        "remaining risks/blockers": (
+            r"\b(?:risks?|blockers?|limitations?|known issues?)\b",
+            r"风险|阻塞|阻碍|限制|已知问题",
+        ),
+        "Git/delivery state": (
+            r"\b(?:git|commit|branch|delivery|deploy|external|not applicable|n/a)\b",
+            r"提交|分支|交付|部署|外部|不适用|不相关",
+        ),
+    }
+    english, chinese = patterns[category]
+    if re.search(english, lowered) or re.search(chinese, lowered):
+        return True
+    if category == "review disposition":
+        return bool(re.search(r"\b(?:review|reviewer|audit)\b.{0,24}\b(?:none|not run|unavailable)\b", lowered))
+    if category == "remaining risks/blockers":
+        return bool(re.search(r"\b(?:risk|risks|blocker|blockers|limitation|limitations)\b.{0,24}\bnone\b", lowered))
+    return False
+
+
+def _stop_missing_categories(data: dict[str, Any]) -> list[str]:
+    final = data.get("last_assistant_message")
+    if not isinstance(final, str) or not final.strip():
+        final = ""
+    missing: list[str] = []
+    for category in (
+        "outcome",
+        "evidence/commands",
+        "review disposition",
+        "routing/WCU",
+        "remaining risks/blockers",
+    ):
+        if not _report_has(final, category):
+            missing.append(category)
+    repo_relevant = _is_git_checkout(data.get("cwd"))
+    if repo_relevant and not _report_has(final, "Git/delivery state"):
+        missing.append("Git/delivery state")
+    return missing
+
+
+def _stop_guard(data: dict[str, Any]) -> dict[str, Any] | None:
+    if data.get("stop_hook_active") is True:
+        return None
+    marker = _stop_marker(data)
+    if marker is None:
+        _record_error("Stop guard fail-open uncertainty: session_id or turn_id is missing")
+        return None
+    substantial, uncertainty, _commands = _stop_evidence(data)
+    if uncertainty:
+        _record_error(f"Stop guard fail-open uncertainty: {uncertainty}")
+    if not substantial:
+        return None
+    missing = _stop_missing_categories(data)
+    if not missing:
+        return None
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with marker.open("x", encoding="utf-8") as handle:
+                handle.write("continued\n")
+        except FileExistsError:
+            return None
+    except OSError as exc:
+        _record_error(f"Stop guard marker failure: {type(exc).__name__}: {exc}")
+        return None
+    return {
+        "decision": "block",
+        "reason": "Complete final report; missing: " + ", ".join(missing) + ".",
+        "continue": True,
+    }
+
+
 def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     event_value = data.get("hook_event_name")
     if not isinstance(event_value, str) or not event_value:
         raise ValueError("hook_event_name is missing or not a string")
     event = event_value
     strict = _strict_enforcement()
-    if event not in {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse"}:
+    if event not in {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "Stop"}:
         raise ValueError(f"unsupported hook event: {event}")
     if event == "SessionStart":
         return _context(event, SESSION_CONTEXT)
@@ -561,6 +792,9 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
         role = str(data.get("agent_type", "")).lower()
         message = ROLE_CONTEXT.get(role)
         return _context(event, message) if message else None
+
+    if event == "Stop":
+        return _stop_guard(data)
 
     if event == "PostToolUse":
         if not isinstance(data.get("tool_name"), str):

@@ -32,6 +32,19 @@ class AdaptiveSopContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, combined)
         self.assertIn("Model unavailability permits a transparent lowest-cost fallback", self.read("codex/AGENTS.workspace.md"))
+        self.assertIn("版本**: v6", supervisor)
+        for phrase in (
+            "执行模式诚实",
+            "探索/调参集",
+            "final holdout",
+            "transductive adaptation",
+            "fresh untouched",
+            "显式更正",
+            "20,000",
+            "substantial behavior",
+            "Git/外部交付状态",
+        ):
+            self.assertIn(phrase, supervisor)
 
     def test_default_policy_does_not_require_coordination_metadata(self) -> None:
         global_text = self.read("codex/AGENTS.global.md")
@@ -40,6 +53,8 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("only when they materially improve coordination", global_text)
         self.assertIn("只在运行时协调确有帮助", supervisor)
         self.assertIn("CODEX_ROUTER_ENFORCEMENT=strict", self.read("codex/README.md"))
+        self.assertIn("--profile sol-supervisor", self.read("codex/README.md"))
+        self.assertIn('"Stop"', self.read("codex/hooks/hooks.json"))
 
     def test_strict_router_profile_remains_available(self) -> None:
         self.assertEqual(POLICY.MAX_CONCURRENT_OPEN_THREADS, 2)

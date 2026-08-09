@@ -17,6 +17,9 @@ Run the installer from the repository root. A dry run shows every intended actio
 ```sh
 python3 scripts/install_codex_runtime.py --dry-run
 python3 scripts/install_codex_runtime.py
+# Explicitly run the foreground supervisor on Sol (reversible profile choice)
+python3 scripts/install_codex_runtime.py --profile sol-supervisor --dry-run
+python3 scripts/install_codex_runtime.py --profile sol-supervisor
 ```
 
 The installer:
@@ -26,7 +29,7 @@ The installer:
 - backs up each destination (including the original symlink target), persists a recovery manifest under `~/.codex/install-rollback/`, and automatically restores mutations in reverse order if a later step fails or is interrupted;
 - merges the router registrations into `~/.codex/hooks.json` instead of deleting unrelated Hooks;
 - sets the default subagent to Luna Medium, concurrency to two, and depth to one under `[agents]`;
-- deliberately preserves the top-level foreground `model` and `model_reasoning_effort`.
+- deliberately preserves the top-level foreground `model` and `model_reasoning_effort` by default; `--profile sol-supervisor` explicitly sets them to `gpt-5.6-sol` and `high`.
 
 The resulting `[agents]` settings are:
 
@@ -38,9 +41,13 @@ max_concurrent_threads_per_session = 2
 max_depth = 1
 ```
 
+The foreground profile is selected only at installation time. Start a new task (or restart Codex) after changing it; an existing task keeps its current model configuration.
+
 Codex discovers AGENTS guidance at task startup. After installation, start a new task. Non-managed Hooks must also be approved by exact hash in the Codex `/hooks` interface; this trust step is intentionally not bypassed by the installer. Specialized tool paths may bypass Hooks, so post-run auditing remains mandatory rather than treating the Hook as a security boundary.
 
 The router is advisory by default. It records diagnostics under `~/.codex/router-state/` and injects routing guidance without turning package metadata, model availability, or a preferred loop shape into permission gates. A project that genuinely needs mechanical enforcement may set `CODEX_ROUTER_ENFORCEMENT=strict` before starting Codex; strict mode preserves the fail-closed policy used by the router's contract tests.
+
+The Stop Hook is a delivery guardrail: for a substantial current turn (at least three tool calls or at least 100,000 current-turn tokens) it may continue once when the final message omits outcome, evidence/commands, review disposition, routing/WCU, remaining risks, or repo-relevant Git/delivery state. It accepts semantically complete English or Chinese reports, fails open for missing or malformed evidence or one-shot keys, and never continues when `stop_hook_active` is true.
 
 To verify the installed sources in a new CLI task:
 

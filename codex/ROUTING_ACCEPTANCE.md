@@ -29,3 +29,7 @@ Default-mode acceptance requires:
 - a meaningful preference for lower-WCU execution on labor-heavy work;
 - proportional verification and review;
 - honest `[UNCERTAIN]` cost or runtime evidence when logs are incomplete.
+
+## Fresh-task Sol-supervisor acceptance
+
+After installing with `python3 scripts/install_codex_runtime.py --profile sol-supervisor`, start a new task/restart so the model configuration is loaded. For one substantial, heavy task, acceptance evidence must show nonzero Sol planning/judgment, meaningful Luna execution, Terra review when a second view is useful, compact tool-output summaries, and a complete final report covering evidence/commands, review disposition, routing/model/WCU, remaining risks/blockers, and Git/delivery state when relevant. These are outcome evidence, not a fixed stage recipe: trivial tasks may remain single-model and skip review ceremony.

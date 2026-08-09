@@ -198,6 +198,52 @@ def _output_size(payload: dict[str, Any]) -> int:
     return len(_output_text(payload.get("output")))
 
 
+def _delivery_report_findings(message: str, *, repo_relevant: bool) -> list[str]:
+    lowered = message.lower()
+    findings: list[str] = []
+    patterns = {
+        "outcome": (
+            r"\b(?:outcome|result|implemented|completed|done|success(?:fully)?|passed|failed|blocked)\b",
+            r"结果|完成|实现|成功|失败|阻断|无变化|无需修改",
+        ),
+        "evidence/commands": (
+            r"\b(?:evidence|validation|validated|tests?|tested|commands?|commanded|exit codes?|checks?)\b",
+            r"证据|验证|已验证|测试|命令|退出码|检查|检验",
+        ),
+        "review disposition": (
+            r"\b(?:review|reviewer|audit|audited)\b",
+            r"审查|评审|复核|审核|未运行|不可用",
+        ),
+        "routing/WCU": (
+            r"\b(?:routing|model|wcu|weighted cost|costs?|uncertain)\b",
+            r"路由|模型|加权成本|成本|不确定",
+        ),
+        "remaining risks/blockers": (
+            r"\b(?:risks?|blockers?|limitations?|known issues?)\b",
+            r"风险|阻塞|阻碍|限制|已知问题",
+        ),
+        "Git/delivery state": (
+            r"\b(?:git|commit|branch|delivery|deploy|external|not applicable|n/a)\b",
+            r"提交|分支|交付|部署|外部|不适用|不相关",
+        ),
+    }
+    for category, (english, chinese) in patterns.items():
+        if category == "Git/delivery state" and not repo_relevant:
+            continue
+        if re.search(english, lowered) or re.search(chinese, lowered):
+            continue
+        if category == "review disposition" and re.search(
+            r"\b(?:review|reviewer|audit)\b.{0,24}\b(?:none|not run|unavailable)\b", lowered
+        ):
+            continue
+        if category == "remaining risks/blockers" and re.search(
+            r"\b(?:risk|risks|blocker|blockers|limitation|limitations)\b.{0,24}\bnone\b", lowered
+        ):
+            continue
+        findings.append(category)
+    return findings
+
+
 def _identifier_values(value: Any) -> dict[str, str]:
     payload = value if isinstance(value, dict) else _spawn_result_object(value)
     if not isinstance(payload, dict):
@@ -249,6 +295,18 @@ def _turn_id(payload: dict[str, Any]) -> str:
     return value if isinstance(value, str) and value else ""
 
 
+def _is_git_checkout(cwd: Any) -> bool:
+    if not isinstance(cwd, str) or not cwd:
+        return False
+    try:
+        path = Path(cwd).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    if not path.is_dir():
+        return False
+    return any((candidate / ".git").exists() for candidate in (path, *path.parents))
+
+
 def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, Any]:
     active_model = "unknown"
     previous_usage = {field: 0 for field in TOKEN_FIELDS}
@@ -274,6 +332,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     nested_policy_uncertainties: list[str] = []
     luna_routing_violations: list[str] = []
     luna_unavailable_turns: set[str] = set()
+    last_agent_message = ""
+    cwd = ""
 
     try:
         handle = meta.path.open()
@@ -299,6 +359,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "usage_schema_errors": [f"cannot open log: {exc}"],
             "token_snapshot_count": 0,
             "task_complete": False,
+            "last_agent_message": "",
+            "cwd": "",
             "nested_policy_violations": [],
             "nested_policy_uncertainties": [],
             "luna_routing_violations": [],
@@ -315,6 +377,12 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 parse_errors += 1
                 continue
             payload = record.get("payload", {})
+            metadata_record = (
+                record.get("type") in {"session_meta", "turn_context"}
+                or payload.get("type") in {"task_started", "task_complete"}
+            )
+            if metadata_record and isinstance(payload.get("cwd"), str):
+                cwd = payload["cwd"]
             observed_turn_id = _turn_id(payload)
             is_task_complete = record.get("type") == "event_msg" and payload.get("type") == "task_complete"
             substantive_after_completion = (
@@ -333,6 +401,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 continue
             if is_task_complete:
                 task_complete = True
+                if isinstance(payload.get("last_agent_message"), str):
+                    last_agent_message = payload["last_agent_message"]
             if record.get("type") == "event_msg" and payload.get("type") == "token_count":
                 info = payload.get("info")
                 usage_payload = info.get("total_token_usage") if isinstance(info, dict) else None
@@ -551,6 +621,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "usage_schema_errors": usage_schema_errors,
         "token_snapshot_count": token_snapshot_count,
         "task_complete": task_complete,
+        "last_agent_message": last_agent_message,
+        "cwd": cwd,
         "last_token_line": last_token_line,
         "last_substantive_line": last_substantive_line,
         "nested_policy_violations": nested_policy_violations,
@@ -582,6 +654,7 @@ def audit_session_tree(
     sol_execution_calls: list[dict[str, Any]] = []
     completeness_violations: list[str] = []
     routing_policy_findings: list[str] = []
+    delivery_report_findings: list[str] = []
 
     def lifecycle_violations(session: dict[str, Any], children: list[dict[str, Any]]) -> list[str]:
         events = session.get("lifecycle_events", [])
@@ -825,6 +898,16 @@ def audit_session_tree(
         elif session["last_token_line"] < session["last_substantive_line"]:
             completeness_violations.append(f"thread {thread_id}: final token snapshot precedes later activity")
 
+        if session["task_complete"] and not session["parent_thread_id"]:
+            repo_relevant = _is_git_checkout(session.get("cwd"))
+            missing = _delivery_report_findings(
+                session["last_agent_message"],
+                repo_relevant=repo_relevant,
+            )
+            if missing:
+                finding = f"thread {thread_id}: completed root final report missing " + ", ".join(missing)
+                delivery_report_findings.append(finding)
+
         for child in children:
             child_id = str(child["thread_id"])
             role = child["agent_role"]
@@ -867,6 +950,21 @@ def audit_session_tree(
     if total_tokens and not lower_cost_tokens:
         observations.append("no Terra or Luna tokens were observed; confirm that all work was judgment-only")
 
+    root_sessions = [session for session in sessions if not session["parent_thread_id"]]
+    for session in root_sessions:
+        root_models = [model for model, usage in session["usage_by_model"].items() if usage.get("total_tokens", 0)]
+        if (
+            session["task_complete"]
+            and session["last_token_line"]
+            and sum(usage.get("total_tokens", 0) for usage in session["usage_by_model"].values()) >= 1_000_000
+            and len(root_models) == 1
+            and not children_by_parent.get(str(session["thread_id"]))
+            and not any(role in {"reviewer", "risk_reviewer"} for role in roles)
+        ):
+            observations.append(
+                f"advisory: long all-single-model task on {root_models[0]} had no subagent or reviewer; assess whether a second perspective was useful"
+            )
+
     if enforcement_mode == "strict":
         violations = [*integrity_failures, *routing_policy_findings]
     else:
@@ -891,6 +989,7 @@ def audit_session_tree(
         "routing_policy_findings": routing_policy_findings,
         "routing_violations": violations,
         "routing_observations": observations,
+        "delivery_report_findings": delivery_report_findings,
         "sessions": sessions,
     }
     return report
@@ -921,6 +1020,9 @@ def render_report(report: dict[str, Any]) -> str:
     if report["routing_observations"]:
         lines.append("Observations:")
         lines.extend(f"- {item}" for item in report["routing_observations"])
+    if report.get("delivery_report_findings"):
+        lines.append("Delivery report findings (advisory):")
+        lines.extend(f"- {item}" for item in report["delivery_report_findings"])
     return "\n".join(lines)
 
 

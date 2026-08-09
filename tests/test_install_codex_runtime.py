@@ -77,6 +77,31 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             second.install()
             self.assertFalse(any(action.startswith("backup") for action in second.actions))
 
+    def test_sol_supervisor_profile_sets_foreground_model_and_preserves_unrelated_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home = base / "home"
+            workspace = base / "workspace"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            workspace.mkdir()
+            config = codex_home / "config.toml"
+            config.write_text(
+                'model = "gpt-5.6-luna"\nmodel_reasoning_effort = "low"\nsandbox_mode = "read-only"\n\n[telemetry]\nretained = "yes"\n',
+                encoding="utf-8",
+            )
+            INSTALL.Installer(ROOT, home, workspace, profile="sol-supervisor").install()
+            parsed = tomllib.loads(config.read_text())
+            self.assertEqual(parsed["model"], "gpt-5.6-sol")
+            self.assertEqual(parsed["model_reasoning_effort"], "high")
+            self.assertEqual(parsed["sandbox_mode"], "read-only")
+            self.assertEqual(parsed["telemetry"], {"retained": "yes"})
+
+    def test_preserve_profile_is_the_default_and_cli_accepts_sol_supervisor(self) -> None:
+        args = INSTALL.parse_args([])
+        self.assertEqual(args.profile, "preserve")
+        self.assertEqual(INSTALL.parse_args(["--profile", "sol-supervisor"]).profile, "sol-supervisor")
+
     def test_terra_debugger_role_declares_fixed_debugging_contract(self) -> None:
         role = tomllib.loads((ROOT / "codex" / "agents" / "terra_debugger.toml").read_text())
         self.assertEqual(role["name"], "terra_debugger")
