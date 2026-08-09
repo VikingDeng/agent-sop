@@ -114,7 +114,10 @@ class WeightedCostRouterTests(unittest.TestCase):
     def setUp(self) -> None:
         self._state = tempfile.TemporaryDirectory()
         self._environment = patch.dict(
-            os.environ, {"CODEX_ROUTER_STATE_DIR": self._state.name}
+            os.environ, {
+                "CODEX_ROUTER_STATE_DIR": self._state.name,
+                "CODEX_ROUTER_ENFORCEMENT": "strict",
+            }
         )
         self._environment.start()
 
@@ -122,11 +125,31 @@ class WeightedCostRouterTests(unittest.TestCase):
         self._environment.stop()
         self._state.cleanup()
 
-    def test_session_start_injects_objective_and_luna_gate(self) -> None:
+    def test_session_start_injects_objective_and_adaptive_routing(self) -> None:
         result = ROUTER.handle({"hook_event_name": "SessionStart"})
         context = result["hookSpecificOutput"]["additionalContext"]
         self.assertIn("25*Sol", context)
-        self.assertIn("LUNA_ELIGIBLE", context)
+        self.assertIn("adaptive advisory", context)
+
+    def test_default_advisory_mode_does_not_block_sol_or_luna_fallback(self) -> None:
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
+            sol = ROUTER.handle(pretool("gpt-5.6-sol", "apply_patch", {"patch": "x"}))
+            self.assertNotEqual(sol["hookSpecificOutput"].get("permissionDecision"), "deny")
+
+            request = {"agent_type": "luna_executor"}
+            unavailable = ROUTER.handle(posttool(
+                request,
+                "Unknown model `gpt-5.6-luna`; available: gpt-5.6-sol, gpt-5.6-terra",
+            ))
+            self.assertNotEqual(unavailable.get("decision"), "block")
+            self.assertIn("reroute", unavailable["hookSpecificOutput"]["additionalContext"])
+
+            terra = ROUTER.handle(pretool(
+                "gpt-5.6-sol",
+                "spawn_agent",
+                {"agent_type": "worker", "message": "continue the same bounded outcome", "fork_context": False},
+            ))
+            self.assertNotEqual((terra or {}).get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
 
     def test_sol_direct_mutation_is_denied(self) -> None:
         result = ROUTER.handle(pretool("gpt-5.6-sol", "apply_patch", {"patch": "x"}))
@@ -1098,14 +1121,15 @@ class WeightedCostRouterTests(unittest.TestCase):
         }))
         self.assertIsNone(result)
 
-    def test_terra_debugger_subagent_context_is_hypothesis_first_and_no_fallback(self) -> None:
+    def test_terra_debugger_subagent_context_is_hypothesis_first_and_adaptive(self) -> None:
         result = ROUTER.handle({
             "hook_event_name": "SubagentStart",
             "agent_type": "terra_debugger",
         })
         context = result["hookSpecificOutput"]["additionalContext"]
         self.assertIn("hypothesis-first", context)
-        self.assertIn("no-fallback", context)
+        self.assertIn("Adapt tools or implementation paths explicitly", context)
+        self.assertIn("outcome contract", context)
         self.assertIn("compact evidence packet", context)
 
     def test_known_role_model_mismatches_are_denied(self) -> None:

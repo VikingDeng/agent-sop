@@ -1,41 +1,21 @@
 ---
 name: research-execution-grill
-description: Stress-test an approved scientific proposal before implementation or scale-up. Prepare and verify v3 action events; never generate replacement ideas.
+description: Stress-test and operationalize an approved scientific proposal before implementation, meaningful experiments, or material scale. Use adaptive evidence and gates by default; use the signed v3 authorization profile only when explicitly required. Never replace the approved idea unless asked.
 ---
 
 # Research Execution Grill
 
-Treat the approved proposal as authoritative. Do not generate replacement ideas
-or redo proposal admission.
+Treat the proposal as an approved direction. Improve its execution and evidential quality; do not restart idea generation or admission review.
 
-## Required workflow
+1. Read the closest project instructions and the authoritative adaptive SOP at `sop/tier1-skeleton/research-execution-grill.md`.
+2. State the claim being tested, the smallest informative outcome, failure/kill criteria, budget, and the oracle that can distinguish success from implementation error.
+3. Identify the few plausible failure modes that could invalidate the result: leakage, unfair baselines, weak measurement, confounding, hidden adaptation, irreproducibility, or an incorrect implementation.
+4. Choose checks and stages that fit this proposal. Freely combine, skip, reorder, or add code readiness, acquisition, oracle validation, pilot, and scale work. Do not require human labels, registries, blinded bundles, or fixed stage names when the claim does not need them.
+5. Let the agent explore and revise tactics while preserving the approved claim, disclosed data use, acceptance criteria, and budget. Require a HUMAN decision only when one of those materially changes or a credential/privacy/irreversible/public boundary is crossed.
+6. Run the smallest experiment that can validate plumbing, measurement, and the dominant failure mode. Mark exploratory choices; scale only when evidence supports the declared scale criteria.
+7. Use independent review when it can test a credible residual failure path. Do not require review as ceremony, move the acceptance line mid-review, or continue successor gates without new evidence.
+8. Accept only real outputs and reproducible evidence. Never fabricate or proxy human judgments, hide failed checks, leak evaluation data, or weaken the claim to declare success.
 
-1. Read project instructions, the authoritative SOP, and the artifact reference.
-2. Require `schema_version: 3` and `research-execution-grill-v3`. Treat v1/v2 as matching explicit audit-only protocols; they never authorize.
-3. Preserve exact action order `static_acquisition -> human_oracle -> phase0_launch -> scale_launch`. Code Readiness is synthetic and can only support Static Acquisition. Static Acquisition does not need future labels.
-4. Keep `bootstrap/evidence_acquisition` separate from `experiment_authorization`. Bootstrap MUST NOT run a subpilot/pilot/experiment, compute scientific metrics, inspect outcomes for adaptation, or emit scientific claims. Validate required artifact IDs, provided artifact IDs, disjointness, and dependency cycle.
-5. Validate external source files, exact evidence classes, canonical hashes, and detached OpenSSH attestations against the externally pinned trust policy. Canonical hashes are not signatures.
-6. Freeze the complete review plan. Require a complete signed review cycle bound to action, opened event, core, evidence manifest, plan, reviewer identity/role, verdict, normalized findings, and source/semantic/attestation hashes.
-7. Use the two-phase authority boundary. Prepare a canonical candidate with `--prepare-event` (or `--prepare-authorization ACTION`), expect exit `5`, and give it to the external `lineage_authority`. Never sign or append the event yourself. The authority owns atomic append under a lock.
-8. Run:
+Use the signed v3 profile only when project instructions or an external/high-assurance boundary explicitly require it. In that case, read `sop/tier1-skeleton/references/research-execution-grill-artifact.md` and run its validator exactly; partial v3 evidence never authorizes.
 
-   ```sh
-   python3 ~/code/agent-sop/scripts/validate_research_execution_grill.py execution-grill.json \
-     --required-authorization phase0_launch \
-     --trust-policy trust-policy.json \
-     --trust-policy-sha256 sha256:<external-policy-pin> \
-     --lineage-ledger execution-grill-ledger.json \
-     --lineage-tail-sha256 sha256:<external-ledger-tail>
-   ```
-
-   Request `static_acquisition` or `human_oracle` for acquisition packages,
-   `phase0_launch` before experiments, and `scale_launch` before material scale.
-   Missing runtime capability is `operational_blocked`, not
-   `scientific_no_go`. Invalid or untrusted evidence is a contract error.
-9. Continue only when exit `0` verifies the exact action's signed final event. Use the exact `EMPTY` tail sentinel only for genesis preparation. Treat exits `1`, `2`, `3`, `4`, and `5` as nonauthorizing. A blocked re-review finalizes terminal `architecture_reset_required`, revokes every prior action in the checkpoint, and permits no project-local reset.
-
-## Output
-
-Return proposal/checkpoint/action, candidate or final event hash, observed ledger
-tail, review-cycle hash, exit code, and blockers. Route event/schema details to
-`sop/tier1-skeleton/references/research-execution-grill-artifact.md`.
+Return the execution contract, checks actually performed, key evidence, unresolved failure modes, pilot/scale decision, and the next executable step.

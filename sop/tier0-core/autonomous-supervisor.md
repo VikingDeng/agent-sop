@@ -1,124 +1,142 @@
-# SOP-autonomous-supervisor: 自主任务监督与成本感知编排
+# SOP-autonomous-supervisor: 结果驱动的自主执行
 
 - **层级**: tier0-core
-- **落实纪律**: P1(先冻结任务契约) P2(确定性验证与独立 Review) P3(失败显式升级,禁止静默 fallback) P4(工作包、证据、决策与 Git 结果可追溯)
+- **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
 - **绑定骨架**: 无
-- **通用性档位**: U1(编排不变式跨项目通用;角色配置、命令和工具由运行环境以 `{参数}` 注入)
-- **版本**: v4
+- **通用性档位**: U1
+- **版本**: v5
+
+## 目标
+
+把用户目标稳定地转化为高质量、可验证的结果，同时给 Agent 足够自由去探索、调整计划、选择工具与模型。SOP 约束验收质量和越权边界，不规定唯一实施路径。
 
 ## 触发条件
 
-- `[信号自触发]` 用户给出需要调查、修改、验证或交付的目标时,Supervisor 进入本 SOP;
-- `[显式]` 用户要求自主执行、多 Agent 编排、验证、Review 或完整 Git 交付时进入本 SOP。
+- 用户提出需要调查、修改、验证、执行或交付的明确目标；
+- 用户要求自主推进、多 Agent 协作、Review 或完整交付。
 
 ## 前置条件
 
-- 用户目标、当前 workspace 和可用工具可被识别;
-- 能写出目标、non-goals、假设、授权范围和至少一个可观测验收标准;
-- 项目级 Agent 指令文件、spec、测试或现有行为中至少有一种契约来源;
-- 修改任务开始前已检查工作树,用户已有改动可被保留或安全隔离。
-
-无法满足第二项时不得以“自主”为由猜测需求,应进入 mandatory human checkpoint。
+- 能从用户目标与本地证据识别一个可观察结果；若只能靠猜测方向，则仅阻断依赖该方向的部分；
+- 当前 workspace 与适用项目指令可识别，已有用户改动可被保留。
 
 ## 依赖 SOP
 
-→ tier0-core/build-oracle.md(独立验证)
+→ tier0-core/build-oracle.md（需要构造独立验收时）
 
-→ tier0-core/no-fallback-review.md(失败与 escalation 路径审查)
+→ tier0-core/no-fallback-review.md（检查静默造假或降级时）
 
-→ tier0-core/commit-and-pr.md(用户要求 Git 交付时)
+→ tier0-core/commit-and-pr.md（用户要求 Git 交付时）
+
+## 核心原则
+
+1. **验收硬，过程软**：目标、不可接受结果和验收证据要明确；探索顺序、分工、工具、模型、修复轮次和中间产物由 Agent 根据新证据调整。
+2. **边界硬，策略软**：凭据、隐私、不可逆操作、生产发布、删除、重大兼容承诺和无界成本需要授权；普通可逆工作不因流程缺件而停摆。
+3. **证据优先于仪式**：真实测试、复现、独立 oracle 和最终行为比 package 字段、固定 stage、review 次数或文档数量更重要。
+4. **复杂度与约束成比例**：失败代价越高、结果越难观察，验证越强；清晰、可逆、容易验收的任务保留高自由度。
+5. **持续收敛而非固定轮次**：只要新尝试在增加证据或降低不确定性就可继续；同类失败重复且没有实质进展时重构方案或停止，而不是机械生成 vN+1。
+
+## 不可协商的不变量
+
+- 不伪造数据、运行结果、review、签名、来源或通过状态；
+- 不把失败检查、缺失 oracle 或未知用量写成成功或零；
+- 不为了通过验收而静默降低用户要求；
+- 不覆盖无关用户改动，不泄露秘密，不越过授权 workspace；
+- 不把内部 GPT/Codex blind review 称为外部 review；
+- 未获授权不发布、部署、merge、force-push、删除持久数据或执行不可逆迁移。
 
 ## 步骤
 
-1. **冻结任务契约(P1)**:从用户目标、适用 spec、测试和项目指令提取 `GOALS`、`NON_GOALS`、假设、allowed/forbidden scope、验收标准和验证命令。每项验收标准必须能由命令、文件状态或明确 Review 判据得到 true/false。把该记录保存在任务产物、计划或最终证据中,不得只留在不可追溯的思考里。
+### 1. 建立最小结果契约
 
-2. **判定 checkpoint 类型**:
-   - `AUTONOMOUS_CHECKPOINT`:目标明确;验收可由现有证据推出;修改限于已授权 workspace;操作可逆;不改变 public API、兼容承诺或产品语义;不引入重大生产依赖;不发布;不接触新凭据;不删除持久数据;不做不可逆迁移。用户发出任务本身即为方向授权,记录判定后继续,不得再问“是否开始”。
-   - `INTERACTIVE_CHECKPOINT`:方向大体明确,但用户主动要求阶段同步,或存在非阻断的偏好信息可改善结果。汇报后继续执行已授权部分;不得把日常命令或常规 Review 交还用户。
-   - `MANDATORY_HUMAN_CHECKPOINT`:存在两个以上同样合理但产品语义不同的方向;需要改变 public API/兼容承诺、引入重大生产依赖、访问或轮换凭据、生产发布、删除数据、不可逆迁移、无法预估的显著付费、法律/合规/隐私决策;现有契约与目标冲突;或缺少关键需求且继续只能猜。写清决策、选项、影响和所需证据后停止越权部分。
-   自动 checkpoint 与人工 checkpoint 都是 P1 留痕;区别是方向是否已由任务及契约客观确定。PR 可承载异步人类终审,不要求实现过程中逐步等待。
+从用户请求和最近的项目证据提取：
 
-3. **分类任务风险**:
-   - `TRIVIAL`:目标明确、范围窄、风险低、真实调用路径已知,且单 Agent 直接完成成本更低。主 Agent 直接执行,仍运行最小必要验证。
-   - `STANDARD`:多文件修改、不熟悉调用链、普通 Bug、局部功能、非显然行为变化或需要独立 Review。最多使用一个定向 explorer;按需使用一个 worker;由 verifier 跑真实检查;行为变化由一个独立 reviewer 审查;默认一次 repair-review loop。
-   - `HIGH_RISK`:并发/协程、对象生命周期、锁/线程亲和性、认证授权、安全边界、持久化数据/迁移、public API、协议兼容、生产配置、不可逆操作、性能关键路径、资源所有权或架构依赖方向。主 Agent保留架构所有权,修改前定向调查,实现后独立 risk review;无可验证证据不得完成。
-   若命中多个类别,采用最高风险类别并记录触发信号。
+- 要达到的可观察结果；
+- 关键 non-goals 与允许范围；
+- 失败代价和真正不可接受的结果；
+- 能证明结果的验收方法；
+- 已知预算、时间或资源边界。
 
-4. **生成可委派工作包**:每个工作包必须包含 `objective`、`allowed scope`、`forbidden scope`、`relevant files/modules`、`invariants`、`acceptance criteria`、`validation commands`、`escalation conditions`、`expected evidence`、`decision_density` 与 `LUNA_ELIGIBLE=yes|no(reason)`。验收或边界仍模糊时不得委派“修好整个项目”之类目标。`decision_density` 表示执行中需要重新决定架构、研究设计、产品语义或安全边界的频率,不能用文件数量或“要写代码”代替判断。
+契约可以是任务计划中的几句话，不要求为每个任务生成正式 artifact。只有当继续会改变产品语义、公开兼容承诺、研究 claim 或资源承诺时才重新确认契约。
 
-5. **成本感知路由**:
-   - 优化目标固定为 `WCU = 25*T_sol + 10*T_terra + 1*T_luna`,其中 `T_*` 是本任务树各模型族的总 token。WCU 只能在验收标准、风险门禁和独立 oracle 不降低的约束下优化;缓存 token 仍按所属模型计入,不得靠改变统计口径制造节省。
-   - `LUNA_ELIGIBLE=yes`:架构和语义已冻结、允许文件和不变量明确、验收为二值、失败可被工具或 Review 检出。此类工作必须优先交给 explorer/focused_worker/luna_executor/verifier,包括普通代码、测试、fixture、实验管线、日志分析、数据整理和批量文档;“要写代码”不是排除 Luna 的理由。
-   - `LUNA_ELIGIBLE=no(reason)`:工作包仍需架构取舍、研究/实验设计、产品语义解释、高风险边界判断,或缺少可靠 oracle。主 Agent先完成这些判断,再重新切出 Luna 可执行包;只有不可切分的语义跨文件实现才路由 Terra worker/reviewer。
-   - `LUNA_ELIGIBLE=yes` 的执行从 Luna initial 开始。只有工作包明确记录非空 `LUNA_ELIGIBLE=no(reason)` 时,Terra worker 或 terra_debugger 才可作为该 package 唯一的 initial;无论角色如何,initial 总计仍只有一次。同一 package 最多有一次聚合后的 correction,可由 Luna 或有证据支持的 Terra 执行,但换模型或角色不重置预算。Sol 只保留父级规划、架构、研究设计、歧义消解、最终判断和最多一次明确触发的只读 HIGH_RISK 审查;Sol never implements,不直接写源文件、跑构建/测试/安装/部署或处理大段原始输出。
-   - `terra_debugger` 只能直接用于未知根因、假设驱动的诊断:它必须列出并排序竞争假设,运行能区分假设的检查,并在证据不足时显式升级或阻断。根因与修复契约一旦变成机械性工作,应在可行时把执行交还 Luna;不得用 Terra debugger 承接普通实现。
-   - HIGH_RISK 的 Sol risk_reviewer 必须收到 `HIGH_RISK_TRIGGER` 和紧凑 `EVIDENCE_PACK`;普通正确性审查使用 Terra reviewer。禁止把完整父会话复制给 subagent,只传工作包和必要证据。
-   - 每个 child 必须返回紧凑 evidence packet,至少包含角色/任务契约状态、关键假设或观察、检查及 exit code、改动定位、未决风险和升级/交接结论;不得返回 raw transcript、无界日志或整段上下文。
-   - trivial 不机械委派:仅当预计委派开销按 WCU 折算后高于直接完成,且不包含劳动密集写入/命令时,主 Agent 才直接处理。工作包应足够大到可独立验收,不得把单个搜索、单行编辑或每条命令分别拆成 Agent。
-   - 主 Agent 不重复 subagent 已完成的宽扫描;多个 Agent 不重复读取同一批大文件;Agent 返回摘要、定位和证据,不回传无界日志/图片/文件全文;同一文件同一时间只有一个 writer;默认最多 `{MAX_CONCURRENT_SUBAGENTS=2}` 个 subagent 并发。
-   - verifier 与 reviewer 必须独立于被审实现路径;“使用了 subagent”本身不是质量证据。
-   - 每个 custom Agent spawn message 必须包含恰好一个稳定非空的 `PACKAGE_ID: <id>` 和一个 `PACKAGE_PHASE: map|initial|review|correction|re_review|verify`。`initial` 与 `correction` 分别全局最多一次 writer spawn,`review` 与 `re_review` 分别最多一次 reviewer spawn;`map`/`verify` 不重置任何计数。失败 spawn 释放预留,成功 spawn 提交预留。
-   - `max_concurrent_threads_per_session` caps concurrently open spawned threads; completed threads should be closed. Completed agents remain open until an explicit close is recorded. After integrating a child result, close that child before spawning an unrelated child; keep at most two concurrently open.
-   - If a spawn returns `agent-thread-limit`, list agents, close completed/unneeded agents, then retry the same eligible spawn at most once. If it remains blocked, reuse an already-open eligible Luna/Terra thread only when its contract and role match; otherwise stop. A thread limit is a lifecycle/resource result, never Luna model unavailability, token exhaustion, or compute exhaustion. A new top-level task is last resort, not first.
-   - Thread-limit recovery is package-scoped. After the first failure, that `PACKAGE_ID` permits at most one retry and only with the exact same normalized role/model/message/phase/tool signature; any changed signature is denied, and a failed identical retry locks all later spawns for that package while inspection, close, and matching open-thread reuse remain allowed. `PACKAGE_ID` is a supervisor-declared, non-adversarial accounting identity, not cryptographic proof of semantic equivalence; the Hook is a guardrail, not a security boundary, and cannot infer paraphrased identity. Silent relabeling of unchanged work is a policy/audit violation.
-   - A genuine re-contract records exactly one `RECONTRACT_OLD_PACKAGE_ID`, `RECONTRACT_NEW_PACKAGE_ID`, `RECONTRACT_OLD_CONTRACT_SHA256`, `RECONTRACT_NEW_CONTRACT_SHA256`, `RECONTRACT_REASON`, and `RECONTRACT_SCOPE_ACCEPTANCE_DELTA`; the new ID must equal `PACKAGE_ID`, hashes are distinct 64-hex values, and reason/delta are nonempty. These markers make declared lineage auditable but do not prove semantic change.
-   - Each execution package has one total loop budget: one initial implementation, one consolidated correction batch, and one independent re-review. Escalation does not reset it. Aggregate reviewer findings before correction; if re-review remains blocked, preserve evidence and stop. `vN+1` requires explicit re-contracting and is not an implicit retry.
-   - Child Sol budget defaults to zero. At most one `risk_reviewer` may be spawned per root task/session, and only for a concrete security, concurrency, irreversible/production-data, public protocol/API, or architecture-commitment trigger carrying `HIGH_RISK_TRIGGER` and `EVIDENCE_PACK`. Research importance, validator hashes, Git cleanliness, artifact provenance, reviewer disagreement, or an ordinary high-severity correctness finding alone do not justify Sol. Ordinary gate/validator review is Terra; Sol never implements.
+### 2. 自主选择执行策略
 
-6. **执行状态机(P3/P4)**:工作包只能按以下显式状态转换并留痕:
+Agent 可以根据证据自由决定是否：
 
-   ```text
-   WORK_PACKAGE_ASSIGNED
-   -> COMPLETED(evidence)
-   or
-   -> FAILED(reason, evidence)
-   -> ESCALATED(from_role, to_role, reason, scope_delta, criteria_delta)
-   ```
+- 先探索还是直接实现；
+- 单 Agent 完成还是委派一个或多个完整结果包；
+- 使用 Luna、Terra 或 Sol；
+- 合并、跳过或重排非依赖步骤；
+- 编写临时诊断、fixture、prototype 或替代实现；
+- 增加、减少或更换验证方式；
+- 在局部修复与架构重构之间切换。
 
-   escalation 必须记录原角色失败原因与证据、为何超出工作包或能力边界、升级角色、修改范围是否扩大、验收标准是否变化和升级后的 WCU 预算影响。同一失败包不得由同一低能力角色无界重试。显式、有证据的升级不是 P3 禁止的 fallback;未记录地换角色、跳过验证或改变成功定义才是 fallback。
+不得把推荐 recipe 解释为唯一合法路径。`PACKAGE_ID`、`PACKAGE_PHASE`、`LUNA_ELIGIBLE`、固定 reviewer 数量与固定 repair 次数只在运行时协调确有帮助或项目选择 strict profile 时使用。
 
-7. **按所有权实施**:主 Agent 合并架构与最终决策;Luna/Terra writer 只修改工作包允许的文件并保留用户改动。前台为 Sol 时不得因“自己改更快”夺回可委派执行;运行时允许用 Hook 阻断 Sol 写入、重型命令、完整上下文 fork 和短周期轮询。方向或验收标准发生物质变化时返回步骤 1 重新冻结契约,不得边做边猜。每个执行包总计只允许一次 initial implementation、一次 consolidated correction batch 和一次 independent re-review；不要按 tier、模型或角色分别重置计数。第二次失败、re-review blocked 或出现 semantic pressure 必须携带证据显式 escalation 或 block,不得静默 fallback 或创建 vN+1。
+### 3. 风险自适应路由
 
-8. **确定性验证与独立 Review(P2)**:严格按 `契约 -> 定向调查 -> 实现 -> 确定性验证 -> 独立 Review -> 修复 -> 重新验证 -> 证据汇总` 执行。真实命令退出码和输出是 source of truth。Reviewer 不修改被审对象;finding 必须含 severity、文件/符号或位置、失败路径/证据和最小修复。纯风格 finding 不阻断;高风险 finding 未解决不得交付。找不到独立 oracle 时明确记录“未能独立验证”,不得让实现自证。
+优化 `WCU = 25*T_sol + 10*T_terra + 1*T_luna`，但质量契约优先：
 
-9. **漂移与失败审查(P3/P4)**:把每处修改映射到契约目标或必要验证;检查 NON_GOALS 越界、静默降级、扫描失败当通过、reviewer 不可用默认通过、oracle 不存在时自证等路径。调用 `→ tier0-core/no-fallback-review.md`;违规计数非零则阻断。
+- Luna 优先承担边界清楚、劳动密集、可被真实 oracle 验收的代码、测试、数据、实验 plumbing、日志和命令；
+- Terra 承担高语义密度的跨文件实现、未知根因诊断和普通独立审查；
+- Sol 承担架构、研究设计、歧义消解、高风险判断与最终综合。
 
-10. **成本审计与交付**:结束前从父会话及全部子会话日志生成 WCU ledger,至少列出各模型 raw/cached/output token、WCU、角色使用、Sol 执行违规、大输出和路由异常。未采集到的统计标记 `[UNCERTAIN]`,不得写成零。用户要求 Git 交付时调用 `→ tier0-core/commit-and-pr.md`,不 force push、不绕过 hooks、不夹带无关改动。最终报告只包含完成内容、关键文件、实际验证、Review finding 与处理状态、WCU/路由摘要、剩余风险/阻塞、branch/commit/PR;省略无价值的 delegation 流水账。
+这是偏好而非能力证明。Luna 不可用时可转 Terra；Terra 不可用或委派成本高于工作本身时，主 Agent 可完成必要的窄工作。任何替代都保持相同验收标准并在成本审计中如实记录。不要按单条命令拆 Agent，不 fork 完整父历史，通常保持不超过两个并发 child。
+
+### 4. 按结果迭代
+
+使用最短反馈回路推进：调查一个关键未知量、做出可检查改变、运行能区分成败的检查、根据结果更新方案。默认聚合 reviewer finding 后修复，但允许在新证据出现时追加合理修复。
+
+满足下列任一条件时停止当前策略并重新规划：
+
+- 同一失败类别连续出现且最近一次没有降低不确定性；
+- 修复开始改变目标、claim、public behavior 或预算；
+- 验收 oracle 被证明无效或与实现共享同一错误路径；
+- 预期新增收益已明显低于成本；
+- 需要人类专属判断、凭据或不可逆授权。
+
+停止当前策略不等于停止整个任务；优先缩小问题、换 oracle、换实现路径或重新切分工作。
+
+### 5. 验收与审查
+
+验收直接针对用户要的结果，而不是检查 artifact 是否存在。根据任务选择最强且实际可用的证据：真实测试、端到端运行、独立实现对照、性质/不变量、统计检验、复现、人工审阅或外部系统状态。
+
+当行为变化、高风险边界、弱 oracle 或剩余不确定性使第二视角能发现可信失败时，使用独立只读 review。Reviewer 数量和轮次由风险决定，不因“标准任务”自动触发。实现者可以运行测试，但不能仅凭自述为自己提供独立性。
+
+## HUMAN gate
+
+只在继续必须猜测以下方向时使用：
+
+- 两个以上同样合理但语义不同的产品/科研方向；
+- public API、兼容承诺或 research claim 的物质改变；
+- 新凭据、生产发布、删除、不可逆迁移；
+- 显著且未设上限的付费或算力；
+- 法律、合规、隐私或人类专属 oracle；
+- 用户要求与权威契约直接冲突。
+
+明确说明所需决定，同时继续不依赖该决定的安全工作。普通工具失败、模型不可用、reviewer 不可用或缺少推荐 artifact 不是 HUMAN gate。
 
 ## 门禁
 
-- `[AUTO][阻断型]` 契约字段和每条二值验收标准存在,否则不得写实现;
-- `[AUTO][阻断型]` checkpoint 类型与风险类别有可指认触发条件;
-- `[SCAN][阻断型]` 同一文件无重叠 writer,并发 subagent 数不超过 `{MAX_CONCURRENT_SUBAGENTS}`;
-- `[AUTO][阻断型]` 每个实质执行包有 `LUNA_ELIGIBLE`;eligible 包未先走 Luna 且无客观豁免证据时不得宣称成本路由合格;
-- `[RUNTIME][阻断型]` Sol 直接源文件写入、劳动密集命令、完整历史 fork 或无界轮询违规数为零;Hook 未覆盖的专用工具路径必须由审计补查;
-- `[RUNTIME][阻断型]` `{VALIDATION_COMMANDS}` 全部记录 exit code;任一失败不得写成通过;
-- `[REVIEW][阻断型]` 行为变化有独立 reviewer;HIGH_RISK 有携带明确 trigger/evidence pack 的 risk_reviewer,或明确记录“未完成独立风险审查”并阻断交付;
-- `[AUDIT][阻断型]` WCU ledger 能覆盖已知父/子会话;未知模型或缺失子会话不得被静默按零成本处理;
-- `[REVIEW][阻断型]` 失败处理与 escalation 通过 `→ tier0-core/no-fallback-review.md`;
-- `[HUMAN]` 仅在步骤 2 的 `MANDATORY_HUMAN_CHECKPOINT` 客观条件命中时启用。
+仅以下条件硬阻断相关动作：违反不可协商不变量；跨越 HUMAN gate 未获决定；高风险动作缺少与潜在损害相称的证据；或没有任何能支持用户 claim 的可信验收方法。流程字段、角色、模型、review 次数、package 状态和推荐 artifact 不单独构成门禁。
 
 ## 完成判定
 
-以下条件全部为 true 才完成:
-
-- 契约、checkpoint 类型、风险类别和修改-目标映射可查;
-- 所有委派工作包字段齐全,状态均为 `COMPLETED(evidence)` 或有显式阻塞记录;
-- 所有声明执行的验证都有命令、exit code 和结果,失败项为零;
-- STANDARD 行为变化或 HIGH_RISK 工作有独立 Review 结论,高严重度 finding 为零;
-- no-fallback 违规点为零,或任务被明确阻断且未伪装完成;
-- WCU ledger 已生成,Sol 执行违规为零,所有昂贵升级都有证据;
-- 最终报告与 Git 状态(如适用)可由本地命令或远端状态复核。
+- 用户要求的结果已出现，并由与 claim 匹配的证据支持；
+- 重要失败路径已经检查，或限制已如实报告；
+- 没有伪造、静默降级、越权或未披露的高风险动作；
+- 关键验证命令及结果可查；
+- Git/发布状态与实际一致；
+- WCU/模型使用在可获得时被记录，未知项标为 `[UNCERTAIN]`。
 
 ## 失败处理
 
-遵守 P3:契约无法写成可测判据、授权包络无法客观判定或必须猜产品语义时,进入 `MANDATORY_HUMAN_CHECKPOINT` 并停止越权部分;工作包失败时记录 `FAILED(reason, evidence)`,只通过显式 `ESCALATED(...)` 升级,不得偷偷换角色、扩大范围或降低验收标准;验证失败、reviewer 不可用、oracle 缺失、扫描器崩溃、push/PR 失败均如实报错,不得跳过后宣称完成;不可恢复用户改动冲突时停止写入并列出冲突文件。
+工具、模型或 reviewer 不可用时，选择能保持验收标准的最低成本替代路径；无法替代时才阻断相关部分。验证失败时保留证据并继续诊断，不得改写成功定义。发现架构方向错误时允许重新设计，不要求沿用旧 package 或复制旧 gate 历史。只有真正的授权边界或缺少可行验收 oracle 才停止整个任务。
 
 ## 产物
 
-- 一份可追溯任务契约与 checkpoint/风险分类记录;
-- 零个或多个字段齐全的工作包及其状态/证据;
-- 一份覆盖会话树的 WCU ledger 与路由违规摘要;
-- 实现 diff、确定性验证结果、独立 Review 及 repair 记录;
-- no-fallback/漂移结论;
-- 最终证据摘要,以及用户要求时的 branch、commit 和 PR。
+- 简洁的结果契约；
+- 与风险相称的实现、实验或分析产物；
+- 直接支持验收结论的证据；
+- 必要的 review、限制和成本说明；
+- 用户要求时的可追溯 Git 交付。

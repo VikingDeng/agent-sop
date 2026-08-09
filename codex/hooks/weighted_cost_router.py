@@ -30,13 +30,11 @@ from weighted_routing_policy import (
 )
 
 
-SESSION_CONTEXT = """Weighted-cost routing is active.
-Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens subject to unchanged acceptance criteria and review gates.
-Before execution, record LUNA_ELIGIBLE=yes/no(reason). Use Luna for the initial implementation when eligible. A Terra worker/debugger may consume the package's sole initial only with a nonempty objective LUNA_ELIGIBLE=no(reason). Under the same package budget, use at most one consolidated correction on Luna or Terra; Sol never implements. Reserve Sol for parent judgment and at most one explicitly triggered read-only risk review.
-Every custom agent message requires compact `PACKAGE_ID: <stable-id>` and `PACKAGE_PHASE: map|initial|review|correction|re_review|verify` markers. Do not copy full history. If runtime evidence says gpt-5.6-luna is unavailable, stop the package and refresh/start a new task/turn; do not retry Luna, run a correction, or execute directly on Sol. risk_reviewer requires HIGH_RISK_TRIGGER and a compact EVIDENCE_PACK. Return summaries instead of large raw tool output.
-Lifecycle: max_concurrent_threads_per_session caps concurrently open spawned threads; completed threads should be closed. If a spawn returns agent-thread-limit, list agents, close completed/unneeded agents, retry the same eligible spawn at most once, then reuse an already-open matching Luna/Terra thread or stop. This is distinct from Luna model unavailability.
-Thread-limit recovery is package-scoped: only one exact normalized-signature retry is permitted; a changed signature under that PACKAGE_ID is denied and a failed retry locks further package spawns. PACKAGE_ID is supervisor-declared accounting identity, not cryptographic semantic proof. A new ID after recovery requires explicit old/new package IDs, old/new contract SHA-256 values, reason, and scope/acceptance delta.
-Global package loop budget: one initial implementation, one consolidated correction batch, and one independent re-review total; role escalation does not reset it and vN+1 is forbidden without explicit re-contracting.
+SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode unless CODEX_ROUTER_ENFORCEMENT=strict.
+Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
+Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
+Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
 """
 
 ROLE_CONTEXT = {
@@ -45,12 +43,16 @@ ROLE_CONTEXT = {
     "luna_executor": "Own the bounded labor-heavy implementation. Follow the frozen architecture and binary acceptance criteria; escalate judgment-heavy ambiguity.",
     "verifier": "Run the declared oracle and return concise raw evidence plus exit codes; do not edit source.",
     "worker": "Resolve only the documented semantic/cross-file issue. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason); otherwise this is the single consolidated correction.",
-    "terra_debugger": "Diagnose an unknown root cause hypothesis-first: state competing hypotheses, rank them by evidence, and run discriminating checks. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason). Use no-fallback behavior; return a compact evidence packet and escalate when evidence or the contract is insufficient.",
+    "terra_debugger": "Diagnose an unknown root cause hypothesis-first: rank competing hypotheses and run discriminating checks. Adapt tools or implementation paths explicitly while preserving the outcome contract; return a compact evidence packet.",
     "reviewer": "Review independently and read-only; findings need severity, location, failure path, and minimal repair.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
 }
 
 LOWER_COST_ROLES = set(ROLE_MODEL_FAMILIES) - {"risk_reviewer"}
+
+
+def _strict_enforcement() -> bool:
+    return os.environ.get("CODEX_ROUTER_ENFORCEMENT", "advisory").strip().lower() == "strict"
 
 def _emit(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, separators=(",", ":"))
@@ -549,6 +551,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(event_value, str) or not event_value:
         raise ValueError("hook_event_name is missing or not a string")
     event = event_value
+    strict = _strict_enforcement()
     if event not in {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse"}:
         raise ValueError(f"unsupported hook event: {event}")
     if event == "SessionStart":
@@ -562,9 +565,13 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if event == "PostToolUse":
         if not isinstance(data.get("tool_name"), str):
             _record_error("PostToolUse missing string tool_name")
+            if not strict:
+                return _posttool_context("Weighted router advisory: PostToolUse schema was incomplete; routing evidence is uncertain, but task execution is not blocked.")
             return _posttool_block("Weighted router: PostToolUse schema is uncertain; stop this package and refresh/start a new task/turn.")
         if not isinstance(data.get("tool_input"), (dict, str)) or "tool_response" not in data:
             _record_error("PostToolUse missing or malformed tool_input/tool_response")
+            if not strict:
+                return _posttool_context("Weighted router advisory: tool result schema was incomplete; record routing usage as uncertain and continue using task-level evidence.")
             return _posttool_block("Weighted router: PostToolUse result schema is uncertain; stop this package and refresh/start a new task/turn.")
         tool_name = data["tool_name"]
         tool_input = _tool_input(data)
@@ -572,6 +579,36 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
             request = classify_spawn_request(tool_name, tool_input)
         except ValueError:
             request = None
+        response = data["tool_response"]
+        result = classify_spawn_result(response, luna_role=request.luna_role if request else None)
+        if not strict:
+            if request is not None and request.luna_role is not None and (result.unknown_luna or result.succeeded):
+                session_id = str(data.get("session_id", ""))
+                turn_id = _turn_id(data)
+                if session_id and turn_id:
+                    _record_luna_capability(
+                        session_id,
+                        turn_id,
+                        unavailable=result.unknown_luna,
+                        verified=result.succeeded,
+                    )
+            if result.unknown_luna:
+                return _posttool_context(
+                    "Weighted router advisory: Luna is unavailable for this call. Preserve the same outcome and acceptance evidence, then reroute to the lowest-cost available capable role, normally Terra; do not treat this as a scientific or project gate."
+                )
+            if result.thread_limit:
+                return _posttool_context(
+                    "Weighted router advisory: the child-thread limit was reached. Close completed children, reuse a matching open child, reduce decomposition, or continue in the parent when proportionate."
+                )
+            if request is not None and request.has_conflict:
+                return _posttool_context("Weighted router advisory: " + _request_conflict_reason(request))
+            if request is not None and (contract_error := package_contract_error(request)) is not None:
+                return _posttool_context(
+                    "Weighted router advisory: optional package metadata is inconsistent ("
+                    + contract_error
+                    + "). Do not use it as audit proof; task execution may continue against the outcome contract."
+                )
+            return None
         if request is not None and request.has_conflict:
             reason = _request_conflict_reason(request)
             _record_error(reason)
@@ -580,8 +617,6 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
             reason = f"Weighted router: invalid package contract in PostToolUse: {contract_error}."
             _record_error(reason)
             return _posttool_block(reason)
-        response = data["tool_response"]
-        result = classify_spawn_result(response, luna_role=request.luna_role if request else None)
         if request is not None and not _settle_spawn_budget(data, request, succeeded=result.succeeded):
             return _posttool_block("Weighted router: package/risk reservation could not be settled; stop this package.")
         recovery_outcome = (
@@ -633,9 +668,13 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
 
     if not isinstance(data.get("model"), str) or not isinstance(data.get("tool_name"), str):
         _record_error("PreToolUse missing string model or tool_name")
+        if not strict:
+            return _context("PreToolUse", "Weighted router advisory: model/tool schema is incomplete; routing cost is uncertain, but the tool is not blocked.")
         return _deny("Weighted router: Hook input schema is uncertain (missing model/tool_name); tool use is blocked. Disable the router registration manually only for emergency recovery.")
     if not isinstance(data.get("tool_input"), (dict, str)):
         _record_error("PreToolUse has unsupported tool_input type")
+        if not strict:
+            return _context("PreToolUse", "Weighted router advisory: tool input schema is unknown; do not rely on the routing audit for this call.")
         return _deny("Weighted router: Hook input schema is uncertain (unsupported tool_input); tool use is blocked.")
 
     tool_name = data["tool_name"].lower()
@@ -645,7 +684,34 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     active_model = _active_model(data)
     if not any(family in active_model for family in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")):
         _record_error(f"PreToolUse has unsupported model: {active_model}")
+        if not strict:
+            return _context("PreToolUse", "Weighted router advisory: active model is outside the configured Sol/Terra/Luna families; cost attribution is uncertain.")
         return _deny("Weighted router: active model is outside the configured Sol/Terra/Luna families; routing cost and permissions are uncertain.")
+
+    if not strict:
+        advisories: list[str] = []
+        request = None
+        if tool_leaf in {"agent", "spawn_agent", "create_agent", "exec"}:
+            try:
+                request = classify_spawn_request(tool_name, tool_input)
+            except ValueError as exc:
+                advisories.append(f"nested agent syntax is not auditable ({exc})")
+        if request is not None:
+            if request.has_conflict:
+                advisories.append(_request_conflict_reason(request))
+            elif (contract_error := package_contract_error(request)) is not None:
+                advisories.append(f"optional package metadata is inconsistent ({contract_error})")
+            if _has_full_fork(tool_input):
+                advisories.append("avoid a full parent-history fork; send the minimum task-local evidence")
+            if request.role == "risk_reviewer":
+                prompt = _prompt(tool_input)
+                if "HIGH_RISK_TRIGGER:" not in prompt or "EVIDENCE_PACK:" not in prompt:
+                    advisories.append("an expensive Sol risk review lacks a concrete trigger/evidence pack")
+        if "gpt-5.6-sol" in active_model and is_sol_execution(tool_name, tool_input):
+            advisories.append("this is direct Sol execution; prefer Luna/Terra for long mechanical work when delegation is available")
+        if advisories:
+            return _context("PreToolUse", "Weighted router advisory: " + "; ".join(advisories) + ". Preserve the outcome contract and record material WCU tradeoffs.")
+        return None
 
     if tool_leaf in {"agent", "spawn_agent", "create_agent"}:
         request = classify_spawn_request(tool_name, tool_input)

@@ -559,7 +559,15 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     }
 
 
-def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int = 20_000) -> dict[str, Any]:
+def audit_session_tree(
+    target: str,
+    sessions_root: Path,
+    large_output_chars: int = 20_000,
+    *,
+    enforcement_mode: str = "strict",
+) -> dict[str, Any]:
+    if enforcement_mode not in {"advisory", "strict"}:
+        raise ValueError("enforcement_mode must be advisory or strict")
     metas = discover_session_tree(target, sessions_root)
     sessions = [audit_log(meta, large_output_chars=large_output_chars) for meta in metas]
     model_totals: dict[str, Counter[str]] = defaultdict(Counter)
@@ -573,6 +581,7 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
     large_outputs: list[dict[str, Any]] = []
     sol_execution_calls: list[dict[str, Any]] = []
     completeness_violations: list[str] = []
+    routing_policy_findings: list[str] = []
 
     def lifecycle_violations(session: dict[str, Any], children: list[dict[str, Any]]) -> list[str]:
         events = session.get("lifecycle_events", [])
@@ -733,12 +742,12 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
                 successful_risk_counts[root_session] += 1
     for (root_session, package_id, phase), count in sorted(successful_phase_counts.items()):
         if count > GLOBAL_LOOP_BUDGET[phase]:
-            completeness_violations.append(
+            routing_policy_findings.append(
                 f"session {root_session}: package {package_id!r} has {count} successful {phase} spawns; maximum is {GLOBAL_LOOP_BUDGET[phase]}"
             )
     for root_session, count in sorted(successful_risk_counts.items()):
         if count > 1:
-            completeness_violations.append(
+            routing_policy_findings.append(
                 f"session {root_session}: {count} successful risk_reviewer spawns; maximum is one"
             )
 
@@ -757,7 +766,7 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
         requested_roles = Counter(session["successful_spawn_roles"])
         expected_children = sum(requested_roles.values())
         children = children_by_parent[thread_id]
-        completeness_violations.extend(lifecycle_violations(session, children))
+        routing_policy_findings.extend(lifecycle_violations(session, children))
         discovered_children = len(children)
         if expected_children > discovered_children:
             completeness_violations.append(
@@ -804,11 +813,11 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
                 f"thread {thread_id}: {len(session['usage_schema_errors'])} token/schema error(s)"
             )
         for item in session["nested_policy_violations"]:
-            completeness_violations.append(f"thread {thread_id}: {item}")
+            routing_policy_findings.append(f"thread {thread_id}: {item}")
         for item in session["nested_policy_uncertainties"]:
             completeness_violations.append(f"thread {thread_id}: {item}")
         for item in session["luna_routing_violations"]:
-            completeness_violations.append(f"thread {thread_id}: {item}")
+            routing_policy_findings.append(f"thread {thread_id}: {item}")
         if not session["token_snapshot_count"]:
             completeness_violations.append(f"thread {thread_id}: no valid token snapshot")
         if not session["task_complete"]:
@@ -849,19 +858,28 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
     total_tokens = sum(counter["total_tokens"] for counter in model_totals.values())
     lower_cost_tokens = sum(family_totals[family]["total_tokens"] for family in ("terra", "luna"))
 
-    violations = list(completeness_violations)
+    integrity_failures = list(completeness_violations)
     if sol_execution_calls:
-        violations.append(f"{len(sol_execution_calls)} non-read-only tool call(s) were made by Sol")
+        routing_policy_findings.append(f"{len(sol_execution_calls)} non-read-only tool call(s) were made by Sol")
     if unknown_models:
-        violations.append("unknown model family: " + ", ".join(unknown_models))
+        integrity_failures.append("unknown model family: " + ", ".join(unknown_models))
     observations = []
     if total_tokens and not lower_cost_tokens:
         observations.append("no Terra or Luna tokens were observed; confirm that all work was judgment-only")
 
-    return {
+    if enforcement_mode == "strict":
+        violations = [*integrity_failures, *routing_policy_findings]
+    else:
+        violations = list(integrity_failures)
+        observations.extend(f"advisory only: {item}" for item in routing_policy_findings)
+
+    report = {
         "root": target,
+        "enforcement_mode": enforcement_mode,
         "session_count": len(sessions),
-        "cost_status": "partial_uncertain" if completeness_violations or unknown_models else "complete",
+        "cost_status": "partial_uncertain" if (
+            integrity_failures or (enforcement_mode == "strict" and routing_policy_findings)
+        ) else "complete",
         "weighted_cost_units": weighted_cost,
         "total_tokens": total_tokens,
         "model_totals": {model: dict(counter) for model, counter in sorted(model_totals.items())},
@@ -869,16 +887,19 @@ def audit_session_tree(target: str, sessions_root: Path, large_output_chars: int
         "subagent_roles": dict(roles),
         "large_outputs": sorted(large_outputs, key=lambda item: item["chars"], reverse=True),
         "sol_execution_calls": sol_execution_calls,
-        "completeness_violations": completeness_violations,
+        "completeness_violations": integrity_failures,
+        "routing_policy_findings": routing_policy_findings,
         "routing_violations": violations,
         "routing_observations": observations,
         "sessions": sessions,
     }
+    return report
 
 
 def render_report(report: dict[str, Any]) -> str:
     uncertainty = " [UNCERTAIN/PARTIAL]" if report["cost_status"] != "complete" else ""
     lines = [
+        f"Routing mode: {report.get('enforcement_mode', 'strict')}",
         f"Sessions: {report['session_count']}",
         f"Raw tokens: {report['total_tokens']:,}{uncertainty}",
         f"Weighted cost: {report['weighted_cost_units']:,} WCU{uncertainty} (25*Sol + 10*Terra + 1*Luna)",
@@ -909,13 +930,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sessions-root", type=Path, default=Path.home() / ".codex" / "sessions")
     parser.add_argument("--large-output-chars", type=int, default=20_000)
     parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="treat historical routing/process anomalies as exit-1 violations instead of advisory observations",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        report = audit_session_tree(args.target, args.sessions_root, args.large_output_chars)
+        report = audit_session_tree(
+            args.target,
+            args.sessions_root,
+            args.large_output_chars,
+            enforcement_mode="strict" if args.strict else "advisory",
+        )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

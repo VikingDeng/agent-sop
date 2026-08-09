@@ -670,7 +670,7 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["family_totals"]["terra"]["total_tokens"], 200)
             self.assertTrue(any("role mismatch" in item for item in report["routing_violations"]))
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(AUDIT.main([str(parent), "--sessions-root", str(root), "--json"]), 1)
+                self.assertEqual(AUDIT.main([str(parent), "--sessions-root", str(root), "--json", "--strict"]), 1)
 
     def test_child_role_with_sol_usage_is_partial_even_when_role_label_is_luna(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1174,7 +1174,7 @@ class AuditCodexSessionTests(unittest.TestCase):
             })
             path = self.write_log(root, "parent", "root", "gpt-5.6-sol", [100], extra=extra)
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(AUDIT.main([str(path), "--sessions-root", str(root), "--json"]), 1)
+                self.assertEqual(AUDIT.main([str(path), "--sessions-root", str(root), "--json", "--strict"]), 1)
 
     def test_historical_audit_cli_reports_violations_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1187,8 +1187,26 @@ class AuditCodexSessionTests(unittest.TestCase):
                 "turn_id": "turn-a",
             })
             path = self.write_log(root, "parent", "root", "gpt-5.6-sol", [100], extra=extra)
-            completed = subprocess.run(
+            advisory = subprocess.run(
                 [sys.executable, str(SCRIPT), str(path), "--sessions-root", str(root)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(advisory.returncode, 0)
+            self.assertIn("Routing mode: advisory", advisory.stdout)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write("{corrupt-json\n")
+            integrity = subprocess.run(
+                [sys.executable, str(SCRIPT), str(path), "--sessions-root", str(root)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(integrity.returncode, 0)
+            self.assertIn("corrupt JSON", integrity.stdout)
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), str(path), "--sessions-root", str(root), "--strict"],
                 text=True,
                 capture_output=True,
                 check=False,
@@ -1231,7 +1249,7 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["cost_status"], "partial_uncertain")
             self.assertTrue(any("dynamic tools access" in item for item in report["routing_violations"]))
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(AUDIT.main([str(path), "--sessions-root", str(root), "--json"]), 1)
+                self.assertEqual(AUDIT.main([str(path), "--sessions-root", str(root), "--json", "--strict"]), 1)
 
     def test_task_complete_must_be_terminal_for_final_epoch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

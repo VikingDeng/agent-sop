@@ -1,7 +1,14 @@
-# Research Execution Grill v3 event and artifact contract
+# Research Execution Grill v3 strict event and artifact contract
 
-Schema `3` with protocol `research-execution-grill-v3` is the only authorizing
-contract. Schema v1 and v2 are historical and require matching `--audit-v1` or
+This is an optional high-assurance profile, not the default workflow for every
+proposal. Use it only when project instructions, an external audit requirement,
+or a genuinely high-value authority boundary explicitly selects signed v3.
+Otherwise use the adaptive Grill SOP and choose evidence that matches the claim.
+Once selected, this profile remains fail-closed for the action it protects.
+
+Within this strict profile, schema `3` with protocol
+`research-execution-grill-v3` is the only authorizing contract. Schema v1 and
+v2 are historical and require matching `--audit-v1` or
 `--audit-v2`; a successful audit exits `4` and never authorizes an action.
 
 ## Authority split

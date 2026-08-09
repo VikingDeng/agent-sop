@@ -19,7 +19,7 @@
 
 ## 依赖 SOP
 
-→ tier0-core/no-fallback-review.md(提交前必过零 fallback 审查)。
+→ tier0-core/no-fallback-review.md(提交前检查静默失败、造假与未披露降级)。
 
 ## 步骤
 

@@ -44,7 +44,7 @@ agent-sop/
 3. **产出人读文字时受 PROSE_STANDARD 约束**(产文字的 SOP 在门禁引用它,一处定义全库复用)。
 4. **需要自主编排时走 [autonomous-supervisor](sop/tier0-core/autonomous-supervisor.md)**:在授权包络内自动冻结契约并执行;真实方向分叉才进入 HUMAN gate。
 5. **选 Skill 适配器时读 [SKILL-ADAPTERS.md](SKILL-ADAPTERS.md)**:只在已选 SOP 需要领域知识、格式处理或工具操作时加载;Skill 不改变任务分类、门禁或完成判定。
-6. **实施已批准科研 proposal 前走 [research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)**:不重新生成 idea,只把 claim、实现歧义、实验设计、oracle、预算与 scale 判据冻结成机器可验契约。
+6. **实施已批准科研 proposal 前走 [research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)**:不重新生成 idea；按 claim 选择真正需要的 oracle、pilot、风险边界和 scale 证据，不强迫所有 proposal 进入同一 gate 链。
 
 ## 新增一个 SOP
 

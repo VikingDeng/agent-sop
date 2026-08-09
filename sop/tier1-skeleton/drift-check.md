@@ -21,7 +21,7 @@ development 骨架实现过程中,每次提交(product)或每个里程碑(protot
 
 → tier0-core/add-dependency.md(新增依赖或抽象需先补理由与锁定记录)。
 
-→ tier0-core/no-fallback-review.md(漂移检查同时过零 fallback 审查)。
+→ tier0-core/no-fallback-review.md(漂移检查同时审查静默失败与未披露降级)。
 
 ## 步骤
 
