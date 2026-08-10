@@ -167,6 +167,28 @@ class WeightedCostRouterTests(unittest.TestCase):
             with self.subTest(strict_term=strict_term):
                 self.assertNotIn(strict_term, context)
 
+    def test_model_bound_resume_is_denied_in_both_routing_profiles(self) -> None:
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
+            advisory = ROUTER.handle(pretool(
+                "gpt-5.6-terra", "resume_agent", {"target": "closed-reviewer"}
+            ))
+        self.assertEqual(advisory["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("fresh explicit typed role", advisory["hookSpecificOutput"]["permissionDecisionReason"])
+
+        denied = ROUTER.handle(pretool(
+            "gpt-5.6-terra", "resume_agent", {"target": "closed-reviewer"}
+        ))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("routing violation", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_nested_model_bound_resume_is_denied(self) -> None:
+        result = ROUTER.handle(pretool(
+            "gpt-5.6-terra",
+            "functions.exec",
+            'await tools.multi_agent_v1__resume_agent({"target":"closed-reviewer"});',
+        ))
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def _stop_transcript(
         self,
         directory: str,

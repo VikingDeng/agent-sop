@@ -33,14 +33,14 @@ from weighted_routing_policy import (
 SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode unless CODEX_ROUTER_ENFORCEMENT=strict.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
 Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
-Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. The runtime guard rejects resume_agent for model-bound package work: spawn a fresh explicit typed role for correction or re-review; reuse only an open matching agent whose contract and role are confirmed. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
 Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
 Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
 """
 
 STRICT_SESSION_CONTEXT = """Weighted-cost routing is active in strict enforcement mode.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
-Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance.
+Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance. Model-bound package work must use a fresh explicit typed spawn for correction/re-review; resume_agent is denied.
 Use Luna for fixed Luna-eligible implementation packages, Terra only for explicitly permitted semantic/debugging work or ordinary review, and Sol for read-only architecture, research design, ambiguity, and final judgment.
 Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
 Preserve real evidence and never lower acceptance criteria silently. If a strict invariant or required runtime capability is uncertain, stop the affected package and report the uncertainty.
@@ -53,7 +53,7 @@ ROLE_CONTEXT = {
     "verifier": "Run the declared oracle and return concise raw evidence plus exit codes; do not edit source.",
     "worker": "Resolve only the documented semantic/cross-file issue. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason); otherwise this is the single consolidated correction.",
     "terra_debugger": "Diagnose an unknown root cause hypothesis-first: rank competing hypotheses and run discriminating checks. Adapt tools or implementation paths explicitly while preserving the outcome contract; return a compact evidence packet.",
-    "reviewer": "Review independently and read-only; findings need severity, location, failure path, and minimal repair.",
+    "reviewer": "Review independently and read-only; findings need severity, location, failure path, impact on frozen acceptance, and minimal repair. Use REVIEW_PROFILE=ordinary|api|security|architecture/data when useful; stop when verdict evidence is sufficient.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
 }
 
@@ -154,6 +154,19 @@ def _has_full_fork(tool_input: dict[str, Any]) -> bool:
     if tool_input.get("fork_context") is True:
         return True
     return str(tool_input.get("fork_turns", "")).lower() in {"all", "full"}
+
+
+def _contains_resume_agent(raw: str) -> bool:
+    return bool(re.search(r"(?:multi_agent_v1__)?resume_agent\s*\(", raw))
+
+
+def _resume_agent_reason() -> str:
+    return (
+        "Weighted router: resume_agent is not a model-bound package primitive. "
+        "For correction/re-review or any role-bound package phase, spawn a fresh explicit typed role; "
+        "reuse an already-open agent only after confirming the matching contract and role. "
+        "If runtime evidence shows a model mismatch, stop the phase and record a routing violation with WCU uncertain."
+    )
 
 
 def _request_conflict_reason(request: Any) -> str:
@@ -933,6 +946,13 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
         if not strict:
             return _context("PreToolUse", "Weighted router advisory: active model is outside the configured Sol/Terra/Luna families; cost attribution is uncertain.")
         return _deny("Weighted router: active model is outside the configured Sol/Terra/Luna families; routing cost and permissions are uncertain.")
+
+    if tool_leaf in {"resume_agent", "resume"} or (
+        tool_leaf == "exec" and _contains_resume_agent(command_text(tool_input))
+    ):
+        reason = _resume_agent_reason()
+        _record_error(reason)
+        return _deny(reason)
 
     if not strict:
         advisories: list[str] = []

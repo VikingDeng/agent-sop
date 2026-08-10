@@ -57,6 +57,8 @@ Managed installed Hooks embed the selected `CODEX_ROUTER_ENFORCEMENT=advisory|st
 
 The Stop Hook is a delivery guardrail: for a substantial current turn (at least three tool calls or at least 100,000 current-turn tokens) it may continue once when the final message omits outcome, evidence/commands, review disposition, routing/WCU, remaining risks, or repo-relevant Git/delivery state. It accepts semantically complete English or Chinese reports, fails open for missing or malformed evidence or one-shot keys, and never continues when `stop_hook_active` is true.
 
+Model-bound package corrections and re-reviews use a fresh explicit typed spawn; do not use `resume_agent` for a closed role-bound agent. Reuse is limited to an already-open agent after confirming the matching contract and role. If audit/runtime evidence shows a role/model mismatch, stop the affected phase, record a routing violation, and report WCU as `[UNCERTAIN]` rather than accepting the observed role.
+
 To verify the installed sources in a new CLI task:
 
 ```sh
@@ -77,6 +79,10 @@ The foreground model remains a user choice. The router does not spawn agents; in
 The managed Hook command selects the requested routing profile for installed Hooks. Strict mode retains the historical package-marker, loop-budget, Sol-write, risk-review, thread-recovery, and Luna fail-closed behavior; its unit tests exercise that mode. Direct router invocations remain advisory unless their caller sets the variable. In a fresh strict task, Luna unavailability fails closed and must be reported; it must not be silently rerouted.
 
 The auditor is process-advisory by default. Model choice, package metadata, loop shape, lifecycle preferences, and direct Sol work are observations rather than exit failures. Evidence-integrity problems—corrupt/truncated logs, missing descendants or outputs, invalid token schemas, unknown model attribution, and incomplete task evidence—remain nonzero because WCU and completion claims would be unreliable. Pass `--strict` when a task explicitly selected strict routing and its process findings must also fail the audit. Live behavior still requires a fresh-task smoke test; synthetic tests establish code behavior, not service-side model availability.
+
+Use bounded review profiles such as `REVIEW_PROFILE=ordinary|api|security|architecture/data` to keep review proportional. An API correctness review may use Sol risk judgment without invoking the full codex-security workflow; the full workflow is reserved for a concrete adversarial security trigger. Skills remain orthogonal adapters and cannot add frozen stages or acceptance artifacts. Stop review once the verdict is evidence-sufficient; carry nonblocking findings as `[UNCERTAIN]` or backlog items.
+
+For a new project directory, run `git rev-parse --show-toplevel` before the first write, stage, or commit. A directory under `/Users/viking` or ContestOS can inherit a parent repository; use an independent `git init` or worktree when that is the intended root. Run only one full suite at a time, close only your own prior process/session before restarting, and prefer one long bounded wait with compact evidence over short polling/raw transcript loops. Monitoring WCU is part of the cost record.
 
 Research follows the same pattern: the adaptive Grill is the default, while the signed v3 ledger/validator is an opt-in strict profile for externally auditable or high-value authority boundaries.
 

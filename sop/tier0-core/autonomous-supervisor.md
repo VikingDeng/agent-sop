@@ -4,7 +4,7 @@
 - **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1
-- **版本**: v7
+- **版本**: v8
 
 ## 目标
 
@@ -45,6 +45,8 @@
 - 不为了通过验收而静默降低用户要求；
 - 不覆盖无关用户改动，不泄露秘密，不越过授权 workspace；
 - 不把内部 GPT/Codex blind review 称为外部 review；
+- model-bound package work 不得用 `resume_agent` 恢复已关闭的 role-bound agent；correction/re-review 必须 fresh-spawn 显式 typed role。仍打开的 agent 只有在 contract/role 匹配已确认时才可复用；
+- runtime evidence 若显示 role/model mismatch，立即停止该 phase，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
 - 未获授权不发布、部署、merge、force-push、删除持久数据或执行不可逆迁移。
 
 ## 步骤
@@ -90,6 +92,10 @@ Agent 可以根据证据自由决定是否：
 使用最短反馈回路推进：调查一个关键未知量、做出可检查改变、运行能区分成败的检查、根据结果更新方案。默认聚合 reviewer finding 后修复，但允许在新证据出现时追加合理修复。
 
 Review 必须对齐冻结契约与具体失败路径，不能以品味性要求扩大 acceptance。新的可信失败路径可触发一次合并修复或架构重置，但不得无限追加后继门禁。
+
+Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 以限定证据范围。API correctness 可需要 Sol risk judgment，但不因此自动进入完整 codex-security workflow；只有具体 adversarial security trigger 才触发完整 security workflow。Skill 仍是正交、可替换 adapter，不能扩大冻结 acceptance、stage 或 artifact；verdict 证据充分后停止，非阻断 hardening 尤其是 pre-scale research 问题进入 backlog 或保持 `[UNCERTAIN]`。
+
+新 project directory 在首次 write、stage 或 commit 前先运行 `git rev-parse --show-toplevel`；需要独立 root 时使用独立 `git init` 或 worktree，避免空目录继承 `/Users/viking` 或 ContestOS 的父 repo。Full suite 一次只运行一个；重启前仅检查/关闭自己此前的 process/session，不为更清晰摘要启动重复重型 suite。长任务每个 decision point 使用一次 bounded long wait 和 compact evidence，避免短 polling/raw transcript 循环，并计入 monitoring WCU。
 
 满足下列任一条件时停止当前策略并重新规划：
 

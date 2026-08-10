@@ -31,9 +31,15 @@ v1 的“zero fallback”只表示：禁止**静默语义降级、fabricated suc
 
 步骤、阶段、工具、模型、review 与中间 checkpoint 可按新证据合并、跳过、重排或替换。硬的是 acceptance criteria、traceability、evidence integrity 与边界，不是 recipe 的形状；reviewer 只能报告具体 failure mode，不能用 taste-only 要求移动冻结 contract。
 
+模型绑定的 package work 不得通过 `resume_agent` 复用已关闭的 role-bound agent；correction/re-review 应 fresh-spawn 一个显式 typed role。只有在 contract 与 role 均已确认相同的情况下，才可复用仍打开的 agent。若 runtime evidence 显示实际 model 与 role 不匹配，停止该 phase，记录 routing violation，并将 WCU 标为 `[UNCERTAIN]`；不把错配结果当作请求角色。
+
 ## Gates 与环境参数
 
 所有 ContestOS 项目的共同 gate 是 claim/contract↔evidence closure 与 no overclaim。reproduction、contamination、statistics、performance、security、human review 等 gate 仅在对应 claim 或风险触发时启用，并记录 `applicable` 或 `not applicable` 的理由。
+
+Review 可使用 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 限定范围。API correctness 需要 Sol risk judgment 时，不自动升级为完整 security workflow；完整 codex-security workflow 只在具体 adversarial security trigger 存在时适用。Skill 是正交 adapter，不能扩大冻结 acceptance、stage 或 artifact；达到 verdict 所需证据即停止，非阻断项进入 backlog 或标为 `[UNCERTAIN]`，尤其是 pre-scale research hardening。
+
+在新 project directory 首次 write、stage 或 commit 前，先用 `git rev-parse --show-toplevel` 确认 root；若目录应独立，使用独立 `git init` 或 worktree。一次只运行一个 full suite；重跑前仅检查/关闭自己此前的 process/session。长任务在每个 decision point 使用一次 bounded long wait 与 compact evidence，避免短 polling、重复 raw transcript 读取，并把 monitoring WCU 计入成本记录。
 
 环境与锁定器由项目生态注入，不得假定 Python 或 uv：使用 `{ENV_CMD}` 准备/验证环境，使用 `{LOCK_CMD}` 生成 `{LOCK_FILE}`，并用项目声明的 verify command 证明可复现。只有 Python/AI 项目选择 uv 时，`uv`/`uv.lock` 才是一个合适的参数实例；它不是 universal default。
 
