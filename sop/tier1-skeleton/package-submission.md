@@ -4,7 +4,7 @@
 - **落实纪律**: P3(禁静默 fallback 骗分)+ P4(提交绑证据链)
 - **绑定骨架**: competition
 - **通用性档位**: U1(competition 骨架内 submissions/ 机制确定,平台格式参数化)
-- **版本**: v1
+- **版本**: v2
 
 ## 触发条件
 
@@ -19,7 +19,10 @@ competition 骨架项目中,产生一次要提交到线上榜/评测机的正式
 ## 依赖 SOP
 
 → tier0-core/build-oracle.md(correctness gate)
+
 → tier0-core/commit-and-pr.md(提交前落成可追溯 commit)
+
+→ tier1-skeleton/maintain-patch-series.md(patch/clone 形态提交的字节级重建依据)
 
 ## 步骤
 

@@ -22,7 +22,7 @@
 
 ## 依赖 SOP
 
-→ tier0-core/no-fallback-review.md(认证缺失即停、失败不静默降级,过零 fallback 审查)。
+→ tier0-core/no-fallback-review.md(认证缺失即停；替代路径必须显式且保持验收质量)。
 → tier0-core/lock-env.md(远程环境的依赖版本/随机种子锁定,保证远程结果可复现)。
 → tier0-core/commit-and-pr.md(远程操作日志与产物回传后的留痕)。
 

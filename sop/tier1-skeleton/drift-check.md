@@ -4,7 +4,7 @@
 - **落实纪律**: P1(对照契约,越界即拦)
 - **绑定骨架**: development
 - **通用性档位**: U1(检查动作通用,需求集项目相关)
-- **版本**: v1
+- **版本**: v2
 
 ## 触发条件
 
@@ -17,7 +17,11 @@ development 骨架实现过程中,每次提交(product)或每个里程碑(protot
 
 ## 依赖 SOP
 
-→ tier0-core/no-fallback-review.md(漂移检查同时过零 fallback 审查)。
+→ tier1-skeleton/write-contract.md(漂移判断使用已冻结契约)。
+
+→ tier0-core/add-dependency.md(新增依赖或抽象需先补理由与锁定记录)。
+
+→ tier0-core/no-fallback-review.md(漂移检查同时审查静默失败与未披露降级)。
 
 ## 步骤
 

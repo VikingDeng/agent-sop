@@ -1,5 +1,8 @@
 .DS_Store
 *.swp
+__pycache__/
+*.py[cod]
+.ruff_cache/
 
 # 会话任务状态(运行时产物,不入库)
 dev/

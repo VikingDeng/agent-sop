@@ -1,0 +1,67 @@
+{
+  "description": "Enforce weighted-cost Codex routing and inject the compact routing contract.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "additionalContextLimit": 2200,
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "additionalContextLimit": 800,
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Agent|spawn_agent|create_agent|close_agent|functions\\.exec|multi_agent_v1__spawn_agent|multi_agent_v1__create_agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
