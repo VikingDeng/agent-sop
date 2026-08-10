@@ -503,6 +503,16 @@ class WeightedCostRouterTests(unittest.TestCase):
             ))
             self.assertNotEqual((terra or {}).get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
 
+    def test_advisory_allows_unrecognized_foreground_model_and_strict_rejects_it(self) -> None:
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
+            advisory = ROUTER.handle(pretool("gpt-5.4-custom", "exec_command", {"cmd": "rg --files"}))
+        self.assertNotEqual((advisory or {}).get("hookSpecificOutput", {}).get("permissionDecision"), "deny")
+        self.assertIn("outside the configured", (advisory or {}).get("hookSpecificOutput", {}).get("additionalContext", ""))
+
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "strict"}):
+            strict = ROUTER.handle(pretool("gpt-5.4-custom", "exec_command", {"cmd": "rg --files"}))
+        self.assertEqual(strict["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def test_sol_direct_mutation_is_denied(self) -> None:
         result = ROUTER.handle(pretool("gpt-5.6-sol", "apply_patch", {"patch": "x"}))
         self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
@@ -826,18 +836,26 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIn("functions\\.exec", matcher)
         self.assertIn("close_agent", matcher)
 
-    def test_managed_pretool_command_enforces_strict_with_clean_environment(self) -> None:
+    def test_source_hook_defaults_to_advisory_and_explicit_strict_remains_enforced(self) -> None:
         configured = json.loads((ROOT / "codex/hooks/hooks.json").read_text())
         command = configured["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-        self.assertTrue(command.startswith("CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3 "))
+        self.assertTrue(command.startswith("/usr/bin/python3 "))
         command = command.replace(
             '\"$HOME/.codex/hooks/weighted_cost_router.py\"',
             shlex.quote(str(SCRIPT)),
         )
         with tempfile.TemporaryDirectory() as directory:
             environment = {"HOME": directory, "PATH": os.environ.get("PATH", "")}
-            denied = subprocess.run(
+            advisory = subprocess.run(
                 ["/bin/sh", "-c", command],
+                input=json.dumps(pretool("gpt-5.6-sol", "exec_command", {"cmd": "python -m pytest"})),
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+            )
+            strict = subprocess.run(
+                ["/bin/sh", "-c", "CODEX_ROUTER_ENFORCEMENT=strict " + command],
                 input=json.dumps(pretool("gpt-5.6-sol", "exec_command", {"cmd": "python -m pytest"})),
                 text=True,
                 capture_output=True,
@@ -852,8 +870,10 @@ class WeightedCostRouterTests(unittest.TestCase):
                 env=environment,
                 check=False,
             )
-        self.assertEqual(denied.returncode, 0, denied.stderr)
-        self.assertEqual(json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(advisory.returncode, 0, advisory.stderr)
+        self.assertNotEqual(json.loads(advisory.stdout)["hookSpecificOutput"].get("permissionDecision"), "deny")
+        self.assertEqual(strict.returncode, 0, strict.stderr)
+        self.assertEqual(json.loads(strict.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertEqual(allowed.returncode, 0, allowed.stderr)
         self.assertEqual(allowed.stdout, "")
 

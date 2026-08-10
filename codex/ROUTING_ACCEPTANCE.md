@@ -1,11 +1,11 @@
 # Routing acceptance
 
-Run the managed-hook scenarios in fresh tasks after installing the Codex runtime. Installed managed Hooks invoke the router in `strict` mode. The advisory scenarios below are explicitly for direct router invocations or unmanaged diagnostics; they are not post-install defaults.
+Run the managed-hook scenarios in fresh tasks after installing the Codex runtime. Installed managed Hooks use the selected `--routing-profile`; `advisory` is the default and `strict` is explicit. The scenarios below cover both profiles.
 
-## Direct-router or unmanaged advisory scenarios
+## Default advisory scenarios
 
 1. **Bounded implementation**: ask for a multi-file but well-specified change. Expect Luna to receive substantial mechanical work when available, with acceptance based on real tests rather than role compliance.
-2. **Luna unavailable (advisory diagnostic)**: invoke the router directly without the managed Hook command, then simulate or observe `Unknown model gpt-5.6-luna`. Expect a concise advisory and a transparent fallback to Terra or another capable role. This is not the behavior of an installed strict Hook.
+2. **Luna unavailable**: install or invoke the router in advisory mode, then simulate or observe `Unknown model gpt-5.6-luna`. Expect a concise advisory and a transparent fallback to Terra or another capable role.
 3. **Exploratory debugging**: ask for an unknown-root-cause diagnosis. Expect the Agent to revise hypotheses and choose discriminating checks without requiring a fixed package phase sequence.
 4. **Small task**: ask for a narrow reversible edit. Expect direct completion when delegation overhead would dominate, even on Sol, with a cost advisory rather than a permission denial.
 5. **Research variation**: test one proposal requiring human labels and one simulation/benchmark proposal without them. Expect each to receive claim-matched gates; the second must not invent a human-oracle requirement.
@@ -14,7 +14,7 @@ For each scenario collect the achieved result, actual validation, wall time, Sol
 
 ## Strict profile
 
-The managed Hook command embeds `CODEX_ROUTER_ENFORCEMENT=strict` before the documented Python invocation, so this profile is selected per Hook call even with a clean inherited environment. In this mode the historical invariants apply: package markers, phase budgets, Sol mutation denial, trigger-qualified risk review, exact thread-limit recovery, and Luna fail-closed behavior. Strict tests prove managed-hook behavior; they do not define the default direct-router experience. The App `/hooks` exact-hash trust step remains required and is not machine-verifiable by this installer.
+Install with `python3 scripts/install_codex_runtime.py --routing-profile strict`. The managed Hook command embeds `CODEX_ROUTER_ENFORCEMENT=strict` before the documented Python invocation, so this profile is selected per Hook call even with a clean inherited environment. In this mode the historical invariants apply: package markers, phase budgets, Sol mutation denial, trigger-qualified risk review, exact thread-limit recovery, and Luna fail-closed behavior. The App `/hooks` exact-hash trust step remains required and is not machine-verifiable by this installer. A strict install with `--profile preserve` fails preflight when the configured foreground model is outside the Sol/Terra/Luna families; select a named supported foreground profile or use advisory routing.
 
 ## Research strict profile
 
@@ -30,6 +30,10 @@ Advisory-mode acceptance requires:
 - proportional verification and review;
 - honest `[UNCERTAIN]` cost or runtime evidence when logs are incomplete.
 
+## Installer crash boundary
+
+The installer holds one non-blocking per-home lock during a real install. It verifies an immutable generation, prepares stable links, validates `config.toml` and `hooks.json`, backs up each changed file, and atomically writes those files before replacing the single `~/.codex/runtime-current` symlink. A failure before that replacement leaves the old current generation active; a failure during a later independent file write leaves completed valid writes and reports their backups. Restore a backup manually when required, then rerun the installer. There is no recovery journal or automatic replay, and this boundary does not claim whole-install ACID or power-loss `fsync` durability.
+
 ## Fresh-task strict acceptance
 
 After installation, start a fresh task or restart Codex so the managed Hook is loaded. Verify that the installed command contains the exact `CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3` prefix and that strict routing rejects missing package markers, exhausted loop budgets, unauthorized Sol mutation, and unqualified risk review. The App `/hooks` exact-hash trust step must still be completed manually because the installer cannot verify it.
@@ -42,7 +46,7 @@ After installing with `python3 scripts/install_codex_runtime.py --profile sol-su
 
 ## Fresh-task Terra-supervisor acceptance
 
-After installing with `python3 scripts/install_codex_runtime.py --profile terra-supervisor`, start a new task/restart so the model configuration is loaded. Verify top-level `model = "gpt-5.6-terra"` and `model_reasoning_effort = "high"`; `[agents]` must still select Luna/medium with concurrency two and depth one, and managed Hooks must retain the exact strict router command. This profile is an opt-in, measured cost-sensitive candidate for development and competition tasks. It is not the global default; approved research, architecture, and high-risk judgment remain appropriate use cases for the Sol profile.
+After installing with `python3 scripts/install_codex_runtime.py --profile terra-supervisor`, start a new task/restart so the model configuration is loaded. Verify top-level `model = "gpt-5.6-terra"` and `model_reasoning_effort = "high"`; `[agents]` must still select Luna/medium with concurrency two and depth one. With `terra-supervisor`, managed Hooks use advisory routing by default; strict requires the separate `--routing-profile strict` option. This profile is an opt-in, measured cost-sensitive candidate for development and competition tasks. It is not the global default; approved research, architecture, and high-risk judgment remain appropriate use cases for the Sol profile.
 
 ## Terra/Sol A/B procedure
 

@@ -36,6 +36,17 @@ SOP_INDEX_PATH = re.compile(
     re.MULTILINE,
 )
 DEPENDENCY_REF = re.compile(r"→\s*([^\s(]+\.md)")
+BACKTICK_TOKEN = re.compile(r"`([^`\n]+)`")
+LOCAL_RESOURCE_PREFIXES = ("sop/", "codex/", "scripts/", "skeletons/", "tests/", "references/", "./", "../")
+ACTIVE_OVERLAY = "skeletons/contestos-adaptive-overlay-v2.md"
+INSTALLED_ACTIVE_OVERLAY = "~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md"
+ACTIVE_OVERLAY_REFERENCES = (
+    ("README.md", "skeletons/contestos-adaptive-overlay-v2.md"),
+    ("AGENTS.md", "skeletons/contestos-adaptive-overlay-v2.md"),
+    ("codex/AGENTS.global.md", INSTALLED_ACTIVE_OVERLAY),
+    ("codex/AGENTS.workspace.md", INSTALLED_ACTIVE_OVERLAY),
+    ("skeletons/README.md", "contestos-adaptive-overlay-v2.md"),
+)
 
 
 class ValidationFailure(Exception):
@@ -284,6 +295,61 @@ def validate_readme_counts(root: Path, files: list[Path]) -> list[str]:
     return errors
 
 
+def validate_skill_resource_references(root: Path) -> list[str]:
+    """Validate only backtick references that are explicitly path-like."""
+    errors: list[str] = []
+    for path in sorted(root.rglob("SKILL.md")):
+        if ".git" in path.parts:
+            continue
+        rel = relative(path, root)
+        text = path.read_text(encoding="utf-8")
+        for match in BACKTICK_TOKEN.finditer(text):
+            raw = match.group(1).strip()
+            if not raw.startswith(LOCAL_RESOURCE_PREFIXES):
+                continue
+            if any(char.isspace() for char in raw):
+                continue
+            if not (raw.endswith((".md", ".py", ".yaml", ".yml", ".json", ".toml"))):
+                continue
+
+            if raw.startswith(("sop/", "codex/", "scripts/", "skeletons/", "tests/")):
+                candidates = (root / raw,)
+            else:
+                candidates = (path.parent / raw, root / raw)
+            if not any(candidate.resolve().is_file() for candidate in candidates):
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(
+                    f"{rel}:{line}: unresolved local resource reference `{raw}`; "
+                    "use a repository-relative path that exists or remove the path-like backticks"
+                )
+    return errors
+
+
+def validate_active_overlay_references(root: Path) -> list[str]:
+    """Check active overlay existence and the reachability of its declared references."""
+    errors: list[str] = []
+    overlay = root / ACTIVE_OVERLAY
+    if not overlay.is_file():
+        errors.append(f"active overlay missing: {ACTIVE_OVERLAY}")
+        return errors
+
+    for source_name, target in ACTIVE_OVERLAY_REFERENCES:
+        source = root / source_name
+        if not source.is_file():
+            errors.append(f"active overlay reference source missing: {source_name}")
+            continue
+        text = source.read_text(encoding="utf-8")
+        if target not in text:
+            errors.append(f"active overlay reference missing from {source_name}: {target}")
+            continue
+        if target == INSTALLED_ACTIVE_OVERLAY:
+            continue
+        resolved = (source.parent / target).resolve()
+        if not resolved.is_file():
+            errors.append(f"active overlay reference is unreachable from {source_name}: {target}")
+    return errors
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -309,6 +375,8 @@ def main() -> int:
         errors.extend(validate_index(root, files, direct, reverse))
         errors.extend(validate_markdown_links(root))
         errors.extend(validate_readme_counts(root, files))
+        errors.extend(validate_active_overlay_references(root))
+        errors.extend(validate_skill_resource_references(root))
     except (OSError, UnicodeError, ValidationFailure) as exc:
         print(f"VALIDATOR ERROR: {exc}", file=sys.stderr)
         return 2

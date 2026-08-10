@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from contextlib import contextmanager
 from datetime import datetime
+import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
+import stat
 import sys
 import tempfile
 import tomllib
@@ -29,6 +33,8 @@ ROLES = (
     "risk_reviewer",
 )
 HOOK_FILES = ("weighted_cost_router.py", "weighted_routing_policy.py")
+ROUTING_PROFILES = ("advisory", "strict")
+DEFAULT_ROUTING_PROFILE = "advisory"
 AGENT_SETTINGS = {
     "default_subagent_model": '"gpt-5.6-luna"',
     "default_subagent_reasoning_effort": '"medium"',
@@ -37,24 +43,34 @@ AGENT_SETTINGS = {
 }
 PROFILE_SETTINGS = {
     "preserve": {},
-    "sol-supervisor": {
-        "model": '"gpt-5.6-sol"',
-        "model_reasoning_effort": '"high"',
-    },
-    "terra-supervisor": {
-        "model": '"gpt-5.6-terra"',
-        "model_reasoning_effort": '"high"',
-    },
+    "sol-supervisor": {"model": '"gpt-5.6-sol"', "model_reasoning_effort": '"high"'},
+    "terra-supervisor": {"model": '"gpt-5.6-terra"', "model_reasoning_effort": '"high"'},
 }
-STRICT_ENV_ASSIGNMENT = "CODEX_ROUTER_ENFORCEMENT=strict"
 MANAGED_PYTHON_LAUNCHER = "/usr/bin/python3"
 MANAGED_ROUTER_RELATIVE_PATH = Path(".codex/hooks/weighted_cost_router.py")
+SNAPSHOT_ROOT = Path(".codex/runtime-snapshots")
+RUNTIME_CURRENT = Path(".codex/runtime-current")
+SNAPSHOT_MANIFEST = "snapshot-manifest.json"
+INSTALL_LOCK = Path(".codex/install.lock")
 
-
-@dataclass(frozen=True)
-class Mutation:
-    destination: Path
-    backup: Path | None
+SNAPSHOT_FILES = (
+    "codex/AGENTS.global.md",
+    "codex/AGENTS.workspace.md",
+    "codex/README.md",
+    "codex/ROUTING_ACCEPTANCE.md",
+    "codex/hooks/hooks.json",
+    "codex/hooks/weighted_cost_router.py",
+    "codex/hooks/weighted_routing_policy.py",
+    *(f"codex/agents/{role}.toml" for role in ROLES),
+    "codex/skills/research-execution-grill/SKILL.md",
+    "codex/skills/research-execution-grill/agents/openai.yaml",
+    "sop/tier1-skeleton/research-execution-grill.md",
+    "sop/tier1-skeleton/references/research-execution-grill-artifact.md",
+    "scripts/validate_research_execution_grill.py",
+    "scripts/research_grill_state_machine.py",
+    "skeletons/contestos-adaptive-overlay-v2.md",
+)
+SUPPORTED_MODEL_FAMILIES = ("sol", "terra", "luna")
 
 
 class Installer:
@@ -65,22 +81,34 @@ class Installer:
         workspace: Path,
         dry_run: bool = False,
         profile: str = "preserve",
+        routing_profile: str = DEFAULT_ROUTING_PROFILE,
     ):
         self.repo_root = repo_root.resolve()
         self.home = home.resolve()
         self.workspace = workspace.resolve()
-        self.dry_run = dry_run
         if profile not in PROFILE_SETTINGS:
             raise ValueError(f"unknown installer profile: {profile}")
+        if routing_profile not in ROUTING_PROFILES:
+            raise ValueError(f"unknown routing profile: {routing_profile}")
+        self.dry_run = dry_run
         self.profile = profile
-        self.stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.routing_profile = routing_profile
+        self.stamp = (
+            f"{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}-"
+            f"{os.getpid()}-{secrets.token_hex(8)}"
+        )
         self.actions: list[str] = []
-        self.mutations: list[Mutation] = []
-        self.config_path = self.home / ".codex" / "config.toml"
-        self.hooks_path = self.home / ".codex" / "hooks.json"
+        self.backups: list[Path] = []
         self.staged_config = ""
         self.staged_hooks = ""
-        self.manifest_path = self.home / ".codex" / "install-rollback" / f"{self.stamp}.json"
+        self.snapshot_path: Path | None = None
+        self.snapshot_files: tuple[Path, ...] = ()
+        self.current_swapped = False
+
+        codex_home = self.home / ".codex"
+        self.config_path = codex_home / "config.toml"
+        self.hooks_path = codex_home / "hooks.json"
+        self.runtime_current = self.home / RUNTIME_CURRENT
 
     def _record(self, message: str) -> None:
         self.actions.append(message)
@@ -96,6 +124,34 @@ class Installer:
         elif path.is_dir():
             shutil.rmtree(path)
 
+    def _reject_symlink_parents(self, path: Path) -> None:
+        roots = (self.home, self.workspace)
+        current = path.parent
+        while True:
+            if current.is_symlink():
+                raise ValueError(f"unsafe install path through symlink: {path}")
+            if current in roots:
+                return
+            if current == current.parent:
+                raise ValueError(f"unsafe install path: {path}")
+            current = current.parent
+
+    def _ensure_codex_home(self) -> None:
+        codex_home = self.home / ".codex"
+        if self.dry_run and not self._exists(codex_home):
+            return
+        try:
+            if not self.dry_run:
+                codex_home.mkdir()
+        except FileExistsError:
+            pass
+        try:
+            mode = codex_home.lstat().st_mode
+        except FileNotFoundError as exc:
+            raise ValueError(f"unable to create install directory: {codex_home}") from exc
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise ValueError(f"unsafe install directory: {codex_home}")
+
     def _backup(self, destination: Path) -> Path:
         candidate = destination.with_name(f"{destination.name}.backup-{self.stamp}")
         suffix = 1
@@ -105,76 +161,191 @@ class Installer:
         self._record(f"backup {destination} -> {candidate}")
         if self.dry_run:
             return candidate
+        self._reject_symlink_parents(candidate)
         candidate.parent.mkdir(parents=True, exist_ok=True)
         if destination.is_symlink():
-            candidate.symlink_to(os.readlink(destination))
+            candidate.symlink_to(os.readlink(destination), target_is_directory=destination.resolve().is_dir())
         elif destination.is_dir():
-            shutil.copytree(destination, candidate)
+            shutil.copytree(destination, candidate, symlinks=True)
         else:
             shutil.copy2(destination, candidate)
+        self.backups.append(candidate)
         return candidate
 
-    def _begin_mutation(self, destination: Path) -> None:
-        backup = self._backup(destination) if self._exists(destination) else None
-        self.mutations.append(Mutation(destination, backup))
-        self._record(f"rollback-entry {destination} <- {backup or '[absent]'}")
-        self._persist_manifest("in_progress")
-
-    def _persist_manifest(self, status: str, errors: list[str] | None = None) -> None:
-        if self.dry_run or not self.mutations:
-            return
-        payload = {
-            "schema_version": 1,
-            "status": status,
-            "created_at": self.stamp,
-            "mutations": [
-                {"destination": str(item.destination), "backup": str(item.backup) if item.backup else None}
-                for item in self.mutations
-            ],
-            "errors": errors or [],
-        }
-        self._atomic_text(self.manifest_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-
-    def _restore(self, mutation: Mutation) -> None:
-        destination, backup = mutation.destination, mutation.backup
-        self._remove(destination)
-        if backup is None:
-            return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if backup.is_symlink():
-            destination.symlink_to(os.readlink(backup))
-        elif backup.is_dir():
-            shutil.copytree(backup, destination)
-        else:
-            shutil.copy2(backup, destination)
-
-    def rollback(self) -> list[str]:
-        errors: list[str] = []
+    @contextmanager
+    def _install_lock(self):
+        """Hold one non-blocking per-home lock across every real install write."""
         if self.dry_run:
-            return errors
-        for mutation in reversed(self.mutations):
+            yield
+            return
+
+        codex_home = self.home / ".codex"
+        try:
+            mode = codex_home.lstat().st_mode
+        except FileNotFoundError as exc:
+            raise ValueError(f"unsafe install lock parent: {codex_home}") from exc
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise ValueError(f"unsafe install lock parent: {codex_home}")
+
+        lock_path = self.home / INSTALL_LOCK
+        try:
+            mode = lock_path.lstat().st_mode
+        except FileNotFoundError:
+            mode = None
+        if mode is not None and (stat.S_ISLNK(mode) or not stat.S_ISREG(mode)):
+            raise ValueError(f"unsafe install lock path: {lock_path}")
+
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            descriptor = os.open(lock_path, flags, 0o600)
+        except OSError as exc:
+            raise ValueError(f"unable to open install lock: {lock_path}: {exc}") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise ValueError(f"unsafe install lock path: {lock_path}")
             try:
-                self._restore(mutation)
-                self._record(f"rolled-back {mutation.destination}")
-            except OSError as exc:
-                errors.append(f"{mutation.destination}: {exc}")
-        self._persist_manifest("rollback_failed" if errors else "rolled_back", errors)
-        return errors
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise RuntimeError(f"installer already in progress: {lock_path}") from exc
+            try:
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
 
-    def link(self, source: Path, destination: Path) -> None:
-        source = source.resolve()
-        if not source.exists():
-            raise ValueError(f"missing source: {source}")
-        if destination.is_symlink() and destination.resolve() == source:
-            self._record(f"unchanged {destination}")
-            return
-        self._begin_mutation(destination)
-        self._record(f"link {destination} -> {source}")
+    @staticmethod
+    def _model_family(model: str) -> str | None:
+        lowered = model.strip().lower()
+        for family in SUPPORTED_MODEL_FAMILIES:
+            if re.search(rf"(?:^|[-_.:/]){re.escape(family)}(?:$|[-_.:/])", lowered):
+                return family
+        return None
+
+    def _snapshot_source_paths(self) -> tuple[Path, ...]:
+        return tuple(self.repo_root / relative for relative in SNAPSHOT_FILES)
+
+    @staticmethod
+    def _snapshot_digest(sources: tuple[Path, ...]) -> tuple[str, dict[str, str]]:
+        file_hashes: dict[str, str] = {}
+        digest = hashlib.sha256()
+        for relative, source in zip(SNAPSHOT_FILES, sources):
+            content = source.read_bytes()
+            file_hashes[relative] = hashlib.sha256(content).hexdigest()
+            path_bytes = relative.encode("utf-8")
+            digest.update(len(path_bytes).to_bytes(4, "big"))
+            digest.update(path_bytes)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
+        return digest.hexdigest(), file_hashes
+
+    @classmethod
+    def _snapshot_is_verified(
+        cls,
+        path: Path,
+        file_hashes: dict[str, str],
+        *,
+        content_address: str | None = None,
+    ) -> bool:
+        manifest_path = path / SNAPSHOT_MANIFEST
+        if not path.is_dir() or path.is_symlink() or not manifest_path.is_file() or manifest_path.is_symlink():
+            return False
+        expected_address = content_address or path.name
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return False
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema_version") != 1
+            or manifest.get("content_address") != expected_address
+            or manifest.get("files") != file_hashes
+        ):
+            return False
+
+        expected_files = {Path(SNAPSHOT_MANIFEST), *(Path(relative) for relative in file_hashes)}
+        expected_entries = set(expected_files)
+        for entry in expected_files:
+            expected_entries.update(entry.parents)
+        expected_entries.discard(Path("."))
+        for candidate in path.rglob("*"):
+            relative = candidate.relative_to(path)
+            if relative not in expected_entries or candidate.is_symlink():
+                return False
+            mode = candidate.stat().st_mode
+            if mode & 0o222 or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                return False
+        if path.stat().st_mode & 0o222:
+            return False
+        for relative, expected_hash in file_hashes.items():
+            candidate = path / relative
+            if not candidate.is_file() or candidate.is_symlink():
+                return False
+            try:
+                actual_hash = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            except OSError:
+                return False
+            if actual_hash != expected_hash:
+                return False
+        return True
+
+    @staticmethod
+    def _lock_snapshot(path: Path, sources: tuple[Path, ...]) -> None:
+        for relative, source in zip(SNAPSHOT_FILES, sources):
+            destination = path / relative
+            os.chmod(destination, 0o444 | (source.stat().st_mode & 0o111))
+        for directory in sorted((candidate for candidate in path.rglob("*") if candidate.is_dir()), reverse=True):
+            os.chmod(directory, 0o555)
+        os.chmod(path, 0o555)
+        os.chmod(path / SNAPSHOT_MANIFEST, 0o444)
+
+    def prepare_snapshot(self) -> Path:
+        sources = self._snapshot_source_paths()
+        missing = [str(path) for path in sources if not path.is_file() or path.is_symlink()]
+        if missing:
+            raise ValueError("missing snapshot source(s): " + ", ".join(missing))
+        digest, file_hashes = self._snapshot_digest(sources)
+        snapshot_root = self.home / SNAPSHOT_ROOT
+        if snapshot_root.is_symlink() or (snapshot_root.exists() and not snapshot_root.is_dir()):
+            raise ValueError(f"unsafe snapshot root: {snapshot_root}")
+        target = snapshot_root / f"sha256-{digest}"
+        self.snapshot_files = sources
+        self.snapshot_path = target
+        if self._snapshot_is_verified(target, file_hashes):
+            self._record(f"reuse verified immutable generation {target}")
+            return target
+        if self._exists(target):
+            raise ValueError(f"existing generation failed verification: {target}")
+        self._record(f"create immutable generation {target}")
         if self.dry_run:
-            return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        self._remove(destination)
-        destination.symlink_to(source, target_is_directory=source.is_dir())
+            return target
+
+        snapshot_root.mkdir(parents=True, exist_ok=True)
+        staging: Path | None = Path(tempfile.mkdtemp(prefix=".staging-", dir=snapshot_root))
+        try:
+            for relative, source in zip(SNAPSHOT_FILES, sources):
+                destination = staging / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+            manifest = {
+                "schema_version": 1,
+                "content_address": f"sha256-{digest}",
+                "files": file_hashes,
+            }
+            self._atomic_text(staging / SNAPSHOT_MANIFEST, json.dumps(manifest, sort_keys=True, indent=2) + "\n")
+            self._lock_snapshot(staging, sources)
+            if not self._snapshot_is_verified(staging, file_hashes, content_address=f"sha256-{digest}"):
+                raise ValueError("staged immutable generation failed verification")
+            if self._exists(target):
+                raise ValueError(f"generation appeared during install: {target}")
+            os.replace(staging, target)
+            staging = None
+        finally:
+            if staging is not None and staging.exists():
+                shutil.rmtree(staging)
+        return target
 
     @staticmethod
     def _replace_section_values(text: str, section: str, settings: dict[str, str]) -> str:
@@ -209,10 +380,7 @@ class Installer:
         if not settings:
             return text
         lines = text.splitlines()
-        end = next(
-            (index for index, line in enumerate(lines) if re.match(r"^\s*\[", line)),
-            len(lines),
-        )
+        end = next((index for index, line in enumerate(lines) if re.match(r"^\s*\[", line)), len(lines))
         for key, value in settings.items():
             pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
             existing = next((index for index in range(end) if pattern.match(lines[index])), None)
@@ -225,14 +393,28 @@ class Installer:
         return "\n".join(lines) + "\n"
 
     @staticmethod
-    def _hook_command(entry: Any, home: Path) -> Any:
+    def _hook_command(entry: Any, home: Path, routing_profile: str = DEFAULT_ROUTING_PROFILE) -> Any:
         if isinstance(entry, dict):
-            return {key: Installer._hook_command(value, home) for key, value in entry.items()}
+            return {key: Installer._hook_command(value, home, routing_profile) for key, value in entry.items()}
         if isinstance(entry, list):
-            return [Installer._hook_command(value, home) for value in entry]
+            return [Installer._hook_command(value, home, routing_profile) for value in entry]
         if isinstance(entry, str):
-            runtime_hook = shlex.quote(str(home / ".codex" / "hooks" / "weighted_cost_router.py"))
-            return entry.replace('"$HOME/.codex/hooks/weighted_cost_router.py"', runtime_hook)
+            try:
+                words = shlex.split(entry)
+            except ValueError:
+                return entry
+            if len(words) not in {2, 3}:
+                return entry
+            if len(words) == 3 and words[1] == MANAGED_PYTHON_LAUNCHER and words[0].startswith("CODEX_ROUTER_ENFORCEMENT="):
+                if words[0].split("=", 1)[1].lower() not in ROUTING_PROFILES:
+                    return entry
+                words.pop(0)
+            if len(words) != 2 or words[0] != MANAGED_PYTHON_LAUNCHER:
+                return entry
+            if words[1] not in {"$HOME/.codex/hooks/weighted_cost_router.py", str(home / MANAGED_ROUTER_RELATIVE_PATH)}:
+                return entry
+            runtime_hook = shlex.quote(str(home / MANAGED_ROUTER_RELATIVE_PATH))
+            return f"CODEX_ROUTER_ENFORCEMENT={routing_profile} {MANAGED_PYTHON_LAUNCHER} {runtime_hook}"
         return entry
 
     @staticmethod
@@ -241,7 +423,9 @@ class Installer:
             words = shlex.split(command)
         except ValueError:
             return False
-        if words and words[0] == STRICT_ENV_ASSIGNMENT:
+        if words and words[0].startswith("CODEX_ROUTER_ENFORCEMENT="):
+            if words[0].split("=", 1)[1].lower() not in ROUTING_PROFILES:
+                return False
             words.pop(0)
         if len(words) != 2 or words[0] != MANAGED_PYTHON_LAUNCHER:
             return False
@@ -254,12 +438,12 @@ class Installer:
     def _is_router_registration(registration: Any, home: Path | None = None) -> bool:
         if not isinstance(registration, dict):
             return False
-        for hook in registration.get("hooks", []):
-            if not isinstance(hook, dict) or not isinstance(hook.get("command"), str):
-                continue
-            if Installer._is_managed_router_command(hook["command"], home):
-                return True
-        return False
+        return any(
+            isinstance(hook, dict)
+            and isinstance(hook.get("command"), str)
+            and Installer._is_managed_router_command(hook["command"], home)
+            for hook in registration.get("hooks", [])
+        )
 
     @staticmethod
     def _without_managed_router_commands(registration: Any, home: Path) -> Any:
@@ -267,8 +451,7 @@ class Installer:
             return registration
         retained = dict(registration)
         retained["hooks"] = [
-            hook
-            for hook in registration.get("hooks", [])
+            hook for hook in registration.get("hooks", [])
             if not (
                 isinstance(hook, dict)
                 and isinstance(hook.get("command"), str)
@@ -289,11 +472,16 @@ class Installer:
                     raise ValueError(f"{label} contains a malformed {event} registration")
 
     def _render_hooks(self) -> str:
-        source = json.loads((self.repo_root / "codex" / "hooks" / "hooks.json").read_text())
-        source = self._hook_command(source, self.home)
+        source = json.loads((self.repo_root / "codex/hooks/hooks.json").read_text(encoding="utf-8"))
+        source = self._hook_command(source, self.home, self.routing_profile)
         self._validate_hook_shape(source, "repository hooks.json")
+        if self.hooks_path.is_symlink():
+            raise ValueError(f"refusing to modify symlink {self.hooks_path}")
         if self.hooks_path.exists():
-            current = json.loads(self.hooks_path.read_text())
+            try:
+                current = json.loads(self.hooks_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"refusing to modify malformed {self.hooks_path}: {exc}") from exc
             self._validate_hook_shape(current, str(self.hooks_path))
         else:
             current = {"description": "Merged local Codex hooks", "hooks": {}}
@@ -312,23 +500,24 @@ class Installer:
         return json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
 
     def preflight(self) -> None:
-        required = [
-            self.repo_root / "codex" / "AGENTS.global.md",
-            self.repo_root / "codex" / "AGENTS.workspace.md",
-            self.repo_root / "codex" / "skills" / "research-execution-grill" / "SKILL.md",
-            self.repo_root / "codex" / "hooks" / "hooks.json",
-            *(self.repo_root / "codex" / "hooks" / name for name in HOOK_FILES),
-            *(self.repo_root / "codex" / "agents" / f"{role}.toml" for role in ROLES),
-        ]
-        missing = [str(path) for path in required if not path.exists()]
+        sources = self._snapshot_source_paths()
+        missing = [str(path) for path in sources if not path.is_file() or path.is_symlink()]
         if missing:
             raise ValueError("missing installation source(s): " + ", ".join(missing))
-
-        original_config = self.config_path.read_text() if self.config_path.exists() else ""
+        if self.config_path.is_symlink():
+            raise ValueError(f"refusing to modify symlink {self.config_path}")
+        original_config = self.config_path.read_text(encoding="utf-8") if self.config_path.exists() else ""
         try:
-            tomllib.loads(original_config)
+            parsed_config = tomllib.loads(original_config)
         except tomllib.TOMLDecodeError as exc:
             raise ValueError(f"refusing to modify malformed {self.config_path}: {exc}") from exc
+        preserved_model = parsed_config.get("model")
+        if self.routing_profile == "strict" and self.profile == "preserve" and preserved_model is not None:
+            if not isinstance(preserved_model, str) or self._model_family(preserved_model) is None:
+                raise ValueError(
+                    "strict routing profile cannot preserve an incompatible foreground model; "
+                    "select --profile sol-supervisor or terra-supervisor, or install with --routing-profile advisory"
+                )
         staged = self._replace_top_level_values(original_config, PROFILE_SETTINGS[self.profile])
         self.staged_config = self._replace_section_values(staged, "agents", AGENT_SETTINGS)
         try:
@@ -343,7 +532,7 @@ class Installer:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as handle:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
                 handle.write(content)
                 temporary = Path(handle.name)
             os.replace(temporary, path)
@@ -353,14 +542,19 @@ class Installer:
                 temporary.unlink()
 
     def _write_staged(self, destination: Path, content: str, description: str) -> None:
-        original = destination.read_text() if destination.exists() else ""
+        original = destination.read_text(encoding="utf-8") if destination.exists() else ""
         if content == original and not destination.is_symlink():
             self._record(f"unchanged {destination}")
             return
-        self._begin_mutation(destination)
+        backup = self._backup(destination) if self._exists(destination) else None
         self._record(description)
-        if not self.dry_run:
+        if self.dry_run:
+            return
+        try:
             self._atomic_text(destination, content)
+        except BaseException as exc:
+            backup_text = str(backup) if backup is not None else "no prior file"
+            raise RuntimeError(f"atomic write failed for {destination}; backup: {backup_text}") from exc
 
     def configure_agents(self) -> None:
         self._write_staged(
@@ -376,32 +570,106 @@ class Installer:
             f"merge weighted router registrations into {self.hooks_path}",
         )
 
-    def install(self) -> None:
-        self.preflight()
+    def _stable_links(self, snapshot: Path) -> tuple[tuple[Path, Path], ...]:
+        current = self.runtime_current
         codex_home = self.home / ".codex"
+        links = [
+            (codex_home / "AGENTS.md", current / "codex/AGENTS.global.md"),
+            (self.workspace / "AGENTS.md", current / "codex/AGENTS.workspace.md"),
+            *(
+                (codex_home / "agents" / f"{role}.toml", current / "codex/agents" / f"{role}.toml")
+                for role in ROLES
+            ),
+            (codex_home / "skills/research-execution-grill", current / "codex/skills/research-execution-grill"),
+            *(
+                (codex_home / "hooks" / hook_file, current / "codex/hooks" / hook_file)
+                for hook_file in HOOK_FILES
+            ),
+        ]
+        # The argument keeps the call site explicit: every target must be in the
+        # verified generation before its stable link is prepared.
+        if not self.dry_run and not self._snapshot_is_verified(snapshot, self._snapshot_hashes(snapshot)):
+            raise ValueError(f"generation failed verification before linking: {snapshot}")
+        return tuple(links)
+
+    def _current_generation_is_valid(self) -> bool:
+        if not self.runtime_current.is_symlink():
+            return False
         try:
-            self.link(self.repo_root / "codex" / "AGENTS.global.md", codex_home / "AGENTS.md")
-            self.link(self.repo_root / "codex" / "AGENTS.workspace.md", self.workspace / "AGENTS.md")
-            for role in ROLES:
-                self.link(self.repo_root / "codex" / "agents" / f"{role}.toml", codex_home / "agents" / f"{role}.toml")
-            self.link(
-                self.repo_root / "codex" / "skills" / "research-execution-grill",
-                codex_home / "skills" / "research-execution-grill",
-            )
-            for hook_file in HOOK_FILES:
-                self.link(self.repo_root / "codex" / "hooks" / hook_file, codex_home / "hooks" / hook_file)
-            self.configure_agents()
-            self.merge_hooks()  # Activate the Hook only after all dependencies and config are ready.
-            self._persist_manifest("completed")
-        except BaseException as exc:
-            rollback_errors = self.rollback()
-            manifest = "; ".join(
-                f"{item.destination} <- {item.backup or '[absent]'}" for item in self.mutations
-            ) or "no mutations"
-            detail = f"installation failed and rollback ran; manifest: {manifest}"
-            if rollback_errors:
-                detail += "; rollback errors: " + "; ".join(rollback_errors)
-            raise RuntimeError(f"{detail}; cause: {exc}") from exc
+            current = self.runtime_current.resolve(strict=True)
+            file_hashes = self._snapshot_hashes(current)
+            return self._snapshot_is_verified(current, file_hashes)
+        except (OSError, RuntimeError, KeyError, TypeError, json.JSONDecodeError):
+            return False
+
+    @staticmethod
+    def _snapshot_hashes(path: Path) -> dict[str, str]:
+        manifest = json.loads((path / SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
+        return manifest["files"]
+
+    def _prepare_stable_links(self, snapshot: Path) -> None:
+        for destination, target in self._stable_links(snapshot):
+            if destination.is_symlink() and os.readlink(destination) == str(target):
+                self._record(f"unchanged {destination}")
+                continue
+            if self._exists(destination):
+                self._backup(destination)
+            self._reject_symlink_parents(destination)
+            self._record(f"prepare stable link {destination} -> {target}")
+            if self.dry_run:
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_name(f".{destination.name}.link-{self.stamp}")
+            try:
+                temporary.symlink_to(
+                    target,
+                    target_is_directory=target.suffix == "" or target.name == "research-execution-grill",
+                )
+                os.replace(temporary, destination)
+            finally:
+                if temporary.is_symlink():
+                    temporary.unlink()
+
+    def _switch_current(self, snapshot: Path) -> None:
+        if self.runtime_current.is_symlink() and self.runtime_current.resolve() == snapshot.resolve():
+            self._record(f"current generation unchanged {self.runtime_current}")
+            self.current_swapped = True
+            return
+        if self._exists(self.runtime_current) and not self.runtime_current.is_symlink():
+            raise ValueError(f"unsafe runtime-current path: {self.runtime_current}")
+        self._record(f"switch {self.runtime_current} -> {snapshot}")
+        if self.dry_run:
+            return
+        self.runtime_current.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.runtime_current.with_name(f".runtime-current-{self.stamp}")
+        try:
+            temporary.symlink_to(snapshot)
+            os.replace(temporary, self.runtime_current)
+            self.current_swapped = True
+        finally:
+            if temporary.is_symlink():
+                temporary.unlink()
+
+    def install(self) -> None:
+        self._ensure_codex_home()
+        with self._install_lock():
+            self.preflight()
+            snapshot = self.prepare_snapshot()
+            current_is_valid = self._current_generation_is_valid()
+            try:
+                if current_is_valid:
+                    self._prepare_stable_links(snapshot)
+                self.configure_agents()
+                self.merge_hooks()
+                self._switch_current(snapshot)
+                if not current_is_valid:
+                    self._prepare_stable_links(snapshot)
+            except BaseException as exc:
+                backups = ", ".join(str(path) for path in self.backups) or "none"
+                raise RuntimeError(
+                    "installation stopped without rollback; valid atomic writes were retained; "
+                    f"backups: {backups}; rerun to converge; cause: {exc}"
+                ) from exc
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -416,6 +684,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="preserve",
         help="configuration profile; preserve leaves the foreground model unchanged",
     )
+    parser.add_argument(
+        "--routing-profile",
+        choices=ROUTING_PROFILES,
+        default=DEFAULT_ROUTING_PROFILE,
+        help="Hook enforcement profile; advisory is the adaptive default",
+    )
     return parser.parse_args(argv)
 
 
@@ -427,6 +701,7 @@ def main(argv: list[str] | None = None) -> int:
         args.workspace,
         dry_run=args.dry_run,
         profile=args.profile,
+        routing_profile=args.routing_profile,
     )
     try:
         installer.install()

@@ -1,10 +1,10 @@
-# SOP-no-fallback-review: 静默降级与造假审查
+# SOP-no-fallback-review: 静默降级与造假审查（显式等价替代）
 
 - **层级**: tier0-core
 - **落实纪律**: P3
 - **绑定骨架**: 无
 - **通用性档位**: U0
-- **版本**: v2
+- **版本**: v3
 
 ## 触发条件
 
@@ -23,8 +23,8 @@
 1. 找出错误、资源不足、能力不可用和不支持 case 的分支。
 2. 对每个分支判断：是否保留了原验收标准；是否向调用者或最终报告暴露了变化；是否可能返回看似成功但证据更弱的结果。
 3. 阻断以下模式：吞异常后伪装成功、用占位/旧结果顶替、关键配置静默默认、跳过失败检查却声称通过、未披露地降低精度/覆盖/claim、无限重试或 fallback 环。
-4. 允许显式且质量等价的自适应路径，例如 bounded retry、替代工具、Luna→Terra、主实现→独立实现、局部结果→诚实缩小的本轮 claim。要求记录触发原因，并用与原目标匹配的 oracle 重新验收。
-5. 如果 fallback 改变 public behavior、research claim、数据/隐私边界、不可逆状态或预算承诺，进入对应 HUMAN/high-risk gate；否则继续自主执行。
+4. 允许显式且质量等价的自适应路径，例如 bounded retry、替代工具、模型或实现路径。必须记录触发原因，并用**未改变的 acceptance**与匹配的可信 oracle 重新验收；“零 fallback”只禁止静默语义降级、伪造成功和改变 acceptance，不禁止这种显式等价替代。
+5. 如果 fallback 改变 public behavior、research claim、数据/隐私边界、不可逆状态或 material/unbounded cost，进入对应 HUMAN gate 或 re-contract；否则记录并继续自主执行。
 
 ## 门禁
 

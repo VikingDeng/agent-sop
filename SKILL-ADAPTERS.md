@@ -1,14 +1,21 @@
 # Skill / MCP adapters（SOP 增强层）
 
-> 本文件不是第二套路由器。任务先按 `README.md` 选择骨架与 SOP，再按本文件选择一个最小的 Skill 或 MCP 适配器。它们不能替代 P1–P4、SOP 门禁、独立 oracle 或 HUMAN gate。
+> 本文件不是第二套路由器。任务先按 `README.md` 选择骨架与 SOP，再按需选择 Skill 或 MCP 适配器。它们不能替代 P1–P4、SOP 门禁、独立 oracle 或 HUMAN gate。
 
 更新时间：2026-08-07
 
 ## 统一调用契约
 
 ```text
-任务 → agent-sop 任务分类 → skeleton / SOP → Skill / MCP adapter → 结构化产物 → SOP gate
+任务 → agent-sop 任务分类 → skeleton / SOP →（按需）Skill / MCP adapter → 证据 → SOP gate
 ```
+
+## SOP 与 Skill 的正交边界
+
+- SOP 负责 outcome contract、授权/风险边界、evidence quality、停止与 re-contract 规则，以及交付真相；不负责领域技术或工具实现。
+- Skill 是 capability adapter：提供领域方法、工具操作、artifact format 或 specialized oracle。它可以在已选 SOP 外直接按需使用，但不能改变授权、路由政策、成功标准、claim、HUMAN 边界或制造 mandatory stage。
+- Skill 指令服从 user、project 和 SOP authority。它只能在指出与冻结 claim 相关的具体失败路径后，建议额外检查。
+- Skill 是 optional、replaceable capability；安装更多 Skill 不是质量证据。Skill 的 presence、version 或 hash 不构成通常的完成门禁。
 
 - Skill 只负责领域知识、文件格式和工具操作；完成判定仍由 SOP 负责。
 - MCP 只负责受控的外部数据或动作能力；不能自行决定任务分类、授权范围、失败策略或完成状态。

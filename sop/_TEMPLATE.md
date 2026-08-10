@@ -4,7 +4,7 @@
 - **落实纪律**: P1 / P2 / P3 / P4 中的一条或多条(必填,对不上则不得入库,见 ../PRINCIPLES.md)
 - **绑定骨架**: research | competition | development | 无(tier0/tier2 常为"无")
 - **通用性档位**: U0 普适 | U1 语言/生态相关 | U2 项目相关(必填,见 _METHODOLOGY.md §3)
-- **版本**: v1
+- **版本**: v1 (advance on material edits)
 
 ## 触发条件
 
@@ -37,7 +37,7 @@
 
 ## 失败处理
 
-遵守 P3:失败即报,不静默降级。这里写"失败时如何报 / 如何回退",不写"降级继续"。
+遵守 P3:失败即报,不静默降级。允许显式且质量等价的 fallback，但必须记录触发原因、用未改变的验收标准重新验证；改变 public behavior、research claim、隐私/数据边界、不可逆状态或 material/unbounded cost 时写明 HUMAN gate/re-contract。
 
 ## 产物
 
