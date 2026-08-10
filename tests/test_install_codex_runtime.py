@@ -109,6 +109,59 @@ class InstallCodexRuntimeTests(unittest.TestCase):
         args = INSTALL.parse_args([])
         self.assertEqual(args.profile, "preserve")
         self.assertEqual(INSTALL.parse_args(["--profile", "sol-supervisor"]).profile, "sol-supervisor")
+        self.assertEqual(INSTALL.parse_args(["--profile", "terra-supervisor"]).profile, "terra-supervisor")
+
+    def test_terra_supervisor_profile_sets_foreground_model_and_preserves_runtime_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home = base / "home"
+            workspace = base / "workspace"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            workspace.mkdir()
+            config = codex_home / "config.toml"
+            config.write_text(
+                'model = "gpt-5.6-sol"\n'
+                'model_reasoning_effort = "low"\n'
+                'sandbox_mode = "read-only"\n'
+                '\n'
+                '[telemetry]\n'
+                'retained = "yes"\n'
+                '\n'
+                '[agents]\n'
+                'unrelated_agent_setting = "preserve"\n',
+                encoding="utf-8",
+            )
+            hooks = codex_home / "hooks.json"
+            hooks.write_text(json.dumps({
+                "description": "existing",
+                "hooks": {"PreToolUse": [
+                    {"matcher": "Bash", "hooks": [{"type": "command", "command": "existing-hook"}]},
+                ]},
+            }), encoding="utf-8")
+
+            INSTALL.Installer(ROOT, home, workspace, profile="terra-supervisor").install()
+
+            parsed = tomllib.loads(config.read_text())
+            self.assertEqual(parsed["model"], "gpt-5.6-terra")
+            self.assertEqual(parsed["model_reasoning_effort"], "high")
+            self.assertEqual(parsed["sandbox_mode"], "read-only")
+            self.assertEqual(parsed["telemetry"], {"retained": "yes"})
+            self.assertEqual(parsed["agents"]["unrelated_agent_setting"], "preserve")
+            self.assertEqual(parsed["agents"]["default_subagent_model"], "gpt-5.6-luna")
+            self.assertEqual(parsed["agents"]["default_subagent_reasoning_effort"], "medium")
+            self.assertEqual(parsed["agents"]["max_concurrent_threads_per_session"], 2)
+            self.assertEqual(parsed["agents"]["max_depth"], 1)
+
+            rendered_hooks = json.loads(hooks.read_text())
+            rendered = json.dumps(rendered_hooks)
+            self.assertIn("existing-hook", rendered)
+            self.assertIn("CODEX_ROUTER_ENFORCEMENT=strict", rendered)
+            self.assertEqual(
+                sum(INSTALL.Installer._is_router_registration(registration, home)
+                    for registration in rendered_hooks["hooks"]["PreToolUse"]),
+                1,
+            )
 
     def test_terra_debugger_role_declares_fixed_debugging_contract(self) -> None:
         role = tomllib.loads((ROOT / "codex" / "agents" / "terra_debugger.toml").read_text())
@@ -339,7 +392,7 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertIn("user-notify", json.dumps(staged))
 
     def test_repeated_install_and_dry_run_are_idempotent_for_each_profile(self) -> None:
-        for profile in ("preserve", "sol-supervisor"):
+        for profile in ("preserve", "sol-supervisor", "terra-supervisor"):
             with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
                 base = Path(directory)
                 home = base / "home"
@@ -348,11 +401,20 @@ class InstallCodexRuntimeTests(unittest.TestCase):
                 workspace.mkdir()
                 installer = INSTALL.Installer(ROOT, home, workspace, profile=profile)
                 installer.install()
+                config_path = home / ".codex" / "config.toml"
+                hooks_path = home / ".codex" / "hooks.json"
+                installed_config = config_path.read_bytes()
+                installed_hooks = hooks_path.read_bytes()
 
                 repeated = INSTALL.Installer(ROOT, home, workspace, profile=profile)
                 repeated.install()
+                self.assertEqual(config_path.read_bytes(), installed_config)
+                self.assertEqual(hooks_path.read_bytes(), installed_hooks)
+
                 dry_run = INSTALL.Installer(ROOT, home, workspace, dry_run=True, profile=profile)
                 dry_run.install()
+                self.assertEqual(config_path.read_bytes(), installed_config)
+                self.assertEqual(hooks_path.read_bytes(), installed_hooks)
 
                 self.assertFalse(any(action.startswith("backup") for action in repeated.actions))
                 self.assertFalse(any(action.startswith("backup") for action in dry_run.actions))

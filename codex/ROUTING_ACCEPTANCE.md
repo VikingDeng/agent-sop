@@ -39,3 +39,17 @@ When `gpt-5.6-luna` is unavailable in a strict managed Hook, fail closed: report
 ## Fresh-task Sol-supervisor acceptance
 
 After installing with `python3 scripts/install_codex_runtime.py --profile sol-supervisor`, start a new task/restart so the model configuration is loaded. For one substantial, heavy task, acceptance evidence must show nonzero Sol planning/judgment, meaningful Luna execution, Terra review when a second view is useful, compact tool-output summaries, and a complete final report covering evidence/commands, review disposition, routing/model/WCU, remaining risks/blockers, and Git/delivery state when relevant. These are outcome evidence, not a fixed stage recipe: trivial tasks may remain single-model and skip review ceremony.
+
+## Fresh-task Terra-supervisor acceptance
+
+After installing with `python3 scripts/install_codex_runtime.py --profile terra-supervisor`, start a new task/restart so the model configuration is loaded. Verify top-level `model = "gpt-5.6-terra"` and `model_reasoning_effort = "high"`; `[agents]` must still select Luna/medium with concurrency two and depth one, and managed Hooks must retain the exact strict router command. This profile is an opt-in, measured cost-sensitive candidate for development and competition tasks. It is not the global default; approved research, architecture, and high-risk judgment remain appropriate use cases for the Sol profile.
+
+## Terra/Sol A/B procedure
+
+Use this procedure to measure the Terra candidate without changing the task contract:
+
+1. Write one self-contained task prompt with fixed acceptance tests, repository state, allowed scope, and a stop condition. Do not rewrite it between runs.
+2. In a disposable runtime home, install `--profile terra-supervisor`, start a fresh task with that exact prompt, and capture the result, commands, validation, wall time, model token totals, review disposition, and remaining risks.
+3. Reset only the disposable runtime home to the same pre-run state, install `--profile sol-supervisor`, start a fresh task with the identical prompt, and capture the same evidence fields. Do not compare runs with different code, tools, or hidden follow-up work.
+4. Compute each run as `WCU = 25*T_sol + 10*T_terra + 1*T_luna`, using cumulative attributed tokens from the session audit. Mark WCU `[UNCERTAIN]` if logs, descendants, or token attribution are incomplete.
+5. Prefer Terra for this task class only when it preserves the same acceptance outcome and evidence quality at a lower measured WCU; record any quality loss, extra retries, or review gap rather than selecting on cost alone. Keep `preserve` as the normal CLI default unless an explicit profile choice is made.

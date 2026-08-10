@@ -20,6 +20,9 @@ python3 scripts/install_codex_runtime.py
 # Explicitly run the foreground supervisor on Sol (reversible profile choice)
 python3 scripts/install_codex_runtime.py --profile sol-supervisor --dry-run
 python3 scripts/install_codex_runtime.py --profile sol-supervisor
+# Opt in to the measured cost-sensitive Terra supervisor candidate
+python3 scripts/install_codex_runtime.py --profile terra-supervisor --dry-run
+python3 scripts/install_codex_runtime.py --profile terra-supervisor
 ```
 
 The installer:
@@ -29,7 +32,7 @@ The installer:
 - backs up each destination (including the original symlink target), persists a recovery manifest under `~/.codex/install-rollback/`, and automatically restores mutations in reverse order if a later step fails or is interrupted;
 - merges the router registrations into `~/.codex/hooks.json` instead of deleting unrelated Hooks;
 - sets the default subagent to Luna Medium, concurrency to two, and depth to one under `[agents]`;
-- deliberately preserves the top-level foreground `model` and `model_reasoning_effort` by default; `--profile sol-supervisor` explicitly sets them to `gpt-5.6-sol` and `high`.
+- deliberately preserves the top-level foreground `model` and `model_reasoning_effort` by default; `--profile sol-supervisor` explicitly sets them to `gpt-5.6-sol` and `high`, while `--profile terra-supervisor` explicitly sets them to `gpt-5.6-terra` and `high`.
 
 The resulting `[agents]` settings are:
 
@@ -41,7 +44,7 @@ max_concurrent_threads_per_session = 2
 max_depth = 1
 ```
 
-The foreground profile is selected only at installation time. Start a new task (or restart Codex) after changing it; an existing task keeps its current model configuration.
+The foreground profile is selected only at installation time. `preserve` remains the CLI default and does not make Terra the global default. Start a new task (or restart Codex) after changing a profile; an existing task keeps its current model configuration.
 
 Codex discovers AGENTS guidance at task startup. After installation, start a new task. The App's `/hooks` trust step still requires exact-hash approval; that trust is not machine-verifiable by the installer, which cannot bypass it. Specialized tool paths may bypass Hooks, so post-run auditing remains mandatory rather than treating the Hook as a security boundary.
 
@@ -62,7 +65,7 @@ Backups are local runtime files named with `.backup-<timestamp>` and must not be
 
 ## Weighted routing
 
-The optimization target is `WCU = 25*T_sol + 10*T_terra + 1*T_luna`, subject to unchanged acceptance quality. Luna is preferred for labor-heavy bounded execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment.
+The optimization target is `WCU = 25*T_sol + 10*T_terra + 1*T_luna`, subject to unchanged acceptance quality. The Terra supervisor is an opt-in, measured cost-sensitive candidate for development and competition tasks. Luna is preferred for labor-heavy bounded execution, Terra for semantic/debugging pressure and ordinary review, and Sol for approved research, architecture, ambiguity, and high-risk judgment.
 
 The foreground model remains a user choice. The router does not spawn agents; in direct or unmanaged `advisory` mode it highlights expensive Sol execution, full-context forks, repeated polling, role/model conflicts, and Luna capability failures without blocking the task. Luna unavailability may reroute unchanged work to Terra or another lowest-cost capable role only in that advisory diagnostic mode. Package IDs, phase markers, exact retry signatures, and one-loop budgets remain available as coordination metadata but are not required by the advisory policy.
 

@@ -28,6 +28,7 @@ from weighted_routing_policy import (  # noqa: E402
     command_text,
     is_sol_execution,
     normalize_tool_name,
+    parse_package_markers,
     package_contract_error,
     parse_recontract_evidence,
     post_failure_role_allowed,
@@ -262,6 +263,40 @@ def _close_target(value: Any) -> str:
     return target.strip() if isinstance(target, str) else ""
 
 
+# Codex App collaboration payloads keep task messages encrypted in the rollout
+# (currently Fernet tokens begin with ``gAAAA``).  An encrypted message is not
+# evidence that markers are absent; it is evidence that this auditor cannot
+# inspect them.  Keep that distinction separate from legacy plain-text logs.
+def _is_opaque_app_message(arguments: dict[str, Any]) -> bool:
+    for key in ("message", "prompt", "task"):
+        value = arguments.get(key)
+        if isinstance(value, str) and value.startswith("gAAAA"):
+            return True
+    return False
+
+
+def _lifecycle_target(arguments: dict[str, Any]) -> str:
+    for key in ("target", "agent", "agent_name", "task_name"):
+        value = arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _lifecycle_result_succeeded(value: Any) -> bool:
+    payload = _spawn_result_object(value)
+    if payload is None:
+        if value in (None, ""):
+            return True
+        return not bool(re.search(r"\b(?:failed|failure|error|timed out|interrupted)\b", str(value), re.I))
+    if payload.get("isError") or payload.get("is_error") or payload.get("failed"):
+        return False
+    if payload.get("error") not in (None, False, ""):
+        return False
+    status = payload.get("status")
+    return not (isinstance(status, str) and status.lower() in {"failed", "failure", "error"})
+
+
 def _is_agent_inspection(tool_name: str, arguments: dict[str, Any]) -> bool:
     leaf = normalize_tool_name(tool_name)
     if leaf in {"list_agents", "get_agents", "agent_status", "read_thread_terminal"}:
@@ -315,6 +350,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     call_index: dict[str, tuple[str, str]] = {}
     pending_spawns: dict[str, tuple[Any, str, str]] = {}
     pending_closes: dict[str, tuple[str, int]] = {}
+    pending_lifecycle_controls: dict[str, dict[str, Any]] = {}
+    activity_by_path: dict[str, dict[str, Any]] = {}
     lifecycle_events: list[dict[str, Any]] = []
     thread_limit_failures: list[dict[str, str]] = []
     successful_spawns: Counter[str] = Counter()
@@ -322,14 +359,20 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     failed_spawns: Counter[str] = Counter()
     large_outputs: list[dict[str, Any]] = []
     sol_execution_calls: list[dict[str, str]] = []
+    sol_lifecycle_calls: list[dict[str, str]] = []
     parse_errors = 0
     usage_schema_errors: list[str] = []
     token_snapshot_count = 0
     task_complete = False
+    task_complete_count = 0
+    task_epoch = 0
+    final_epoch_task_complete_count = 0
+    interrupted = False
     last_token_line = 0
     last_substantive_line = 0
     nested_policy_violations: list[str] = []
     nested_policy_uncertainties: list[str] = []
+    package_contract_uncertainties: list[str] = []
     luna_routing_violations: list[str] = []
     luna_unavailable_turns: set[str] = set()
     last_agent_message = ""
@@ -355,6 +398,12 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "thread_limit_failures": [],
             "large_outputs": [],
             "sol_execution_calls": [],
+            "sol_lifecycle_calls": [],
+            "interrupted": False,
+            "task_complete_count": 0,
+            "task_epoch": 0,
+            "final_epoch_task_complete_count": 0,
+            "completion_status": "missing_completion",
             "parse_errors": 1,
             "usage_schema_errors": [f"cannot open log: {exc}"],
             "token_snapshot_count": 0,
@@ -363,6 +412,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "cwd": "",
             "nested_policy_violations": [],
             "nested_policy_uncertainties": [],
+            "package_contract_uncertainties": [],
             "luna_routing_violations": [],
         }
 
@@ -384,13 +434,23 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             if metadata_record and isinstance(payload.get("cwd"), str):
                 cwd = payload["cwd"]
             observed_turn_id = _turn_id(payload)
+            is_task_started = record.get("type") == "event_msg" and payload.get("type") == "task_started"
             is_task_complete = record.get("type") == "event_msg" and payload.get("type") == "task_complete"
             substantive_after_completion = (
                 record.get("type") in {"turn_context", "response_item"}
                 or (record.get("type") == "event_msg" and payload.get("type") in {"task_started", "token_count", "user_message"})
             )
-            if task_complete and substantive_after_completion:
+            if is_task_started:
+                task_epoch += 1
                 task_complete = False
+                final_epoch_task_complete_count = 0
+                interrupted = False
+                last_agent_message = ""
+                lifecycle_events.append({"kind": "task_started", "line": line_number, "epoch": task_epoch})
+            elif task_complete and substantive_after_completion:
+                task_complete = False
+                final_epoch_task_complete_count = 0
+                last_agent_message = ""
             if substantive_after_completion:
                 last_substantive_line = line_number
             if record.get("type") == "turn_context":
@@ -401,8 +461,38 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 continue
             if is_task_complete:
                 task_complete = True
+                task_complete_count += 1
+                final_epoch_task_complete_count += 1
                 if isinstance(payload.get("last_agent_message"), str):
                     last_agent_message = payload["last_agent_message"]
+                lifecycle_events.append({"kind": "task_complete", "line": line_number})
+            if record.get("type") == "event_msg" and payload.get("type") == "turn_aborted":
+                interrupted = True
+                task_complete = False
+                final_epoch_task_complete_count = 0
+                last_agent_message = ""
+                lifecycle_events.append({"kind": "turn_aborted", "line": line_number})
+            if record.get("type") == "event_msg" and payload.get("type") == "sub_agent_activity":
+                activity_kind = str(payload.get("kind") or "unknown")
+                activity = {
+                    "kind": "child_activity",
+                    "status": activity_kind,
+                    "agent_thread_id": str(payload.get("agent_thread_id") or ""),
+                    "agent_path": str(payload.get("agent_path") or ""),
+                    "line": line_number,
+                }
+                lifecycle_events.append(activity)
+                if activity["agent_path"]:
+                    activity_by_path[activity["agent_path"]] = activity
+                    for event in lifecycle_events:
+                        if event.get("kind") != "spawn_result":
+                            continue
+                        identifiers = event.get("identifiers", {})
+                        if identifiers.get("task_name") == activity["agent_path"]:
+                            if activity["agent_thread_id"]:
+                                identifiers.setdefault("thread_id", activity["agent_thread_id"])
+                            identifiers.setdefault("agent_path", activity["agent_path"])
+                continue
             if record.get("type") == "event_msg" and payload.get("type") == "token_count":
                 info = payload.get("info")
                 usage_payload = info.get("total_token_usage") if isinstance(info, dict) else None
@@ -426,8 +516,34 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 if call_id:
                     call_index[call_id] = (active_model, name)
                 leaf = normalize_tool_name(name)
+                lifecycle_control = leaf in {
+                    "agent", "spawn_agent", "create_agent", "send_message", "send_input",
+                    "followup_task", "wait_agent", "close_agent", "resume_agent", "interrupt_agent",
+                }
                 if _is_agent_inspection(name, arguments):
                     lifecycle_events.append({"kind": "agent_inspection", "line": line_number})
+                if lifecycle_control and leaf not in {"spawn_agent", "create_agent", "close_agent"}:
+                    control_event = {
+                        "kind": "lifecycle_request",
+                        "tool": name,
+                        "leaf": leaf,
+                        "target": _lifecycle_target(arguments),
+                        "call_id": call_id,
+                        "line": line_number,
+                    }
+                    if leaf == "followup_task":
+                        message = arguments.get("message") or arguments.get("prompt") or arguments.get("task")
+                        package_id, package_phase, package_error = parse_package_markers(message)
+                        control_event.update({
+                            "kind": "followup_request",
+                            "package_id": package_id,
+                            "package_phase": package_phase,
+                            "package_error": package_error,
+                            "package_markers_opaque": _is_opaque_app_message(arguments),
+                        })
+                    lifecycle_events.append(control_event)
+                    if call_id:
+                        pending_lifecycle_controls[call_id] = control_event
                 try:
                     request = classify_spawn_request(name, arguments)
                 except ValueError:
@@ -451,6 +567,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                         "line": line_number,
                         "package_id": request.package_id,
                         "package_phase": request.package_phase,
+                        "package_markers_opaque": bool(
+                            request.package_error and _is_opaque_app_message(arguments)
+                        ),
                         "signature": signature,
                         "recontract": (
                             {
@@ -470,7 +589,15 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                         luna_routing_violations.append(
                             f"line {line_number}: invalid re-contract evidence: {recontract_error}"
                         )
-                    if (contract_error := package_contract_error(request)) is not None:
+                    contract_error = package_contract_error(request)
+                    package_markers_opaque = bool(
+                        request.package_error and _is_opaque_app_message(arguments)
+                    )
+                    if package_markers_opaque:
+                        package_contract_uncertainties.append(
+                            f"line {line_number}: opaque/encrypted App spawn message leaves PACKAGE_ID/PACKAGE_PHASE contract uncertain"
+                        )
+                    elif contract_error is not None:
                         luna_routing_violations.append(
                             f"line {line_number}: invalid package contract: {contract_error}"
                         )
@@ -519,7 +646,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                     })
                     if call_id:
                         pending_closes[call_id] = (target, line_number)
-                if model_family(active_model) == "sol" and is_sol_execution(name, arguments):
+                if model_family(active_model) == "sol" and lifecycle_control:
+                    sol_lifecycle_calls.append({"tool": name, "line": str(line_number)})
+                if model_family(active_model) == "sol" and not lifecycle_control and is_sol_execution(name, arguments):
                     sol_execution_calls.append({"tool": name, "line": str(line_number)})
                     if observed_turn_id in luna_unavailable_turns:
                         luna_routing_violations.append(
@@ -544,6 +673,17 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                         "line": line_number,
                         "succeeded": close_result_succeeded(payload.get("output")),
                     })
+                control = pending_lifecycle_controls.pop(call_id, None)
+                if control is not None:
+                    control["succeeded"] = _lifecycle_result_succeeded(payload.get("output"))
+                    control["result_line"] = line_number
+                    if control.get("leaf") == "interrupt_agent":
+                        lifecycle_events.append({
+                            "kind": "interrupt_result",
+                            "target": control.get("target", ""),
+                            "line": line_number,
+                            "succeeded": control["succeeded"],
+                        })
                 if spawn is not None:
                     request, spawn_turn_id, signature = spawn
                     role = request.requested_role
@@ -552,13 +692,35 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                         luna_role=request.luna_role,
                     )
                     if classification.succeeded:
+                        identifiers = _identifier_values(payload.get("output"))
+                        result_object = _spawn_result_object(payload.get("output")) or {}
+                        reported_roles = [
+                            result_object.get(key)
+                            for key in ("agent_type", "subagent_type", "role")
+                            if isinstance(result_object.get(key), str) and result_object[key].strip()
+                        ]
+                        reported_models = [
+                            result_object.get(key)
+                            for key in ("model", "model_name")
+                            if isinstance(result_object.get(key), str) and result_object[key].strip()
+                        ]
+                        task_name = identifiers.get("task_name")
+                        activity = activity_by_path.get(task_name or "")
+                        if activity is not None:
+                            if activity.get("agent_thread_id"):
+                                identifiers.setdefault("thread_id", activity["agent_thread_id"])
+                            if activity.get("agent_path"):
+                                identifiers.setdefault("agent_path", activity["agent_path"])
                         successful_spawns[role] += 1
                         successful_spawn_roles.append(role)
                         lifecycle_events.append({
                             "kind": "spawn_result",
                             "role": role,
                             "call_id": call_id,
-                            "identifiers": _identifier_values(payload.get("output")),
+                            "identifiers": identifiers,
+                            "requested_model": request.model,
+                            "reported_role": reported_roles[0] if reported_roles else None,
+                            "reported_model": reported_models[0] if reported_models else None,
                             "line": line_number,
                             "package_id": request.package_id,
                             "package_phase": request.package_phase,
@@ -617,16 +779,25 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "thread_limit_failures": thread_limit_failures,
         "large_outputs": large_outputs,
         "sol_execution_calls": sol_execution_calls,
+        "sol_lifecycle_calls": sol_lifecycle_calls,
         "parse_errors": parse_errors,
         "usage_schema_errors": usage_schema_errors,
         "token_snapshot_count": token_snapshot_count,
         "task_complete": task_complete,
+        "task_complete_count": task_complete_count,
+        "task_epoch": task_epoch,
+        "final_epoch_task_complete_count": final_epoch_task_complete_count,
+        "interrupted": interrupted,
+        "completion_status": (
+            "interrupted" if interrupted else ("confirmed" if task_complete else "missing_completion")
+        ),
         "last_agent_message": last_agent_message,
         "cwd": cwd,
         "last_token_line": last_token_line,
         "last_substantive_line": last_substantive_line,
         "nested_policy_violations": nested_policy_violations,
         "nested_policy_uncertainties": nested_policy_uncertainties,
+        "package_contract_uncertainties": package_contract_uncertainties,
         "luna_routing_violations": luna_routing_violations,
     }
 
@@ -652,9 +823,11 @@ def audit_session_tree(
             children_by_parent[str(parent)].append(session)
     large_outputs: list[dict[str, Any]] = []
     sol_execution_calls: list[dict[str, Any]] = []
+    sol_lifecycle_calls: list[dict[str, Any]] = []
     completeness_violations: list[str] = []
     routing_policy_findings: list[str] = []
     delivery_report_findings: list[str] = []
+    child_lifecycle_statuses: list[dict[str, Any]] = []
 
     def lifecycle_violations(session: dict[str, Any], children: list[dict[str, Any]]) -> list[str]:
         events = session.get("lifecycle_events", [])
@@ -683,12 +856,43 @@ def audit_session_tree(
             violations.append(
                 f"thread {session['thread_id']}: peak concurrently open spawned threads was {peak_open}, above max_concurrent_threads_per_session={MAX_CONCURRENT_OPEN_THREADS}"
             )
-        completed_children = [child for child in children if child.get("task_complete")]
-        for child in completed_children:
+        child_by_id = {str(child["thread_id"]): child for child in children}
+        for event in events:
+            if event.get("kind") != "spawn_result":
+                continue
+            identifiers = event.get("identifiers", {})
+            child_id = identifiers.get("thread_id") or identifiers.get("agent_id")
+            child = child_by_id.get(str(child_id)) if child_id else None
+            if child is None:
+                continue
+            event["child_thread_id"] = str(child["thread_id"])
+            event["child_role"] = child.get("agent_role")
+            event["child_models"] = sorted(
+                model for model, usage in child.get("usage_by_model", {}).items()
+                if usage.get("total_tokens", 0)
+            )
+        for child in children:
             child_id = str(child["thread_id"])
-            if child_id not in close_ids:
+            interrupted_child = bool(child.get("interrupted"))
+            if interrupted_child:
+                status = "interrupted"
+            elif child.get("task_complete"):
+                status = "completed"
+            else:
+                status = "missing_completion"
+            confirmed_close = child_id in close_ids
+            child_lifecycle_statuses.append({
+                "parent_thread_id": session["thread_id"],
+                "child_thread_id": child_id,
+                "role": child.get("agent_role"),
+                "models": sorted(child.get("usage_by_model", {})),
+                "status": status,
+                "close_status": "confirmed" if confirmed_close else "unclosed",
+            })
+            if not confirmed_close:
+                state = "interrupted" if interrupted_child else ("completed" if child.get("task_complete") else "missing completion")
                 violations.append(
-                    f"thread {session['thread_id']}: completed child {child_id} has no confirmed successful close_agent result; close requests alone are not proof"
+                    f"thread {session['thread_id']}: {state} child {child_id} has no confirmed successful close_agent result; close requests alone are not proof"
                 )
 
         package_recovery: dict[str, dict[str, Any]] = {}
@@ -798,6 +1002,18 @@ def audit_session_tree(
                     violations.append(
                         f"thread {session['thread_id']}: agent-thread-limit at line {failure_line} had completed open children but no confirmed successful close after inspection and before retry/stop"
                     )
+        followups_by_target: Counter[str] = Counter(
+            str(event.get("target"))
+            for event in events
+            if event.get("kind") == "followup_request"
+            and event.get("succeeded", True)
+            and event.get("target")
+        )
+        for target, count in sorted(followups_by_target.items()):
+            if count > GLOBAL_LOOP_BUDGET["correction"]:
+                violations.append(
+                    f"thread {session['thread_id']}: target {target!r} has {count} correction/followup_task attempts; maximum is {GLOBAL_LOOP_BUDGET['correction']}"
+                )
         return violations
 
     successful_phase_counts: Counter[tuple[str, str, str]] = Counter()
@@ -805,11 +1021,13 @@ def audit_session_tree(
     for session in sessions:
         root_session = str(session["session_id"])
         for event in session.get("lifecycle_events", []):
-            if event.get("kind") != "spawn_result":
+            if event.get("kind") not in {"spawn_result", "followup_request"}:
                 continue
             package_id = event.get("package_id")
             phase = event.get("package_phase")
-            if package_id and phase in GLOBAL_LOOP_BUDGET:
+            if package_id and phase in GLOBAL_LOOP_BUDGET and event.get("kind") == "spawn_result":
+                successful_phase_counts[(root_session, str(package_id), str(phase))] += 1
+            if package_id and phase in GLOBAL_LOOP_BUDGET and event.get("kind") == "followup_request" and event.get("succeeded", True):
                 successful_phase_counts[(root_session, str(package_id), str(phase))] += 1
             if event.get("role") == "risk_reviewer":
                 successful_risk_counts[root_session] += 1
@@ -835,6 +1053,8 @@ def audit_session_tree(
             large_outputs.append({"thread_id": thread_id, **output})
         for call in session["sol_execution_calls"]:
             sol_execution_calls.append({"thread_id": thread_id, **call})
+        for call in session["sol_lifecycle_calls"]:
+            sol_lifecycle_calls.append({"thread_id": thread_id, **call})
 
         requested_roles = Counter(session["successful_spawn_roles"])
         expected_children = sum(requested_roles.values())
@@ -889,13 +1109,19 @@ def audit_session_tree(
             routing_policy_findings.append(f"thread {thread_id}: {item}")
         for item in session["nested_policy_uncertainties"]:
             completeness_violations.append(f"thread {thread_id}: {item}")
+        for item in session["package_contract_uncertainties"]:
+            completeness_violations.append(f"thread {thread_id}: {item}")
         for item in session["luna_routing_violations"]:
             routing_policy_findings.append(f"thread {thread_id}: {item}")
         if not session["token_snapshot_count"]:
             completeness_violations.append(f"thread {thread_id}: no valid token snapshot")
-        if not session["task_complete"]:
+        if not session["task_complete"] and session.get("interrupted"):
+            completeness_violations.append(
+                f"thread {thread_id}: final task epoch interrupted before task_complete"
+            )
+        elif not session["task_complete"]:
             completeness_violations.append(f"thread {thread_id}: task_complete event missing")
-        elif session["last_token_line"] < session["last_substantive_line"]:
+        elif session["last_token_line"] < session["last_substantive_line"] and not session.get("interrupted"):
             completeness_violations.append(f"thread {thread_id}: final token snapshot precedes later activity")
 
         if session["task_complete"] and not session["parent_thread_id"]:
@@ -985,6 +1211,8 @@ def audit_session_tree(
         "subagent_roles": dict(roles),
         "large_outputs": sorted(large_outputs, key=lambda item: item["chars"], reverse=True),
         "sol_execution_calls": sol_execution_calls,
+        "sol_lifecycle_calls": sol_lifecycle_calls,
+        "child_lifecycle_statuses": child_lifecycle_statuses,
         "completeness_violations": integrity_failures,
         "routing_policy_findings": routing_policy_findings,
         "routing_violations": violations,
@@ -1011,6 +1239,8 @@ def render_report(report: dict[str, Any]) -> str:
         lines.append(f"{family:<7} {tokens:>12,} {weight:>7} {tokens * weight:>12,}")
     if report["subagent_roles"]:
         lines.extend(("", "Subagent roles: " + ", ".join(f"{key}={value}" for key, value in sorted(report["subagent_roles"].items()))))
+    lines.append(f"Sol lifecycle coordination calls: {len(report.get('sol_lifecycle_calls', []))}")
+    lines.append(f"Sol heavy-execution violations: {len(report.get('sol_execution_calls', []))}")
     lines.extend(("", f"Large tool outputs (>= threshold): {len(report['large_outputs'])}"))
     if report["routing_violations"]:
         lines.append("Routing/completeness violations:")

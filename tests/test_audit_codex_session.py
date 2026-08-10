@@ -1167,6 +1167,130 @@ class AuditCodexSessionTests(unittest.TestCase):
                 "invalid package contract" in item for item in report["routing_violations"]
             ))
 
+    def test_auditor_flags_duplicate_plain_text_and_opaque_app_package_uncertainty(self) -> None:
+        duplicate = record("response_item", {
+            "type": "function_call",
+            "name": "spawn_agent",
+            "call_id": "duplicate-markers",
+            "arguments": json.dumps({
+                "agent_type": "luna_executor",
+                "message": "bounded\nPACKAGE_ID: one\nPACKAGE_ID: two\nPACKAGE_PHASE: initial",
+            }),
+            "turn_id": "turn-a",
+        }, add_package_markers=False)
+        opaque = record("response_item", {
+            "type": "function_call",
+            "name": "spawn_agent",
+            "call_id": "opaque-message",
+            "arguments": json.dumps({
+                "agent_type": "luna_executor",
+                "message": "gAAAAopaque-app-message",
+            }),
+            "turn_id": "turn-a",
+        }, add_package_markers=False)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100], extra=duplicate + opaque)
+            report = AUDIT.audit_session_tree(str(path), root)
+            invalid = [item for item in report["routing_violations"] if "invalid package contract" in item]
+            self.assertEqual(len(invalid), 1)
+            self.assertEqual(
+                len([
+                    item for item in report["completeness_violations"]
+                    if "opaque/encrypted App spawn message" in item
+                ]),
+                1,
+            )
+
+    def test_opaque_app_initial_spawns_with_children_and_close_stay_uncertain(self) -> None:
+        def app_call(name: str, call_id: str, arguments: dict) -> str:
+            return record("response_item", {
+                "type": "function_call",
+                "name": name,
+                "namespace": "collaboration",
+                "call_id": call_id,
+                "arguments": json.dumps(arguments),
+                "internal_chat_message_metadata_passthrough": {"turn_id": "app-turn"},
+            }, add_package_markers=False)
+
+        def app_output(call_id: str, output: object) -> str:
+            return record("response_item", {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": output if isinstance(output, str) else json.dumps(output),
+                "internal_chat_message_metadata_passthrough": {"turn_id": "app-turn"},
+            })
+
+        for count in (1, 2):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                extra_parts: list[str] = []
+                child_ids: list[str] = []
+                for index in range(count):
+                    task_name = f"luna_initial_{index}"
+                    child_id = f"app-child-{index}"
+                    child_ids.append(child_id)
+                    extra_parts.extend([
+                        app_call("spawn_agent", f"spawn-{index}", {
+                            "task_name": task_name,
+                            "agent_type": "luna_executor",
+                            "fork_turns": "none",
+                            "message": f"gAAAAopaque-initial-{index}",
+                        }),
+                        record("event_msg", {
+                            "type": "sub_agent_activity",
+                            "kind": "started",
+                            "agent_thread_id": child_id,
+                            "agent_path": f"/root/{task_name}",
+                        }),
+                        app_output(f"spawn-{index}", {"task_name": f"/root/{task_name}"}),
+                        app_call("multi_agent_v1__close_agent", f"close-{index}", {"target": child_id}),
+                        app_output(f"close-{index}", {"previous_status": {"completed": "done"}}),
+                    ])
+                    self.write_log(
+                        root,
+                        f"child-{index}",
+                        child_id,
+                        "gpt-5.6-luna",
+                        [200 + index],
+                        "root",
+                        "luna_executor",
+                    )
+                parent = self.write_log(
+                    root,
+                    "parent",
+                    "root",
+                    "gpt-5.6-luna",
+                    [100],
+                    extra="".join(extra_parts),
+                )
+
+                report = AUDIT.audit_session_tree(str(parent), root)
+                root_session = next(item for item in report["sessions"] if item["thread_id"] == "root")
+                results = [
+                    event for event in root_session["lifecycle_events"]
+                    if event.get("kind") == "spawn_result"
+                ]
+                self.assertEqual(report["cost_status"], "partial_uncertain")
+                self.assertEqual(root_session["successful_spawns"], {"luna_executor": count})
+                self.assertEqual(
+                    [event["identifiers"].get("thread_id") for event in results],
+                    child_ids,
+                )
+                self.assertTrue(all(event["child_role"] == "luna_executor" for event in results))
+                self.assertTrue(all(event["child_models"] == ["gpt-5.6-luna"] for event in results))
+                self.assertTrue(all(
+                    item["status"] == "completed" and item["close_status"] == "confirmed"
+                    for item in report["child_lifecycle_statuses"]
+                ))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        AUDIT.main([
+                            str(parent), "--sessions-root", str(root), "--json", "--strict",
+                        ]),
+                        1,
+                    )
+
     def test_escaped_dotted_nested_factory_is_an_audit_violation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1332,6 +1456,159 @@ class AuditCodexSessionTests(unittest.TestCase):
             report = AUDIT.audit_session_tree(str(path), root)
             self.assertEqual(report["cost_status"], "partial_uncertain")
             self.assertTrue(any("task_complete" in item for item in report["routing_violations"]))
+
+    def test_task_started_resets_completion_and_final_report_for_the_final_epoch(self) -> None:
+        old_report = (
+            "Outcome: completed. Evidence: tests passed. Review: not run. "
+            "Routing/WCU: Luna. Risks: none. Delivery: Git status not applicable."
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            aborted = root / "aborted.jsonl"
+            aborted.write_text("".join([
+                record("session_meta", {"id": "aborted", "session_id": "aborted"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(100)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": old_report}),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(150)),
+                record("event_msg", {"type": "turn_aborted"}),
+            ]))
+            report = AUDIT.audit_session_tree(str(aborted), root)
+            session = report["sessions"][0]
+            self.assertFalse(session["task_complete"])
+            self.assertTrue(session["interrupted"])
+            self.assertEqual(session["last_agent_message"], "")
+            self.assertEqual(session["completion_status"], "interrupted")
+            self.assertTrue(any("final task epoch interrupted" in item for item in report["routing_violations"]))
+            self.assertFalse(any(old_report in item for item in report["delivery_report_findings"]))
+
+            completed = root / "completed.jsonl"
+            completed.write_text("".join([
+                record("session_meta", {"id": "completed", "session_id": "completed"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(100)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": old_report}),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(150)),
+                record("event_msg", {"type": "task_complete"}),
+            ]))
+            report = AUDIT.audit_session_tree(str(completed), root)
+            session = next(item for item in report["sessions"] if item["thread_id"] == "completed")
+            self.assertTrue(session["task_complete"])
+            self.assertEqual(session["task_complete_count"], 2)
+            self.assertEqual(session["last_agent_message"], "")
+            self.assertTrue(report["delivery_report_findings"])
+            self.assertFalse(any(old_report in item for item in report["delivery_report_findings"]))
+
+    def test_production_shaped_app_lifecycle_trace_preserves_lineage_and_budget_findings(self) -> None:
+        def app_call(name: str, call_id: str, arguments: dict) -> str:
+            return record("response_item", {
+                "type": "function_call",
+                "name": name,
+                "namespace": "collaboration",
+                "call_id": call_id,
+                "arguments": json.dumps(arguments),
+                "internal_chat_message_metadata_passthrough": {"turn_id": "app-turn"},
+            }, add_package_markers=False)
+
+        def app_output(call_id: str, output: object) -> str:
+            return record("response_item", {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": output if isinstance(output, str) else json.dumps(output),
+                "internal_chat_message_metadata_passthrough": {"turn_id": "app-turn"},
+            })
+
+        def activity(kind: str, thread_id: str, path: str) -> str:
+            return record("event_msg", {
+                "type": "sub_agent_activity",
+                "kind": kind,
+                "agent_thread_id": thread_id,
+                "agent_path": path,
+            })
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            luna_id = "app-luna-thread"
+            terra_id = "app-terra-thread"
+            luna_path = "/root/luna_competition_executor"
+            terra_path = "/root/terra_acceptance_reviewer"
+            extra = "".join([
+                app_call("spawn_agent", "full-history", {
+                    "task_name": "luna_competition_executor",
+                    "agent_type": "luna_executor",
+                    "fork_turns": "all",
+                    "message": "gAAAAopaque-full-history-message",
+                }),
+                app_output("full-history", "Full-history forked agents inherit the parent agent type; omit agent_type, or spawn without a full-history fork."),
+                app_call("spawn_agent", "luna-spawn", {
+                    "task_name": "luna_competition_executor",
+                    "agent_type": "luna_executor",
+                    "fork_turns": "none",
+                    "message": "gAAAAopaque-luna-message",
+                }),
+                activity("started", luna_id, luna_path),
+                app_output("luna-spawn", {"task_name": luna_path}),
+                app_call("wait_agent", "wait-luna", {"timeout_ms": 60_000}),
+                app_output("wait-luna", {"message": "Wait completed.", "timed_out": False}),
+                app_call("spawn_agent", "terra-spawn", {
+                    "task_name": "terra_acceptance_reviewer",
+                    "agent_type": "reviewer",
+                    "fork_turns": "none",
+                    "message": "gAAAAopaque-reviewer-message",
+                }),
+                activity("started", terra_id, terra_path),
+                app_output("terra-spawn", {"task_name": terra_path}),
+                app_call("multi_agent_v1__close_agent", "close-terra", {"target": terra_id}),
+                app_output("close-terra", {"previous_status": {"completed": "done"}}),
+                app_call("followup_task", "correction-one", {
+                    "target": "luna_competition_executor",
+                    "message": "gAAAAopaque-correction-one",
+                }),
+                app_output("correction-one", ""),
+                app_call("followup_task", "correction-two", {
+                    "target": "luna_competition_executor",
+                    "message": "gAAAAopaque-correction-two",
+                }),
+                app_output("correction-two", ""),
+                app_call("interrupt_agent", "interrupt-luna", {"target": "luna_competition_executor"}),
+                app_output("interrupt-luna", {"previous_status": "running"}),
+            ])
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-sol", [100], extra=extra)
+            luna = root / "luna.jsonl"
+            luna.write_text("".join([
+                record("session_meta", {
+                    "id": luna_id, "session_id": "root", "parent_thread_id": "root",
+                    "agent_role": "luna_executor",
+                }),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(200)),
+                record("event_msg", {"type": "task_complete"}),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(250)),
+                record("event_msg", {"type": "turn_aborted"}),
+            ]))
+            self.write_log(root, "terra", terra_id, "gpt-5.6-terra", [300], "root", "reviewer")
+
+            report = AUDIT.audit_session_tree(str(parent), root)
+            root_session = next(item for item in report["sessions"] if item["thread_id"] == "root")
+            results = [event for event in root_session["lifecycle_events"] if event.get("kind") == "spawn_result"]
+            self.assertEqual(root_session["failed_spawns"], {"luna_executor": 1})
+            self.assertEqual(len(results), 2)
+            self.assertEqual(results[0]["child_thread_id"], luna_id)
+            self.assertEqual(results[0]["child_role"], "luna_executor")
+            self.assertEqual(results[0]["child_models"], ["gpt-5.6-luna"])
+            self.assertEqual(results[1]["child_thread_id"], terra_id)
+            self.assertFalse(any("invalid package contract" in item for item in report["routing_violations"]))
+            self.assertTrue(any("correction/followup_task attempts" in item for item in report["routing_violations"]))
+            self.assertTrue(any(item["child_thread_id"] == luna_id and item["status"] == "interrupted" for item in report["child_lifecycle_statuses"]))
+            self.assertTrue(any(item["child_thread_id"] == terra_id and item["close_status"] == "confirmed" for item in report["child_lifecycle_statuses"]))
+            self.assertEqual(report["sol_execution_calls"], [])
+            self.assertGreaterEqual(len(report["sol_lifecycle_calls"]), 6)
 
 
 if __name__ == "__main__":

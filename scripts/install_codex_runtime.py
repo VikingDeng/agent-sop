@@ -41,6 +41,10 @@ PROFILE_SETTINGS = {
         "model": '"gpt-5.6-sol"',
         "model_reasoning_effort": '"high"',
     },
+    "terra-supervisor": {
+        "model": '"gpt-5.6-terra"',
+        "model_reasoning_effort": '"high"',
+    },
 }
 STRICT_ENV_ASSIGNMENT = "CODEX_ROUTER_ENFORCEMENT=strict"
 MANAGED_PYTHON_LAUNCHER = "/usr/bin/python3"
