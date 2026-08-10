@@ -21,6 +21,7 @@ from weighted_routing_policy import (
     classify_spawn_request,
     classify_spawn_result,
     command_text,
+    executable_static_tool_calls,
     is_sol_execution,
     normalize_tool_name,
     package_contract_error,
@@ -33,14 +34,14 @@ from weighted_routing_policy import (
 SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode unless CODEX_ROUTER_ENFORCEMENT=strict.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
 Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
-Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. The runtime guard rejects resume_agent for model-bound package work: spawn a fresh explicit typed role for correction or re-review; reuse only an open matching agent whose contract and role are confirmed. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. The runtime guard denies the executable resume primitive for a closed role-bound agent; it does not bind agent IDs to package/phase, requested role, actual model, or open state. Fresh typed correction/re-review spawns keep the existing package budget, and role/model changes never reset it. Already-open reuse and actual-model verification remain supervisor policy plus PostToolUse/session audit; once evidence exists, violations fail closed. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
 Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
 Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
 """
 
 STRICT_SESSION_CONTEXT = """Weighted-cost routing is active in strict enforcement mode.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
-Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance. Model-bound package work must use a fresh explicit typed spawn for correction/re-review; resume_agent is denied.
+Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance. Model-bound package work must use a fresh explicit typed spawn for correction/re-review; resume_agent is denied. The denial guarantees the closed role-bound resume primitive cannot run, but Hook telemetry does not bind agent IDs to package/phase, requested role, actual model, or open state. Fresh typed spawns keep the existing package budget; role/model changes never reset it. Already-open reuse and actual-model verification are supervisor policy plus PostToolUse/session audit, with evidenced violations failing closed.
 Use Luna for fixed Luna-eligible implementation packages, Terra only for explicitly permitted semantic/debugging work or ordinary review, and Sol for read-only architecture, research design, ambiguity, and final judgment.
 Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
 Preserve real evidence and never lower acceptance criteria silently. If a strict invariant or required runtime capability is uncertain, stop the affected package and report the uncertainty.
@@ -157,15 +158,23 @@ def _has_full_fork(tool_input: dict[str, Any]) -> bool:
 
 
 def _contains_resume_agent(raw: str) -> bool:
-    return bool(re.search(r"(?:multi_agent_v1__)?resume_agent\s*\(", raw))
+    try:
+        return bool(executable_static_tool_calls(raw) & {"resume_agent", "resume"})
+    except ValueError:
+        # The normal exec parser remains the fail-closed oracle for malformed input;
+        # this probe must not scan prompt literals after tokenization fails.
+        return False
 
 
 def _resume_agent_reason() -> str:
     return (
-        "Weighted router: resume_agent is not a model-bound package primitive. "
+        "Weighted router: executable resume_agent is denied; this guarantees a closed role-bound "
+        "resume primitive cannot run, but Hook telemetry does not bind agent IDs to package/phase, "
+        "requested role, actual model, or open state. "
         "For correction/re-review or any role-bound package phase, spawn a fresh explicit typed role; "
-        "reuse an already-open agent only after confirming the matching contract and role. "
-        "If runtime evidence shows a model mismatch, stop the phase and record a routing violation with WCU uncertain."
+        "fresh typed spawns keep the existing package budget and role/model changes never reset it. "
+        "Already-open reuse and actual-model verification are supervisor policy plus PostToolUse/session audit; "
+        "once evidence exists, violations fail closed; record a routing violation and WCU uncertain for a mismatch."
     )
 
 

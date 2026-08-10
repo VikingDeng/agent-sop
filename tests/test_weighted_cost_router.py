@@ -181,13 +181,81 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("routing violation", denied["hookSpecificOutput"]["permissionDecisionReason"])
 
-    def test_nested_model_bound_resume_is_denied(self) -> None:
-        result = ROUTER.handle(pretool(
-            "gpt-5.6-terra",
-            "functions.exec",
+    def test_nested_resume_static_dot_and_bracket_calls_are_denied_in_both_profiles(self) -> None:
+        sources = (
+            'await tools.resume_agent({"target":"closed-reviewer"});',
+            'await tools["resume_agent"]({"target":"closed-reviewer"});',
             'await tools.multi_agent_v1__resume_agent({"target":"closed-reviewer"});',
+            'await tools["multi_agent_v1__resume_agent"]({"target":"closed-reviewer"});',
+        )
+        for enforcement in ("advisory", "strict"):
+            with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": enforcement}):
+                for source in sources:
+                    with self.subTest(enforcement=enforcement, source=source):
+                        result = ROUTER.handle(pretool(
+                            "gpt-5.6-terra", "functions.exec", source
+                        ))
+                        self.assertEqual(
+                            result["hookSpecificOutput"]["permissionDecision"], "deny"
+                        )
+
+    def test_resume_text_in_literals_comments_and_dynamic_access_is_not_a_resume_call(self) -> None:
+        sources = (
+            '// await tools.resume_agent({"target":"closed-reviewer"});\nawait tools.wait_agent({});',
+            'await tools.wait_agent({message:"resume_agent("});',
+            'const method = "resume_agent"; await tools[method]({"target":"closed-reviewer"});',
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertIsNone(ROUTER.handle(pretool(
+                    "gpt-5.6-terra", "functions.exec", source
+                )))
+
+    def test_malformed_static_resume_is_denied_but_unresolved_dynamic_target_is_not(self) -> None:
+        denied = ROUTER.handle(pretool(
+            "gpt-5.6-terra", "functions.exec", "await tools.resume_agent("
         ))
-        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIsNone(ROUTER.handle(pretool(
+            "gpt-5.6-terra", "functions.exec", "await tools[method]("
+        )))
+
+    def test_wait_close_and_fresh_typed_spawn_remain_allowed(self) -> None:
+        for enforcement in ("advisory", "strict"):
+            with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": enforcement}):
+                for source in (
+                    'await tools.wait_agent({"target":"closed-reviewer"});',
+                    'await tools.close_agent({"target":"closed-reviewer"});',
+                ):
+                    with self.subTest(enforcement=enforcement, source=source):
+                        self.assertIsNone(ROUTER.handle(pretool(
+                            "gpt-5.6-terra", "functions.exec", source
+                        )))
+                with self.subTest(enforcement=enforcement, source="fresh spawn"):
+                    self.assertIsNone(ROUTER.handle(pretool(
+                        "gpt-5.6-sol", "functions.exec", nested_spawn("luna_executor"),
+                        session_id=f"fresh-spawn-{enforcement}",
+                    )))
+
+    def test_canonical_spawn_with_resume_policy_text_is_classified_and_budgeted(self) -> None:
+        source = nested_spawn(
+            "luna_executor",
+            message="fresh typed spawn; policy text resume_agent( remains a message literal",
+        )
+        request = ROUTER.classify_spawn_request("functions.exec", {"raw": source})
+        self.assertIsNotNone(request)
+        assert request is not None
+        self.assertEqual(request.role, "luna_executor")
+        self.assertEqual(request.package_phase, "initial")
+        result = ROUTER.handle(pretool(
+            "gpt-5.6-sol", "functions.exec", source, session_id="resume-literal"
+        ))
+        self.assertIsNone(result)
+        reserved, committed = ROUTER._reservation_paths(
+            "resume-literal", "package-phase", "nested-luna_executor\0initial"
+        )
+        self.assertTrue(reserved.exists())
+        self.assertFalse(committed.exists())
 
     def _stop_transcript(
         self,

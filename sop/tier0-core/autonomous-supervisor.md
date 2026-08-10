@@ -4,7 +4,7 @@
 - **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1
-- **版本**: v8
+- **版本**: v9
 
 ## 目标
 
@@ -45,8 +45,8 @@
 - 不为了通过验收而静默降低用户要求；
 - 不覆盖无关用户改动，不泄露秘密，不越过授权 workspace；
 - 不把内部 GPT/Codex blind review 称为外部 review；
-- model-bound package work 不得用 `resume_agent` 恢复已关闭的 role-bound agent；correction/re-review 必须 fresh-spawn 显式 typed role。仍打开的 agent 只有在 contract/role 匹配已确认时才可复用；
-- runtime evidence 若显示 role/model mismatch，立即停止该 phase，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
+- model-bound package work 不得用 `resume_agent` 恢复已关闭的 role-bound agent；runtime denial 保证该 closed role-bound resume primitive 无法运行。correction/re-review 必须 fresh-spawn 显式 typed role，package ID/phase 与 one initial/one correction/one re-review budgets 不变，role/model 改变不会重置 budget；
+- Hook telemetry 不会把 agent ID 绑定到 package/phase、requested role、actual model 或 open state。仍打开的 matching agent 复用与 actual model 核验属于 supervisor policy 加 PostToolUse/session audit；一旦 evidence 显示 role/model mismatch，立即停止该 phase，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
 - 未获授权不发布、部署、merge、force-push、删除持久数据或执行不可逆迁移。
 
 ## 步骤

@@ -718,6 +718,41 @@ def _js_tokens(source: str) -> list[tuple[str, str | None, bool]]:
     return tokens
 
 
+def executable_static_tool_calls(source: str) -> frozenset[str]:
+    """Return normalized static ``tools`` call targets, excluding literals/comments."""
+    if not isinstance(source, str):
+        raise ValueError("functions.exec source must be a string")
+    if len(source.encode("utf-8")) > MAX_FUNCTIONS_EXEC_SOURCE:
+        raise ValueError(
+            f"functions.exec source exceeds the {MAX_FUNCTIONS_EXEC_SOURCE}-byte policy limit"
+        )
+    tokens = _js_tokens(source)
+    calls: set[str] = set()
+    for index, (kind, value, _) in enumerate(tokens):
+        if kind != "identifier" or value != "tools":
+            continue
+        target: str | None = None
+        call_index = index + 3
+        if (
+            index + 3 < len(tokens)
+            and tokens[index + 1][:2] == ("punctuation", ".")
+            and tokens[index + 2][0] == "identifier"
+        ):
+            target = tokens[index + 2][1]
+        elif (
+            index + 4 < len(tokens)
+            and tokens[index + 1][:2] == ("punctuation", "[")
+            and tokens[index + 2][0] == "string"
+            and tokens[index + 3][:2] == ("punctuation", "]")
+        ):
+            target = tokens[index + 2][1]
+            call_index = index + 4
+        if target is None or tokens[call_index][:2] != ("punctuation", "("):
+            continue
+        calls.add(str(target).lower().rsplit(".", 1)[-1].rsplit("__", 1)[-1])
+    return frozenset(calls)
+
+
 def _static_or_dynamic_tool_access(source: str) -> tuple[bool, bool]:
     tokens = _js_tokens(source)
     static_reference = False
