@@ -44,6 +44,7 @@ def record(record_type: str, payload: dict, *, add_package_markers: bool = True)
                 "focused_worker": "initial",
                 "reviewer": "review",
                 "risk_reviewer": "review",
+                "sol_architect": "initial",
                 "worker": "correction",
                 "terra_debugger": "correction",
                 "verifier": "verify",
@@ -189,6 +190,36 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["weighted_cost_units"], 8_750)
             self.assertEqual(report["subagent_roles"], {"luna_executor": 1, "worker": 1})
             self.assertNotIn("no Terra or Luna tokens were observed", report["routing_violations"])
+
+    def test_sol_architect_is_canonical_sol_role_in_session_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("sol_architect"),
+            )
+            self.write_log(
+                root,
+                "architect",
+                "child-architect",
+                "gpt-5.6-sol",
+                [50],
+                "root",
+                "sol_architect",
+            )
+
+            report = AUDIT.audit_session_tree(str(parent), root)
+
+            self.assertEqual(AUDIT.ROLE_MODEL_FAMILIES["sol_architect"], "sol")
+            self.assertEqual(report["subagent_roles"], {"sol_architect": 1})
+            self.assertEqual(report["family_totals"]["sol"]["total_tokens"], 50)
+            findings = "\n".join(report["completeness_violations"])
+            self.assertNotIn("unknown agent_role", findings)
+            self.assertNotIn("noncanonical role", findings)
 
     def test_completed_single_model_root_reports_delivery_and_routing_advisories(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

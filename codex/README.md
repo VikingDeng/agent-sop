@@ -23,31 +23,21 @@ python3 scripts/install_codex_runtime.py --routing-profile strict
 # Explicitly run the foreground supervisor on Sol (reversible profile choice)
 python3 scripts/install_codex_runtime.py --profile sol-supervisor --dry-run
 python3 scripts/install_codex_runtime.py --profile sol-supervisor
-# Opt in to the measured cost-sensitive Terra supervisor candidate
+# Recommended default for development, competition, and approved-proposal engineering execution
 python3 scripts/install_codex_runtime.py --profile terra-supervisor --dry-run
 python3 scripts/install_codex_runtime.py --profile terra-supervisor
 ```
 
 The installer:
 
-- preserves the repository as the source of truth by creating a content-addressed immutable generation under `~/.codex/runtime-snapshots/`, then atomically switching `~/.codex/runtime-current` and linking both AGENTS files, eight role TOMLs, the Research Execution Grill, and the router Hook scripts through that stable path;
+- preserves the repository as the source of truth by creating a content-addressed immutable generation under `~/.codex/runtime-snapshots/`, then atomically switching `~/.codex/runtime-current` and linking both AGENTS files, 9 role TOMLs, the Research Execution Grill, and the router Hook scripts through that stable path;
 - copies the adaptive SOP, its optional strict reference artifact, and validator/state-machine dependencies into each snapshot so relative Skill references remain readable after the checkout moves or is removed;
 - builds and verifies the complete generation before preparing stable links and changing runtime files;
 - validates `config.toml` and `hooks.json`, creates collision-resistant timestamped backups, and replaces each file independently with an atomic temporary-file rename;
 - merges the router registrations into `~/.codex/hooks.json` instead of deleting unrelated Hooks;
-- sets the default subagent to Luna Medium, concurrency to two, and depth to one under `[agents]`;
+- sets the default subagent to Luna Medium and concurrency to two under `[agents]`;
 - deliberately preserves the top-level foreground `model` and `model_reasoning_effort` by default; `--profile sol-supervisor` explicitly sets them to `gpt-5.6-sol` and `high`, while `--profile terra-supervisor` explicitly sets them to `gpt-5.6-terra` and `high`;
 - installs advisory routing by default; `--routing-profile strict` explicitly enables fail-closed routing and rejects an incompatible preserved foreground model during preflight.
-
-The resulting `[agents]` settings are:
-
-```toml
-[agents]
-default_subagent_model = "gpt-5.6-luna"
-default_subagent_reasoning_effort = "medium"
-max_concurrent_threads_per_session = 2
-max_depth = 1
-```
 
 The foreground profile is selected only at installation time. `preserve` remains the CLI default and does not make Terra the global default. Start a new task (or restart Codex) after changing a profile; an existing task keeps its current model configuration.
 
@@ -72,7 +62,9 @@ Backups are local runtime files named with `.backup-<timestamp>` and must not be
 
 ## Weighted routing
 
-The optimization target is `WCU = 25*T_sol + 10*T_terra + 1*T_luna`, subject to unchanged acceptance quality. The Terra supervisor is an opt-in, measured cost-sensitive candidate for development and competition tasks. Luna is preferred for labor-heavy bounded execution, Terra for semantic/debugging pressure and ordinary review, and Sol for approved research, architecture, ambiguity, and high-risk judgment.
+The optimization target is `WCU = 25*T_sol + 10*T_terra + 1*T_luna`, subject to unchanged acceptance quality. `terra-supervisor` is the recommended top-level Terra/high default for development, competition, and approved-proposal engineering execution; this is a task-class recommendation, not a global CLI default. Luna is preferred for labor-heavy bounded execution and Terra for semantic/debugging pressure and ordinary review. Use a compact `sol_architect` only when architecture or research execution design needs stronger judgment, `risk_reviewer` Sol/max for a concrete high-risk review, and a Sol foreground when high-decision-density judgment is sustained across the task.
+
+Routing is flat at the root: the top-level supervisor directly dispatches Luna, Terra, or Sol specialists as needed. Do not depend on a child spawning another child or on an `agents.max_depth` setting; nested delegation is not an acceptance prerequisite. After a spawn, do useful non-overlapping work when available and wait only when the next step depends on the result, using one reasonable bounded wait rather than interval polling. Do not manufacture busywork or promise detached execution or zero waiting.
 
 The foreground model remains a user choice. The router does not spawn agents; in `advisory` mode it highlights expensive Sol execution, full-context forks, repeated polling, role/model conflicts, and Luna capability failures without blocking the task. Luna unavailability may reroute unchanged work to Terra or another lowest-cost capable role only in advisory mode. Package IDs, phase markers, exact retry signatures, and one-loop budgets remain available as coordination metadata but are not required by the advisory policy; changing a role or model never resets the applicable package budget.
 
@@ -119,7 +111,7 @@ Managed symlink destinations are:
 ```text
 ~/.codex/AGENTS.md
 /Users/viking/AGENTS.md
-~/.codex/agents/{explorer,focused_worker,luna_executor,terra_debugger,worker,verifier,reviewer,risk_reviewer}.toml
+~/.codex/agents/{explorer,focused_worker,luna_executor,sol_architect,terra_debugger,worker,verifier,reviewer,risk_reviewer}.toml
 ~/.codex/skills/research-execution-grill
 ~/.codex/hooks/{weighted_cost_router.py,weighted_routing_policy.py}
 ```

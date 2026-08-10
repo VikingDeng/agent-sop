@@ -25,3 +25,15 @@ Child-reported WCU was [UNCERTAIN]; raw session logs proved the actual models. C
 7. **Supervisor monitoring tax** — use one bounded long wait per decision point, compact evidence, and fresh top-level execution tasks for heavy projects when the user can start them. This reduces avoidable polling tax but does not remove the app's need for progress updates.
 
 The adaptive/outcome-first architecture remains in force: these are proportional practices, not fixed gate/hash/signature/validator requirements. Unresolved items remain [UNCERTAIN]; nonblocking hardening is backlog, not a silent acceptance change.
+
+## Newly observed flat-routing evidence
+
+The real App E2E added three observations. That same Terra child owned the real semantica #859 project end to end and reported both the normal-order and reverse-order task runs as `58 passed`; this was one child report, not two independent traces. That child had no available tool for continuing delegation, so child-nested routing was not a viable prerequisite. Its parent Sol supervisor performed eleven synchronous 60-second waits, creating a substantial monitoring/waiting WCU tax. A fresh Terra-root run has not been verified.
+
+These observations motivate, but do not yet prove, flat root routing in the App: start the foreground on Terra for the relevant task classes, let it dispatch Luna/Terra/Sol specialists directly, and use bounded waits only at dependency points. This report does not fabricate an App-root pass or nested-delegation success.
+
+## Fresh CLI flat-routing smoke
+
+After installing the Terra supervisor profile with Codex CLI 0.147.0, fresh task `019fecd8-df39-7250-bb5f-dacc8605982d` ran a read-only routing smoke. The root actually used Terra, directly spawned one typed `sol_architect` on Sol and one typed `luna_executor` on Luna, and issued one wait. All three sessions completed. The audit attributed 138,207 Terra tokens, 48,195 Sol tokens, and 70,370 Luna tokens: 256,772 raw tokens and 2,657,315 WCU.
+
+Cost remains `[UNCERTAIN/PARTIAL]`: encrypted spawn messages hid optional package metadata, the root did not record successful child closes, and the conservative shell classifier reported the Sol architect's read-only `rg` alternation pattern as non-read-only because the quoted search expression contained `|`. Inspection of the raw call showed no mutation. This validates role registration and flat dispatch in a fresh CLI task, not a fresh App foreground; the next App task remains the App-specific acceptance point.

@@ -50,6 +50,10 @@ class InstallCodexRuntimeTests(unittest.TestCase):
                 str(stable_root / "codex/agents/luna_executor.toml"),
             )
             self.assertEqual(
+                os.readlink(codex_home / "agents/sol_architect.toml"),
+                str(stable_root / "codex/agents/sol_architect.toml"),
+            )
+            self.assertEqual(
                 os.readlink(workspace / "AGENTS.md"),
                 str(stable_root / "codex/AGENTS.workspace.md"),
             )
@@ -167,7 +171,7 @@ class InstallCodexRuntimeTests(unittest.TestCase):
                 installer.install()
             self.assertEqual(os.readlink(current), old_current)
             self.assertEqual(os.readlink(codex_home / "AGENTS.md"), str(installer.runtime_current / "codex/AGENTS.global.md"))
-            self.assertEqual(tomllib.loads((codex_home / "config.toml").read_text())["agents"]["max_depth"], 1)
+            self.assertNotIn("max_depth", tomllib.loads((codex_home / "config.toml").read_text())["agents"])
 
     def test_migration_failure_before_current_preserves_all_legacy_links(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -285,7 +289,7 @@ with installer._install_lock():
         with tempfile.TemporaryDirectory() as directory:
             home, workspace, codex_home = self.make_environment(Path(directory))
             (codex_home / "config.toml").write_text(
-                'model = "gpt-5.6-terra"\nmodel_reasoning_effort = "low"\nsandbox_mode = "read-only"\n\n[agents]\nunrelated = "keep"\n',
+                'model = "gpt-5.6-terra"\nmodel_reasoning_effort = "low"\nsandbox_mode = "read-only"\n\n[agents]\nenabled = false\nunrelated = "keep"\n',
                 encoding="utf-8",
             )
             (codex_home / "hooks.json").write_text(json.dumps({"description": "user", "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "user-hook"}]}]}}))
@@ -297,7 +301,8 @@ with installer._install_lock():
             self.assertEqual(parsed["agents"]["default_subagent_model"], "gpt-5.6-luna")
             self.assertEqual(parsed["agents"]["default_subagent_reasoning_effort"], "medium")
             self.assertEqual(parsed["agents"]["max_concurrent_threads_per_session"], 2)
-            self.assertEqual(parsed["agents"]["max_depth"], 1)
+            self.assertFalse(parsed["agents"]["enabled"])
+            self.assertNotIn("max_depth", parsed["agents"])
             hooks = json.loads((codex_home / "hooks.json").read_text())
             self.assertIn("user-hook", json.dumps(hooks))
             self.assertIn("CODEX_ROUTER_ENFORCEMENT=advisory", json.dumps(hooks))
@@ -343,9 +348,62 @@ with installer._install_lock():
             parsed = tomllib.loads(config.read_text())
             self.assertEqual(parsed["telemetry"], {"retained": "yes"})
             self.assertEqual(parsed["agents"]["unrelated"], "preserve")
+            self.assertNotIn("max_depth", parsed["agents"])
             merged = json.loads(hooks.read_text())
             self.assertIn("existing-hook", json.dumps(merged))
             self.assertEqual(sum(INSTALL.Installer._is_router_registration(item, home) for item in merged["hooks"]["PreToolUse"]), 1)
+
+    def test_agents_section_migration_removes_basic_and_literal_quoted_legacy_keys(self) -> None:
+        for quoted_key in ('"max_depth"', "'max_depth'"):
+            with self.subTest(quoted_key=quoted_key), tempfile.TemporaryDirectory() as directory:
+                home, workspace, codex_home = self.make_environment(Path(directory))
+                config = codex_home / "config.toml"
+                config.write_text(
+                    f'# preserve this comment\n[agents]\n{quoted_key} = 3\nunrelated = "keep"\n',
+                    encoding="utf-8",
+                )
+
+                self.install(home, workspace)
+
+                rendered = config.read_text(encoding="utf-8")
+                parsed = tomllib.loads(rendered)
+                self.assertNotIn("max_depth", parsed["agents"])
+                self.assertNotIn("enabled", parsed["agents"])
+                self.assertEqual(parsed["agents"]["unrelated"], "keep")
+                self.assertIn("# preserve this comment", rendered)
+
+    def test_top_level_dotted_agents_migration_preserves_mode_unknown_keys_and_comments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home, workspace, codex_home = self.make_environment(Path(directory))
+            config = codex_home / "config.toml"
+            config.write_text(
+                '# preserve dotted mode\n'
+                'agents.max_depth = 3\n'
+                'agents.enabled = false\n'
+                '# preserve unknown dotted key\n'
+                'agents.unrelated = "keep"\n\n'
+                '[telemetry]\nretained = "yes"\n',
+                encoding="utf-8",
+            )
+
+            self.install(home, workspace)
+
+            rendered = config.read_text(encoding="utf-8")
+            parsed = tomllib.loads(rendered)
+            self.assertEqual(parsed["telemetry"], {"retained": "yes"})
+            self.assertNotIn("max_depth", parsed["agents"])
+            self.assertFalse(parsed["agents"]["enabled"])
+            self.assertEqual(parsed["agents"]["unrelated"], "keep")
+            self.assertIn("# preserve dotted mode", rendered)
+            self.assertIn("# preserve unknown dotted key", rendered)
+            self.assertNotIn("[agents]", rendered)
+            self.assertEqual(rendered.count("agents.enabled ="), 1)
+            for key in (
+                "default_subagent_model",
+                "default_subagent_reasoning_effort",
+                "max_concurrent_threads_per_session",
+            ):
+                self.assertRegex(rendered, rf"(?m)^agents\.{key} = ")
 
     def test_tampered_generation_is_rejected_and_not_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -411,7 +469,7 @@ with installer._install_lock():
             with self.assertRaisesRegex(RuntimeError, r"atomic write failed.*backup") as raised:
                 installer.install()
             self.assertIn("hooks.json", str(raised.exception))
-            self.assertEqual(tomllib.loads(config.read_text())["agents"]["max_depth"], 1)
+            self.assertNotIn("max_depth", tomllib.loads(config.read_text())["agents"])
             self.assertEqual(json.loads(hooks.read_text()), json.loads(old_hooks))
             backup_files = list(codex_home.glob("config.toml.backup-*"))
             self.assertTrue(backup_files)

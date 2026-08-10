@@ -26,6 +26,7 @@ ROLES = (
     "explorer",
     "focused_worker",
     "luna_executor",
+    "sol_architect",
     "terra_debugger",
     "worker",
     "verifier",
@@ -39,7 +40,6 @@ AGENT_SETTINGS = {
     "default_subagent_model": '"gpt-5.6-luna"',
     "default_subagent_reasoning_effort": '"medium"',
     "max_concurrent_threads_per_session": "2",
-    "max_depth": "1",
 }
 PROFILE_SETTINGS = {
     "preserve": {},
@@ -348,9 +348,52 @@ class Installer:
         return target
 
     @staticmethod
-    def _replace_section_values(text: str, section: str, settings: dict[str, str]) -> str:
+    def _replace_section_values(
+        text: str,
+        section: str,
+        settings: dict[str, str],
+        remove_keys: tuple[str, ...] = (),
+    ) -> str:
         lines = text.splitlines()
         header = re.compile(rf"^\s*\[{re.escape(section)}\]\s*(?:#.*)?$")
+        def key_pattern(key: str) -> str:
+            escaped = re.escape(key)
+            return rf"(?:{escaped}|\"{escaped}\"|'{escaped}')"
+
+        top_level_end = next(
+            (index for index, line in enumerate(lines) if re.match(r"^\s*\[", line)),
+            len(lines),
+        )
+        dotted_key = re.compile(
+            rf"^\s*{re.escape(section)}\.(?:[A-Za-z0-9_-]+|\"[^\"]+\"|'[^']+')\s*="
+        )
+        if any(dotted_key.match(line) for line in lines[:top_level_end]):
+            for key in remove_keys:
+                pattern = re.compile(rf"^\s*{re.escape(section)}\.{key_pattern(key)}\s*=")
+                lines = [
+                    line
+                    for index, line in enumerate(lines)
+                    if not (index < top_level_end and pattern.match(line))
+                ]
+                top_level_end = next(
+                    (index for index, line in enumerate(lines) if re.match(r"^\s*\[", line)),
+                    len(lines),
+                )
+
+            for key, value in settings.items():
+                pattern = re.compile(rf"^\s*{re.escape(section)}\.{key_pattern(key)}\s*=")
+                existing = next(
+                    (index for index in range(top_level_end) if pattern.match(lines[index])),
+                    None,
+                )
+                rendered = f"{section}.{key} = {value}"
+                if existing is None:
+                    lines.insert(top_level_end, rendered)
+                    top_level_end += 1
+                else:
+                    lines[existing] = rendered
+            return "\n".join(lines) + "\n"
+
         try:
             start = next(index for index, line in enumerate(lines) if header.match(line))
             end = next(
@@ -364,8 +407,20 @@ class Installer:
             lines.append(f"[{section}]")
             end = len(lines)
 
+        for key in remove_keys:
+            pattern = re.compile(rf"^\s*{key_pattern(key)}\s*=")
+            lines = [
+                line
+                for index, line in enumerate(lines)
+                if not (start < index < end and pattern.match(line))
+            ]
+            end = next(
+                (index for index in range(start + 1, len(lines)) if re.match(r"^\s*\[", lines[index])),
+                len(lines),
+            )
+
         for key, value in settings.items():
-            pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+            pattern = re.compile(rf"^\s*{key_pattern(key)}\s*=")
             existing = next((index for index in range(start + 1, end) if pattern.match(lines[index])), None)
             rendered = f"{key} = {value}"
             if existing is None:
@@ -519,7 +574,12 @@ class Installer:
                     "select --profile sol-supervisor or terra-supervisor, or install with --routing-profile advisory"
                 )
         staged = self._replace_top_level_values(original_config, PROFILE_SETTINGS[self.profile])
-        self.staged_config = self._replace_section_values(staged, "agents", AGENT_SETTINGS)
+        self.staged_config = self._replace_section_values(
+            staged,
+            "agents",
+            AGENT_SETTINGS,
+            remove_keys=("max_depth",),
+        )
         try:
             tomllib.loads(self.staged_config)
         except tomllib.TOMLDecodeError as exc:

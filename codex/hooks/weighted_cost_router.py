@@ -55,6 +55,7 @@ ROLE_CONTEXT = {
     "worker": "Resolve only the documented semantic/cross-file issue. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason); otherwise this is the single consolidated correction.",
     "terra_debugger": "Diagnose an unknown root cause hypothesis-first: rank competing hypotheses and run discriminating checks. Adapt tools or implementation paths explicitly while preserving the outcome contract; return a compact evidence packet.",
     "reviewer": "Review independently and read-only; findings need severity, location, failure path, impact on frozen acceptance, and minimal repair. Use REVIEW_PROFILE=ordinary|api|security|architecture/data when useful; stop when verdict evidence is sufficient.",
+    "sol_architect": "Return only a compact read-only decision packet for architecture or research execution design; do not mechanically execute work or dispatch agents.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
 }
 

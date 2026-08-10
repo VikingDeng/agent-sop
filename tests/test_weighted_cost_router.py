@@ -167,6 +167,49 @@ class WeightedCostRouterTests(unittest.TestCase):
             with self.subTest(strict_term=strict_term):
                 self.assertNotIn(strict_term, context)
 
+    def test_advisory_typed_sol_architect_is_known_and_read_only(self) -> None:
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
+            context = ROUTER.handle({
+                "hook_event_name": "SubagentStart",
+                "agent_type": "sol_architect",
+            })
+            allowed = ROUTER.handle(pretool(
+                "gpt-5.6-terra",
+                "spawn_agent",
+                {
+                    "agent_type": "sol_architect",
+                    "model": "gpt-5.6-sol",
+                    "fork_context": False,
+                    "message": "read-only decision packet\nPACKAGE_ID: advisory-sol\nPACKAGE_PHASE: initial",
+                },
+                session_id="advisory-sol-architect",
+            ))
+
+        self.assertIsNotNone(context)
+        self.assertIn("compact read-only decision packet", context["hookSpecificOutput"]["additionalContext"])
+        self.assertIsNone(allowed)
+
+    def test_strict_initial_sol_architect_spawn_requires_sol_model(self) -> None:
+        request = {
+            "agent_type": "sol_architect",
+            "model": "gpt-5.6-sol",
+            "fork_context": False,
+            "message": "read-only decision packet\nPACKAGE_ID: strict-sol\nPACKAGE_PHASE: initial",
+        }
+        allowed = ROUTER.handle(pretool(
+            "gpt-5.6-terra", "spawn_agent", request, session_id="strict-sol-architect"
+        ))
+        self.assertIsNone(allowed)
+
+        denied = ROUTER.handle(pretool(
+            "gpt-5.6-terra",
+            "spawn_agent",
+            {**request, "model": "gpt-5.6-terra"},
+            session_id="strict-sol-architect-mismatch",
+        ))
+        self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("Sol family", denied["hookSpecificOutput"]["permissionDecisionReason"])
+
     def test_model_bound_resume_is_denied_in_both_routing_profiles(self) -> None:
         with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
             advisory = ROUTER.handle(pretool(

@@ -20,6 +20,7 @@ ROLE_MODEL_FAMILIES = {
     "worker": "terra",
     "terra_debugger": "terra",
     "reviewer": "terra",
+    "sol_architect": "sol",
     "risk_reviewer": "sol",
 }
 
@@ -35,7 +36,7 @@ PACKAGE_PHASES = frozenset({"map", "initial", "review", "correction", "re_review
 PACKAGE_ID_PATTERN = r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}"
 PACKAGE_PHASE_ROLES = {
     "map": frozenset({"explorer"}),
-    "initial": frozenset({"focused_worker", "luna_executor", "worker", "terra_debugger"}),
+    "initial": frozenset({"focused_worker", "luna_executor", "worker", "terra_debugger", "sol_architect"}),
     "review": frozenset({"reviewer", "risk_reviewer"}),
     "correction": frozenset({"focused_worker", "luna_executor", "worker", "terra_debugger"}),
     "re_review": frozenset({"reviewer", "risk_reviewer"}),

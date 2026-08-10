@@ -4,7 +4,7 @@
 - **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1
-- **版本**: v9
+- **版本**: v10
 
 ## 目标
 
@@ -70,6 +70,8 @@ Agent 可以根据证据自由决定是否：
 - 先探索还是直接实现；
 - 单 Agent 完成还是委派一个或多个完整结果包；
 - 使用 Luna、Terra 或 Sol；
+- 选择前景模式：日常开发、比赛与 approved proposal 的工程执行默认由顶层 Terra/high 调度；Luna 承担大块边界清楚的执行；高判断密度的架构或科研执行设计使用一次紧凑的 `sol_architect`；普通 review 使用 Terra；具体高风险 review 使用 `risk_reviewer` Sol/max；持续高歧义、持续 Sol 判断的任务仍可选择 Sol 顶层；
+- 使用扁平根调度：顶层直接派 Luna、Terra 或 Sol specialist；不把 child 再派 child 作为成功前提，也不依赖公开配置中不存在的 `agents.max_depth`；
 - 合并、跳过或重排非依赖步骤；
 - 编写临时诊断、fixture、prototype 或替代实现；
 - 增加、减少或更换验证方式；
@@ -95,7 +97,7 @@ Review 必须对齐冻结契约与具体失败路径，不能以品味性要求�
 
 Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 以限定证据范围。API correctness 可需要 Sol risk judgment，但不因此自动进入完整 codex-security workflow；只有具体 adversarial security trigger 才触发完整 security workflow。Skill 仍是正交、可替换 adapter，不能扩大冻结 acceptance、stage 或 artifact；verdict 证据充分后停止，非阻断 hardening 尤其是 pre-scale research 问题进入 backlog 或保持 `[UNCERTAIN]`。
 
-新 project directory 在首次 write、stage 或 commit 前先运行 `git rev-parse --show-toplevel`；需要独立 root 时使用独立 `git init` 或 worktree，避免空目录继承 `/Users/viking` 或 ContestOS 的父 repo。Full suite 一次只运行一个；重启前仅检查/关闭自己此前的 process/session，不为更清晰摘要启动重复重型 suite。长任务每个 decision point 使用一次 bounded long wait 和 compact evidence，避免短 polling/raw transcript 循环，并计入 monitoring WCU。
+新 project directory 在首次 write、stage 或 commit 前先运行 `git rev-parse --show-toplevel`；需要独立 root 时使用独立 `git init` 或 worktree，避免空目录继承 `/Users/viking` 或 ContestOS 的父 repo。Full suite 一次只运行一个；重启前仅检查/关闭自己此前的 process/session，不为更清晰摘要启动重复重型 suite。派发 child 后，有真实的不重叠工作才并行推进，不制造 busywork；只在下一步依赖结果时 wait，使用一次最长合理的 bounded wait 而非固定间隔 polling，保留实际等待证据并计入 monitoring WCU。不承诺 detached、零等待或 child 可嵌套。长任务每个 decision point 仍应使用 compact evidence，避免 raw transcript 循环。
 
 满足下列任一条件时停止当前策略并重新规划：
 

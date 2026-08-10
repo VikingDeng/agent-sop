@@ -44,9 +44,13 @@ When `gpt-5.6-luna` is unavailable in a strict managed Hook, fail closed: report
 
 After installing with `python3 scripts/install_codex_runtime.py --profile sol-supervisor`, start a new task/restart so the model configuration is loaded. For one substantial, heavy task, acceptance evidence must show nonzero Sol planning/judgment, meaningful Luna execution, Terra review when a second view is useful, compact tool-output summaries, and a complete final report covering evidence/commands, review disposition, routing/model/WCU, remaining risks/blockers, and Git/delivery state when relevant. These are outcome evidence, not a fixed stage recipe: trivial tasks may remain single-model and skip review ceremony.
 
-## Fresh-task Terra-supervisor acceptance
+## Fresh-task flat Terra routing acceptance
 
-After installing with `python3 scripts/install_codex_runtime.py --profile terra-supervisor`, start a new task/restart so the model configuration is loaded. Verify top-level `model = "gpt-5.6-terra"` and `model_reasoning_effort = "high"`; `[agents]` must still select Luna/medium with concurrency two and depth one. With `terra-supervisor`, managed Hooks use advisory routing by default; strict requires the separate `--routing-profile strict` option. This profile is an opt-in, measured cost-sensitive candidate for development and competition tasks. It is not the global default; approved research, architecture, and high-risk judgment remain appropriate use cases for the Sol profile.
+After installing with `python3 scripts/install_codex_runtime.py --profile terra-supervisor`, start a new task/restart so the model configuration is loaded. Verify top-level `model = "gpt-5.6-terra"` and `model_reasoning_effort = "high"`; `[agents]` must still select Luna/medium with concurrency two. Do not check or assume a `max_depth` setting: the public configuration does not expose one. With `terra-supervisor`, managed Hooks use advisory routing by default; strict requires the separate `--routing-profile strict` option. For a smoke task that is explicitly selected and suitable for decomposition, evidence may show the top-level Terra directly dispatching Luna for bounded work, a Terra reviewer when an ordinary second view is useful, and `sol_architect` when decision density justifies it. Other tasks may complete directly or use the documented advisory fallback. Acceptance must not require a child to spawn another child or treat nested delegation success as evidence.
+
+## Low-wait evidence
+
+Capture enough task evidence to show that the supervisor waited only when the next step depended on the result, used one reasonable bounded wait rather than interval polling, and counted actual monitoring/polling cost in WCU. After spawning, it should do useful non-overlapping work when such work exists; do not manufacture busywork merely to avoid waiting. Do not claim detached execution, zero waiting, or child-nested delegation when the trace does not show it.
 
 ## Terra/Sol A/B procedure
 
