@@ -1,7 +1,7 @@
 # Codex 平台适配层
 
 - **Adapter ID**: `codex-runtime`
-- **版本**: v1
+- **版本**: v2
 - **性质**: platform adapter，不是 SOP、Domain Profile 或 Skill
 
 ## 责任边界
@@ -48,6 +48,8 @@ started_at: <timestamp>
 - **Terra** 优先承担跨模块语义实现、未知根因诊断、普通独立 review，以及开发/竞赛/approved-proposal 工程执行的常用顶层调度。
 - **Sol** 优先承担未闭合的核心不变式、架构/研究设计、高歧义或具体高风险判断；一个紧凑 specialist 问题优于多个同质 agent 反复搜索。
 
+选择 Sol 作为顶层不改变分工：Sol 可以调查决定性证据、作出架构/研究判断、集成少量窄改动并裁决验收，但重复写代码、跑完整测试、操作浏览器、打包或整理日志应在可用时合并成一个有直接 Oracle 的 Luna/Terra 结果包。若顶层连续承担这些机械动作，应重新切包；只有委派开销明显高于窄工作本身或没有可用角色时才留在顶层，并如实记录成本原因。
+
 以上是可被实证修正的偏好，不是资格表。优先选择能保持 acceptance 的最低成本路径；模型/role 不可用或证据表明错配时，可显式更换路由，但要以未改变的 acceptance 重新验收。不得把“用了 Sol”写成质量证据，也不得把“只用 Luna”当作质量失败。
 
 当前成本诊断可用：
@@ -65,7 +67,7 @@ WCU = 25 * T_sol + 10 * T_terra + 1 * T_luna
 - 不按单条命令拆包，不传入与结果无关的完整历史。优先仓库 artifact 和最小自包含 packet，仅在具体依赖无法压缩时继承最少必要 context。
 - 核心不变式未确定且阻断 critical path 时，先由根 Agent、判别 oracle 或紧凑 architect package 关闭；不预先让多个 implementer/reviewer 在同一未知量上竞争。
 - 有真实不重叠工作时才并行。下一步依赖 child 结果时使用一次与 package 相称的 bounded wait；timeout 只表示未完成，不是负面 verdict。
-- 根 Agent 在最终交付前消费、明确取消或保留每个必要 child 的结果。结果已消费的 child 应显式 close；平台无法确认时记为 `OPEN/UNKNOWN`，不声称已关闭。
+- 每个 open child 必须有当前用途或近期 dependent input；实现者可在一次明确即将到来的 review/correction 期间短暂保留。结果已消费且没有具体下一输入时显式 close；不再需要的 child 明确取消并记录未完成范围。已有无用途的 completed child 时先处理生命周期再创建 successor；平台无法确认时记为 `OPEN/UNKNOWN`，不声称已关闭。
 - “独立 review”只在实际发生了具有足够独立输入或错误路径的第二视角时成立；role 名和 spawn 记录本身不证明 review 质量。
 
 ## Hooks 的边界

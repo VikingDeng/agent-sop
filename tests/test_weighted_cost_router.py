@@ -156,6 +156,10 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIn("These are preferences, not permission gates", context)
         self.assertIn("transparently use the lowest-cost available capable role, normally Terra", context)
         self.assertIn("resume_agent is allowed in advisory mode", context)
+        self.assertIn(
+            "Reliability or audit work remains on the critical path when it is itself a frozen deliverable",
+            context,
+        )
         self.assertIn("25*Sol", context)
         for strict_term in (
             "Sol non-read-only direct execution is denied",
