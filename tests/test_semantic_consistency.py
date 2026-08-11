@@ -52,6 +52,14 @@ class StructuralConsistencyTests(unittest.TestCase):
         self.assertEqual(VALIDATOR.validate_active_overlay_references(ROOT), [])
         self.assertEqual(VALIDATOR.validate_skill_resource_references(ROOT), [])
 
+    def test_workspace_compute_profile_discovers_resources_locally(self) -> None:
+        workspace = (ROOT / "codex/AGENTS.workspace.md").read_text(encoding="utf-8")
+        compute_profile = workspace.split("## Research compute profile", maxsplit=1)[1]
+        self.assertIn("~/.ssh/config", compute_profile)
+        self.assertIn("/Users/viking/ops", compute_profile)
+        self.assertIn("read-only probes", compute_profile)
+        self.assertNotRegex(compute_profile, r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
+
     def test_rejects_missing_active_overlay_file(self) -> None:
         with self.overlay_repo() as temporary:
             overlay = Path(temporary) / VALIDATOR.ACTIVE_OVERLAY
