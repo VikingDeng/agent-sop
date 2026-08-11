@@ -66,6 +66,7 @@ SNAPSHOT_FILES = (
     "codex/skills/research-execution-grill/agents/openai.yaml",
     "sop/tier1-skeleton/research-execution-grill.md",
     "sop/tier1-skeleton/references/research-execution-grill-artifact.md",
+    "sop/tier1-skeleton/references/research-evidence-presentation.md",
     "scripts/validate_research_execution_grill.py",
     "scripts/research_grill_state_machine.py",
     "skeletons/contestos-adaptive-overlay-v2.md",

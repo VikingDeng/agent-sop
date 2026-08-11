@@ -1,76 +1,71 @@
-# SOP-ops-remote-compute: 远程算力使用规程(SSH 手动作业)
+# SOP-ops-remote-compute: 远程算力使用规程（SSH 作业）
 
 - **层级**: tier2-activity
-- **落实纪律**: P1(先勘察立契约再动手)/ P3(认证缺失即停、失败不假装成功)/ P4(远程操作留痕)
-- **绑定骨架**: 无(活动型,research/development 骨架跑实验时按需调用)
-- **通用性档位**: U1(SSH 机制与红线通用;机器集、工作区路径为项目相关,以 `{参数}` 由 ssh config 注入)
-- **版本**: v1
+- **落实纪律**: P1(冻结远程 work packet)/ P3(失败即停、科研 run 无自动 fallback)/ P4(主机到产物可追溯)
+- **绑定骨架**: 无（research/development 项目需要远程资源时按需调用）
+- **通用性档位**: U1（主机、工作区、资源预算和命令由项目 profile 注入）
+- **版本**: v2
+
+## 目标
+
+在已授权远程资源内自主、克制、可恢复地执行计算任务；让每个 evidence-bearing run 能回到主机、GPU、代码、环境、命令、进程、成本和原始产物，同时不把主机故障或能力缺失变成静默的本地/CPU/backend fallback。
 
 ## 触发条件
 
-`[显式]` 人明确要求"连远程机 / 上服务器 / 用某台机器的 GPU 跑"某个计算任务时。
-`[信号自触发]` research/development 骨架项目的**契约阶段**(ARCHITECTURE / EXPERIMENT_PROTOCOL 定稿时,见科研骨架 §4.6)—— 进入产出执行与算力规划(资源需求、下载计划、同步策略),选机后话,先立原则与需求。
-`[信号自触发]` agent 判定本地资源不足以完成任务(如需要 GPU 而本机无、显存/内存不够),准备转到远程执行前,自动进入本 SOP —— 进入即先走"勘察 + 确认",不得直接开跑。
+- 用户或项目契约要求在远程主机运行实验、训练、评测、数据处理或长时任务；
+- 本地资源不足，而切换到远程资源仍位于已授权 outcome contract；
+- 需要规划或复核远程资源、工作区、数据/模型下载、监控和产物回收。
 
 ## 前置条件
 
-- **服务器清单可读**:`~/ops/remotes/hosts.tsv`(结构化清单:alias/role/ssh 参数/workspace_root/notes)与 `~/ops/docs/server-inventory.md`(人类可读介绍)。候选机从清单来,不凭记忆猜;
-- 待执行的计算任务已有明确定义(要跑什么、产物是什么、预计资源量级);
-- 已知本任务的远程工作区约定 `{REMOTE_WORKSPACE}`(无则在步骤 3 与人确认后建立)。
+- 项目声明远程 profile：`{HOST}`、`{REMOTE_WORKSPACE}`、允许的 GPU/CPU/内存/磁盘/时长或费用上限，以及 `{ENV_CMD}`/`{LOCK_FILE}`；
+- `{HOST}` 可由 SSH config 与受治理的服务器清单解析；不得把密码、私钥、token 或敏感连接材料写入仓库和日志；
+- 待执行任务已有 evidence class、明确命令/入口、预期产物、kill criteria 和失败语义；
+- 科研正式 run 已冻结 claim、method、数据/split、分析方法和预算，或明确仅为 `paper_eligible=false` 的 smoke/code-readiness。
 
-> 同步原则(全远程默认,见科研骨架 §4.6):环境在服务器建(uv+依赖+verify_env,不在本机建 GPU 环境);数据与模型在服务器下载(registry+checksum,**禁止本地下载大文件再回传**);代码同步以 git 为主(本地 push → 远程 pull,产物回传);选机:契约阶段只记录资源需求,执行时从服务器清单按需求选择,经人确认后开工。
+个人工作区可在 `codex/AGENTS.workspace.md` 注入默认主机；通用 SOP 不猜 IP、用户、卡号或路径。
 
 ## 依赖 SOP
 
-→ tier0-core/no-fallback-review.md(认证缺失即停；替代路径必须显式且保持验收质量)。
-→ tier0-core/lock-env.md(远程环境的依赖版本/随机种子锁定,保证远程结果可复现)。
-→ tier0-core/commit-and-pr.md(远程操作日志与产物回传后的留痕)。
+→ tier0-core/no-fallback-review.md（失败与替代路径语义）。
+
+→ tier0-core/lock-env.md（远程环境与依赖身份）。
+
+→ tier0-core/commit-and-pr.md（代码与必要操作记录的 Git 留痕）。
 
 ## 步骤
 
-> 分段节奏(遵守 Checkpoint 节奏):步骤 1–3 是"勘察 + 确认方向"段,必须在首个 checkpoint 向人复述"用哪台机、哪张卡、哪个工作区"并等确认;确认后步骤 4–6 按判据自动执行,末尾汇总。方向未确认前不得在远程写入或启动任何计算进程。
-
-1. **发现候选机(读 ssh config 与服务器清单,不猜)**:候选机以 `~/ops/remotes/hosts.tsv`(结构化清单)为主,`~/.ssh/config` 校验可用性——注意 config 可能含 `Include ~/.ssh/conf.d/*.conf`,解析时用 `ssh -G {alias}` 探测或直接读 conf.d,不要只 grep 主文件(会漏掉 Include 的机器)。只读别名与用途,不打印私钥路径等敏感字段到日志。无可连远程机 → 停,报"服务器清单为空或未配置,请检查 ~/.ssh/config 与 conf.d",不得凭记忆猜 IP/用户名硬连。
-2. **认证把关(免密缺失即停,继承 P3)**:对目标 Host 做非交互探测 `ssh -o BatchMode=yes -o ConnectTimeout=10 {HOST} true`。
-   - 返回 0 → 免密可用,继续;
-   - 提示需要密码/交互 → **中止**,报"{HOST} 未配置免密登录,请先 ssh-copy-id 配置公钥后重试"。**严禁**:存明文密码、用 sshpass/expect 灌密码、反复重试(会触发目标机账户锁定)。
-3. **勘察资源与环境(先看后用)**:免密可用后,只读地采集目标机现状,复述给人:
-   - 是否共享机、当前登录用户数(`who`);
-   - GPU 型号/占用/显存余量(`nvidia-smi`,若无 GPU 则明确"CPU-only");
-   - 目标盘剩余空间(`df -h {REMOTE_WORKSPACE 所在盘}`)、内存负载(`free -h`、`uptime`);
-   - 任务所需运行环境是否就绪(python/conda/容器、关键依赖)。
-   **Checkpoint**:据此向人复述"拟用 {HOST} 的 GPU {第 N 张}、工作区 {REMOTE_WORKSPACE}、环境 {env}",等确认。资源不足(显存/磁盘不够、卡都在忙)→ 报告并请人改选机器或降规模,不硬挤。
-4. **目录纪律(只在自己的工作区动土)**:所有读写限定在 `{REMOTE_WORKSPACE}`(如 `~/agent-workspace/{任务名}/`)内。**禁止**写入他人家目录、系统目录(`/usr`、`/etc`、`/opt` 等)、或未经确认的公共目录。大中间文件(数据集、checkpoint)放约定的数据盘,不塞满系统盘;任务结束按步骤 6 清理。
-5. **受限执行(不吃光、不抢占、可追溯)**:启动计算任务时——
-   - 显式 `CUDA_VISIBLE_DEVICES={勘察选定的空闲卡}`,不默认占用全部 GPU;别人卡在用则不挤该卡;
-   - **全量长任务前先小样本冒烟**(防返工,见科研骨架 §4.6):先跑最小规模跑通整条链路,确认无问题再放全量;
-   - 长任务用 `nohup`/`tmux` 后台运行,并**记录本次启动的 PID/会话名到操作日志**(供步骤 6 精确回收);
-   - 全程输出重定向到 `{REMOTE_WORKSPACE}` 下的日志文件,不污染他人终端。
-6. **收尾:进程回收(进程红线)+ 产物回传 + 留痕**:
-   - 只按步骤 5 记录的**自己的 PID/会话**精确回收(`kill {自己的PID}` / `tmux kill-session -t {自己的会话}`)。**绝对禁止** `pkill python`、`pkill -u {user}`、`kill -9` 批量、或任何"不确定是不是自己的进程也杀"的操作——共享机上误杀他人进程是不可逆事故;
-   - 产物(结果/日志)回传本地或约定存储,清理远程临时大文件;
-   - 按 `→ commit-and-pr.md` 记录本次远程操作:用了哪台机/哪张卡、跑了什么、产物在哪、起止时间。
+1. **冻结 remote work packet 与 checkpoint**：记录 `{HOST}`、`{REMOTE_WORKSPACE}`、repo/ref、evidence class、资源上限、命令/入口、输出位置、kill criteria、预期时长和 paper eligibility。若这些均已由项目协议授权，记录 `AUTONOMOUS_CHECKPOINT` 后继续；不要再次询问主机/卡/路径。只有新主机或凭据、共享资源冲突、未授权工作区、material/unbounded cost、生产/公开动作或不可逆操作进入 `MANDATORY_HUMAN_CHECKPOINT`。
+2. **非交互身份与资源预检**：从服务器清单和 `ssh -G {HOST}` 解析目标，以 `ssh -o BatchMode=yes -o ConnectTimeout=10 {HOST} true` 验证认证；失败即停，禁止 `sshpass`/expect/密码落盘。只读检查 OS/架构、`who`、GPU/显存、CPU/内存、磁盘、负载、自己的现有任务，以及远程 repo root、commit/dirty state 和环境身份。主机、路径或资源与 packet 不符时不启动 run。
+3. **在授权目录准备代码、环境与输入**：所有写入限定在 `{REMOTE_WORKSPACE}` 和约定数据根。代码用 Git 同步；权重、数据和大 artifact 在服务器按项目 registry/version/checksum 下载或读取，不经本地大文件中转。用 `{ENV_CMD}` 与 `{LOCK_FILE}` 构建/验证项目环境；未经授权不 `sudo`、不改系统目录、不覆盖共享环境，也不把 secret 写进 shell history 或 manifest。
+4. **分离 code readiness 与 evidence run**：需要时先以独立 run ID 运行最小 smoke，验证 wiring、schema、异常路径、资源估计和输出格式；它必须 `paper_eligible=false`，使用独立输出目录，不能调参、触发 scientific GO 或被后续正式表消费。smoke 通过后，正式实验由单独命令和新 run ID 启动；不得在同一进程中自动从 smoke/fallback 路径升级为正式证据。
+5. **受限启动且 fail fast**：显式设置所用设备和并发，例如 `CUDA_VISIBLE_DEVICES={GPU_SET}`，不抢占清单外资源。长任务用项目允许的 `tmux`/`nohup`/scheduler，立即记录 PID/job/session、完整命令、日志、host/GPU、repo SHA、环境、开始时间和预算。科研 run 的 model/backend/device/data/metric/method component 不满足时非零退出；禁止自动切本地、CPU、其他 backend/model/host 后继续产出证据。
+6. **低干扰监控**：日志与结构化 status 写在项目工作区；使用与任务时长相称的长间隔或 scheduler 状态，不做高频 polling。wait/SSH timeout 只表示状态未知或仍运行，不代表成功/失败。触及 kill criteria 或预算时只终止本 packet 记录的进程并保留现有产物；crash、OOM、preemption 和 timeout 使用不同状态，不填成科学负结果或 0。
+7. **收集并验证产物**：保留 raw results、配置、日志、manifest/checker 输出、实际 compute 和失败信息；运行项目 oracle/checker 后再生成中间视图或 final table。headline number 必须能回到远程 run ID 和 raw artifact。正式结论所需产物回传约定存储或由可追溯远程路径提供，不手改远程结果值。
+8. **精确收尾**：只对步骤 5 记录且确认归属自己的 PID/job/session 操作；禁止 `pkill python`、`pkill -u`、宽泛 `kill -9` 或清理他人/未知进程。临时缓存只按预先 retention rule 清理；raw evidence、失败日志和支撑结论的 artifact 不因结果不好而删除。记录结束状态、产物位置、清理项和仍在运行/未确认项。
 
 ## 门禁
 
-> gate 分型(继承 no-fallback-review 的容忍度档位):
-> - **阻断型 gate(零容忍)**:免密缺失仍尝试连、存明文密码/sshpass 绕认证、批量杀进程(pkill/kill -9 -u)、写他人或系统目录、把结果"假装跑成功"。命中即阻断,不放行。
-> - **信号型 gate(高容忍)**:选卡是否最优、工作区命名、日志粒度等优化项,列建议交人裁决,不阻断。
-
-[HUMAN] 步骤 3 的 Checkpoint 必须人确认"机/卡/工作区"后方可进入步骤 4。
-[SCAN] 扫本 SOP 执行脚本:禁止出现 `sshpass`、明文密码字面量、`pkill`、`kill -9 -u`、`kill -u`、以及未带自身 PID 的批量 kill。
-[REVIEW] 必问:"要杀的进程,PID 是不是我步骤 5 亲手记下的?写入路径是不是在 {REMOTE_WORKSPACE} 内?"
+- `[BLOCK]` 非交互认证失败后仍尝试绕过；secret 被写入仓库/日志；目标主机或工作区不在授权 profile；需要越界成本、凭据、生产/公开或不可逆动作；
+- `[BLOCK]` 科研 run 自动切本地/CPU/其他 host/backend/model/data/metric/method path，或将 smoke/mock/stub/synthetic 产物升级为 claim、GO、paper evidence；
+- `[BLOCK]` 主机/repo/environment identity、PID/job、日志或 raw artifact 不足以复核声称的运行；
+- `[BLOCK]` 批量杀进程、写系统/他人目录、覆盖或删除支撑结论/失败事实的 evidence；
+- `[HUMAN]` 仅在步骤 1 的 mandatory 条件出现时等待；已冻结的默认 host、卡范围、workspace 和有限预算使用 autonomous checkpoint；
+- `[SCAN]` 执行脚本禁止 `sshpass`、明文密码、`pkill`、用户级/broad kill、未声明设备和 evidence-bearing 自动 fallback；
+- `[REVIEW]` 必问：“这个 run 是否在授权 host/workspace/resource 内？失败时是否停止？表中数字能否回到该 PID/job 对应的 raw artifact？”
 
 ## 完成判定
 
-- 目标机经免密探测通过(非交互登录返回 0),否则本 SOP 在步骤 2 已合法中止;
-- 计算任务在受限工作区内启动、PID 有记录;
-- 收尾后仅自己的进程被回收、无残留临时大文件、操作已留痕(二值:日志中可查到机/卡/工作区/PID/产物路径)。
+- remote work packet 与 checkpoint 类型有记录，实际 host/workspace/resource 未越界；
+- 非交互认证、资源、repo 与环境预检通过，或相关动作诚实停在 `BLOCKED`；
+- 已启动任务的命令、PID/job/session、日志、状态、成本和产物位置可查；
+- smoke 与正式 evidence 物理/语义分离，科研路径未发生自动 runtime fallback；
+- oracle/checker 结论与 raw artifact 保留，收尾只影响自己的明确进程和允许清理的临时数据。
 
 ## 失败处理
 
-遵守 P3:免密不可用 → 中止并报"请先配公钥",不得存密码/灌密码/重试硬闯;资源不足(显存/磁盘/卡忙)→ 报告请人改选,不得硬挤或吃光他人资源;远程任务运行报错 → 如实回传错误与日志,不得吞掉错误谎报"跑完了";任何一步 SSH 断连/超时 → 报错中止,不得"默认它成功了"继续下一步。进程回收阶段若无法确认某 PID 归属 → 不杀,报告请人确认,宁可留着不误杀。
+认证、资源、环境、输入、主机身份或 scientific dependency 不满足时停止相关 run 并记录 `BLOCKED`/失败状态；不得存密码、硬挤共享资源、自动换本地/CPU/backend/host、缩小 claim 或用旧结果继续。若存在保持原 contract 的等价主机或实现，先形成新的显式 work packet 和 run ID；超出既有 profile 时取得 HUMAN 决定。SSH 断连或监控 timeout 时重新查询同一 job 的权威状态，不能默认成功、失败或重复启动。无法确认进程归属时不杀，报告未决状态。
 
 ## 产物
 
-一份远程作业记录:目标机与所选 GPU、工作区路径、启动命令与 PID/会话名、结果与日志的存放位置、起止时间;以及"免密探测结果 + 收尾进程回收清单"两项二值确认。
+一条紧凑 remote job record：checkpoint、host、workspace、repo SHA/dirty state、环境身份、设备与资源上限、evidence class/`paper_eligible`、命令、PID/job/session、开始/结束时间、实际成本、status、日志/raw artifact/checker/结果位置、失败原因与精确清理记录。已有实验系统能承载这些字段时不另建台账。

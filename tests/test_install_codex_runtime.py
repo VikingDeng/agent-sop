@@ -141,6 +141,12 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertTrue((codex_home / "agents/luna_executor.toml").read_text())
             skill = codex_home / "skills/research-execution-grill/SKILL.md"
             self.assertIn("research-execution-grill", skill.read_text(encoding="utf-8"))
+            evidence_reference = (
+                home
+                / INSTALL.RUNTIME_CURRENT
+                / "sop/tier1-skeleton/references/research-evidence-presentation.md"
+            )
+            self.assertIn("authoritative final table", evidence_reference.read_text(encoding="utf-8"))
             overlay = home / INSTALL.RUNTIME_CURRENT / "skeletons/contestos-adaptive-overlay-v2.md"
             self.assertIn("active operational overlay", overlay.read_text(encoding="utf-8"))
             installed_reference = "~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md"

@@ -42,6 +42,7 @@ class StructuralConsistencyTests(unittest.TestCase):
                 "codex/skills/research-execution-grill/SKILL.md",
                 "sop/tier1-skeleton/research-execution-grill.md",
                 "sop/tier1-skeleton/references/research-execution-grill-artifact.md",
+                "sop/tier1-skeleton/references/research-evidence-presentation.md",
                 "scripts/validate_research_execution_grill.py",
             ),
         )

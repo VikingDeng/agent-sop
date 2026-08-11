@@ -23,6 +23,10 @@
 
 v1 的“zero fallback”只表示：禁止**静默语义降级、fabricated success 与 altered acceptance**。允许显式、quality-equivalent 的 alternate tool/model/implementation path；替代路径必须披露触发原因，并以未改变的 acceptance 和匹配的 oracle 重新验证。
 
+对 evidence-bearing research producer/evaluator，`quality-equivalent alternate path` 是 **between-run adaptation**，不是运行时代码分支：失败 run 立即保留并结束，替代实现用显式新配置/代码、新 run ID 和原 acceptance 重新执行。禁止在同一 run 内自动切 method component、model、backend、device、dataset、split、metric、parser 或 analysis 后继续产出证据。synthetic、mock/stub、smoke 与 code-readiness 产物始终 `paper_eligible=false`，不能触发 scientific GO 或进入 authoritative final results。
+
+approved proposal 的原 claim、primary estimand、method 语义、baseline、数据、分析方法、成功标准和正式预算保持独立 verdict。较弱的次级发现可以诚实报告，但不能替换原 contract 的 `SUPPORTED|FALSIFIED|NOT_ESTABLISHED|BLOCKED` 状态；物质改变需要 HUMAN re-contract。
+
 若 fallback 改变 public behavior、research claim、privacy/data boundary、irreversible state 或 material/unbounded cost，停止该越界部分并进入 `MANDATORY_HUMAN_CHECKPOINT` 或 re-contract。只有这些变化需要 HUMAN；工具/模型不可用本身不是项目失败。
 
 ## HUMAN 与自适应 checkpoint
