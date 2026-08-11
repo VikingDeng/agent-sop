@@ -55,6 +55,7 @@ class SessionMeta:
     session_id: str
     parent_thread_id: str | None
     agent_role: str | None
+    system_kind: str | None
 
 
 def model_family(model: str) -> str:
@@ -87,6 +88,13 @@ def _read_meta(path: Path) -> SessionMeta | None:
                     session_id=str(payload.get("session_id") or thread_id),
                     parent_thread_id=(str(payload["parent_thread_id"]) if payload.get("parent_thread_id") else None),
                     agent_role=(str(payload["agent_role"]) if payload.get("agent_role") else None),
+                    system_kind=(
+                        "guardian"
+                        if isinstance(payload.get("source"), dict)
+                        and isinstance(payload["source"].get("subagent"), dict)
+                        and payload["source"]["subagent"].get("other") == "guardian"
+                        else None
+                    ),
                 )
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return None
@@ -341,6 +349,37 @@ def _turn_id(payload: dict[str, Any]) -> str:
     return value if isinstance(value, str) and value else ""
 
 
+def _iter_string_values(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in value.values():
+            yield from _iter_string_values(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_string_values(child)
+
+
+def _extract_runtime_provenance(record: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    found: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for value in _iter_string_values(record):
+        for line in value.splitlines():
+            if "SOP_RUNTIME " not in line:
+                continue
+            raw = line.split("SOP_RUNTIME ", 1)[1].strip()
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                errors.append(f"malformed SOP_RUNTIME marker: {exc.msg}")
+                continue
+            if not isinstance(payload, dict):
+                errors.append("SOP_RUNTIME marker is not an object")
+                continue
+            found.append(payload)
+    return found, errors
+
+
 def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, Any]:
     active_model = "unknown"
     previous_usage = {field: 0 for field in TOKEN_FIELDS}
@@ -376,6 +415,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     luna_unavailable_turns: set[str] = set()
     last_agent_message = ""
     cwd = ""
+    runtime_provenance: list[dict[str, Any]] = []
+    runtime_provenance_errors: list[str] = []
 
     try:
         handle = meta.path.open()
@@ -413,6 +454,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "nested_policy_uncertainties": [],
             "package_contract_uncertainties": [],
             "luna_routing_violations": [],
+            "runtime_provenance": [],
+            "runtime_provenance_errors": [],
         }
 
     with handle:
@@ -425,6 +468,13 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             if not isinstance(record, dict) or not isinstance(record.get("payload", {}), dict):
                 parse_errors += 1
                 continue
+            provenance, provenance_errors = _extract_runtime_provenance(record)
+            for item in provenance:
+                if item not in runtime_provenance:
+                    runtime_provenance.append(item)
+            runtime_provenance_errors.extend(
+                f"line {line_number}: {message}" for message in provenance_errors
+            )
             payload = record.get("payload", {})
             metadata_record = (
                 record.get("type") in {"session_meta", "turn_context"}
@@ -763,6 +813,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "session_id": meta.session_id,
         "parent_thread_id": meta.parent_thread_id,
         "agent_role": meta.agent_role,
+        "system_kind": meta.system_kind,
         "path": str(meta.path),
         "usage_by_model": {model: dict(counter) for model, counter in usage_by_model.items()},
         "calls_by_model": {model: dict(counter) for model, counter in calls_by_model.items()},
@@ -798,6 +849,8 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "nested_policy_uncertainties": nested_policy_uncertainties,
         "package_contract_uncertainties": package_contract_uncertainties,
         "luna_routing_violations": luna_routing_violations,
+        "runtime_provenance": runtime_provenance,
+        "runtime_provenance_errors": runtime_provenance_errors,
     }
 
 
@@ -810,8 +863,44 @@ def audit_session_tree(
 ) -> dict[str, Any]:
     if enforcement_mode not in {"advisory", "strict"}:
         raise ValueError("enforcement_mode must be advisory or strict")
+    requested_enforcement_mode = enforcement_mode
     metas = discover_session_tree(target, sessions_root)
-    sessions = [audit_log(meta, large_output_chars=large_output_chars) for meta in metas]
+    audited_sessions = [audit_log(meta, large_output_chars=large_output_chars) for meta in metas]
+    system_sessions = [session for session in audited_sessions if session.get("system_kind")]
+    sessions = [session for session in audited_sessions if not session.get("system_kind")]
+    root_provenance = [
+        item
+        for session in sessions
+        if session.get("parent_thread_id") is None
+        for item in session.get("runtime_provenance", [])
+    ]
+    observed_modes = {
+        str(item.get("routing_profile"))
+        for item in root_provenance
+        if item.get("routing_profile") in {"advisory", "strict"}
+    }
+    provenance_observations: list[str] = []
+    recorded_routing_profile = "UNKNOWN"
+    runtime_provenance_trust = "missing"
+    if len(observed_modes) == 1:
+        observed_mode = next(iter(observed_modes))
+        recorded_routing_profile = observed_mode
+        runtime_provenance_trust = "unverified_trace_observation"
+        if observed_mode != enforcement_mode:
+            provenance_observations.append(
+                f"requested audit mode {enforcement_mode!r} differs from SessionStart routing profile "
+                f"{observed_mode!r}; preserving the requested audit policy"
+            )
+    elif len(observed_modes) > 1:
+        recorded_routing_profile = "CONFLICTING"
+        runtime_provenance_trust = "conflicting"
+        provenance_observations.append(
+            "conflicting SessionStart routing profiles: " + ", ".join(sorted(observed_modes))
+        )
+    else:
+        provenance_observations.append(
+            "no parseable SessionStart SOP_RUNTIME marker; routing profile and source generation are unverified"
+        )
     model_totals: dict[str, Counter[str]] = defaultdict(Counter)
     family_totals: dict[str, Counter[str]] = defaultdict(Counter)
     roles: Counter[str] = Counter()
@@ -1109,7 +1198,7 @@ def audit_session_tree(
         for item in session["nested_policy_uncertainties"]:
             completeness_violations.append(f"thread {thread_id}: {item}")
         for item in session["package_contract_uncertainties"]:
-            completeness_violations.append(f"thread {thread_id}: {item}")
+            routing_policy_findings.append(f"thread {thread_id}: {item}")
         for item in session["luna_routing_violations"]:
             routing_policy_findings.append(f"thread {thread_id}: {item}")
         if not session["token_snapshot_count"]:
@@ -1167,12 +1256,39 @@ def audit_session_tree(
     total_tokens = sum(counter["total_tokens"] for counter in model_totals.values())
     lower_cost_tokens = sum(family_totals[family]["total_tokens"] for family in ("terra", "luna"))
 
+    system_model_totals: dict[str, Counter[str]] = defaultdict(Counter)
+    system_overhead_findings: list[str] = []
+    for session in system_sessions:
+        thread_id = str(session["thread_id"])
+        for model, usage in session["usage_by_model"].items():
+            system_model_totals[model].update(usage)
+        if session["parse_errors"]:
+            system_overhead_findings.append(f"thread {thread_id}: {session['parse_errors']} corrupt JSON line(s)")
+        if session["usage_schema_errors"]:
+            system_overhead_findings.append(
+                f"thread {thread_id}: {len(session['usage_schema_errors'])} token/schema error(s)"
+            )
+        if not session["token_snapshot_count"]:
+            system_overhead_findings.append(f"thread {thread_id}: no valid token snapshot")
+    system_unknown_models = sorted(
+        model for model, usage in system_model_totals.items()
+        if model_family(model) == "unknown" and usage["total_tokens"]
+    )
+    if system_unknown_models:
+        system_overhead_findings.append("unknown system model family: " + ", ".join(system_unknown_models))
+    system_overhead_tokens = sum(usage["total_tokens"] for usage in system_model_totals.values())
+
     integrity_failures = list(completeness_violations)
     if sol_execution_calls:
         routing_policy_findings.append(f"{len(sol_execution_calls)} non-read-only tool call(s) were made by Sol")
     if unknown_models:
         integrity_failures.append("unknown model family: " + ", ".join(unknown_models))
-    observations = []
+    observations = list(provenance_observations)
+    for session in sessions:
+        observations.extend(
+            f"thread {session['thread_id']}: {item}"
+            for item in session.get("runtime_provenance_errors", [])
+        )
     if total_tokens and not lower_cost_tokens:
         observations.append("no Terra or Luna tokens were observed; confirm that all work was judgment-only")
 
@@ -1200,13 +1316,24 @@ def audit_session_tree(
     report = {
         "root": target,
         "enforcement_mode": enforcement_mode,
+        "requested_enforcement_mode": requested_enforcement_mode,
+        "recorded_routing_profile": recorded_routing_profile,
+        "runtime_provenance_trust": runtime_provenance_trust,
+        "runtime_provenance": root_provenance,
         "session_count": len(sessions),
+        "system_session_count": len(system_sessions),
         "cost_status": "partial_uncertain" if (
             integrity_failures or (enforcement_mode == "strict" and routing_policy_findings)
         ) else "complete",
         "weighted_cost_units": weighted_cost,
         "total_tokens": total_tokens,
         "model_totals": {model: dict(counter) for model, counter in sorted(model_totals.items())},
+        "system_overhead_status": "partial_uncertain" if system_overhead_findings else "complete",
+        "system_overhead_tokens": system_overhead_tokens,
+        "system_overhead_model_totals": {
+            model: dict(counter) for model, counter in sorted(system_model_totals.items())
+        },
+        "system_overhead_findings": system_overhead_findings,
         "family_totals": {family: dict(family_totals[family]) for family in ("sol", "terra", "luna", "unknown")},
         "subagent_roles": dict(roles),
         "large_outputs": sorted(large_outputs, key=lambda item: item["chars"], reverse=True),
@@ -1219,6 +1346,7 @@ def audit_session_tree(
         "routing_observations": observations,
         "delivery_report_findings": delivery_report_findings,
         "sessions": sessions,
+        "system_sessions": system_sessions,
     }
     return report
 
@@ -1226,10 +1354,17 @@ def audit_session_tree(
 def render_report(report: dict[str, Any]) -> str:
     uncertainty = " [UNCERTAIN/PARTIAL]" if report["cost_status"] != "complete" else ""
     lines = [
-        f"Routing mode: {report.get('enforcement_mode', 'strict')}",
+        f"Audit policy: {report.get('enforcement_mode', 'strict')} "
+        f"(requested: {report.get('requested_enforcement_mode', report.get('enforcement_mode', 'strict'))})",
+        f"Recorded SessionStart profile: {report.get('recorded_routing_profile', 'UNKNOWN')} "
+        f"({report.get('runtime_provenance_trust', 'missing')})",
+        f"Runtime provenance markers: {len(report.get('runtime_provenance', []))}",
         f"Sessions: {report['session_count']}",
+        f"System sessions: {report.get('system_session_count', 0)}",
         f"Raw tokens: {report['total_tokens']:,}{uncertainty}",
         f"Weighted cost: {report['weighted_cost_units']:,} WCU{uncertainty} (25*Sol + 10*Terra + 1*Luna)",
+        f"System overhead: {report.get('system_overhead_tokens', 0):,} tokens "
+        f"({report.get('system_overhead_status', 'complete')})",
         "",
         "Family  Tokens       Weight  WCU",
     ]

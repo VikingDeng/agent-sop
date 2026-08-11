@@ -78,6 +78,54 @@ def _strict_enforcement() -> bool:
 def _session_context() -> str:
     return STRICT_SESSION_CONTEXT if _strict_enforcement() else SESSION_CONTEXT
 
+
+def _runtime_provenance(data: dict[str, Any]) -> dict[str, Any]:
+    resolved = Path(__file__).resolve()
+    runtime_root = resolved.parents[2]
+    manifest_path = runtime_root / "snapshot-manifest.json"
+    generation = "SOURCE_CHECKOUT_UNPINNED"
+    components: dict[str, Any] = {}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(manifest, dict):
+            generation = str(manifest.get("content_address") or "UNKNOWN")
+            raw_components = manifest.get("runtime_components")
+            if isinstance(raw_components, dict):
+                components = raw_components
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError):
+        pass
+
+    def component(name: str) -> str:
+        value = components.get(name)
+        if not isinstance(value, dict):
+            return "UNKNOWN"
+        version = str(value.get("version") or "UNKNOWN")
+        digest = str(value.get("sha256") or "UNKNOWN")
+        return f"{version}@{digest[:12]}" if digest != "UNKNOWN" else version
+
+    selected = os.environ.get("SOP_DOMAIN_PROFILE", "UNRESOLVED_BY_SESSIONSTART")
+    return {
+        "adapter": f"codex-runtime@{component('codex_adapter')}",
+        "generation": generation,
+        "kernel": f"autonomous-supervisor@{component('kernel')}",
+        "available_profiles": {
+            "development": component("development_profile"),
+            "research": component("research_profile"),
+            "competition": component("competition_profile"),
+        },
+        "selected_domain_profile": selected,
+        "routing_profile": "strict" if _strict_enforcement() else "advisory",
+        "foreground_model": data.get("model") or data.get("model_name") or "UNKNOWN",
+        "foreground_effort": data.get("model_reasoning_effort") or data.get("reasoning_effort") or "UNKNOWN",
+        "session_id": data.get("session_id") or "UNKNOWN",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+def _session_start_context(data: dict[str, Any]) -> str:
+    marker = json.dumps(_runtime_provenance(data), ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return f"SOP_RUNTIME {marker}\n{_session_context()}"
+
 def _emit(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")
@@ -811,7 +859,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if event not in {"SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "Stop"}:
         raise ValueError(f"unsupported hook event: {event}")
     if event == "SessionStart":
-        return _context(event, _session_context())
+        return _context(event, _session_start_context(data))
 
     if event == "SubagentStart":
         role = str(data.get("agent_type", "")).lower()

@@ -1,63 +1,85 @@
 # agent-sop
 
-个人 agent 开发规范体系仓库。四个平行概念,组成完整的地基:
+面向 Codex/GPT Agent 的个人执行规范。目标不是用更多 checklist 替代模型能力，而是用一个薄、稳定、可审计的流程内核降低交付方差；领域能力由 Profile、外部 Skill 和真实 Oracle 在需要的节点补充。
 
-Codex 从仓库根目录 [AGENTS.md](AGENTS.md) 进入:它只做高频路由,先读纪律与方法论,再按任务加载匹配的 skeleton/SOP。个人级自主 Supervisor 模板与 Codex agent recipe 位于 [codex/](codex/README.md),不与仓库级规则混用。
+## 分层架构
 
-## 四个概念
-
-| 概念 | 位置 | 一句话 | 回答的问题 |
+| 层 | 位置 | 只回答什么 | 不负责什么 |
 |---|---|---|---|
-| **纪律(Principles)** | [PRINCIPLES.md](PRINCIPLES.md) | 四条核心纪律(P1 契约先行 / P2 独立 oracle / P3 显式适配、禁止静默降级 / P4 可追溯)+ 收纳判据 | **为什么**这么做 |
-| **文字规范(Prose)** | [PROSE_STANDARD.md](PROSE_STANDARD.md) | 产人读文字的横切规范(反 AI 味/逻辑闭合/反中庸,双关门禁),与纪律层正交 | **怎么说** |
-| **骨架(Skeletons)** | [skeletons/](skeletons/README.md) | 一个**项目**的完整结构标准(目录树 + 防腐职责 + 硬锚) | **项目长什么样** |
-| **SOP(可组合规程)** | [sop/](sop/README.md) | 一段可复用的、agent 可执行的规程,三层组织、可互相调用 | **怎么做一件事** |
+| Principles | [PRINCIPLES.md](PRINCIPLES.md) | 为什么：契约、证据、失败诚实、比例化追溯 | 固定行动路径 |
+| Kernel | [autonomous-supervisor.md](sop/tier0-core/autonomous-supervisor.md) | 所有任务怎样 RESOLVE→CONTRACT→EXECUTE→VERIFY→DELIVER | 技术栈、模型、领域方法 |
+| Domain Profiles | [sop/tier1-skeleton/](sop/README.md) | development、AI research、competition 各自不可丢的结果语义 | Codex 路由、工具实现 |
+| Codex Adapter | [codex/CODEX-ADAPTER.md](codex/CODEX-ADAPTER.md) | Sol/Terra/Luna、WCU、sub-agent、Hook、provenance、audit | 产品/科研完成判定 |
+| Skills / MCP | [SKILL-ADAPTERS.md](SKILL-ADAPTERS.md) · [registry](skill-registry.yaml) | 外部、可替换的专门能力 | 改写契约、授权或阶段 |
+| Oracles | [build-oracle.md](sop/tier0-core/build-oracle.md) 与项目工具 | 真实证据能否支持 claim | 自证或流程仪式 |
 
-> 纪律是"为什么",文字规范是"怎么说",骨架是"项目长什么样",SOP 是"怎么做一件事"。
+`PROSE_STANDARD.md` 是产出人读文字时的横切规范。`skeletons/` 保存 provenance-locked ContestOS v1 历史来源，只在 legacy 项目显式选择时使用，不进入新任务默认上下文。
 
-## 结构
+## 默认入口
 
+1. 所有实质任务使用 [执行 Kernel](sop/tier0-core/autonomous-supervisor.md)，冻结最小 outcome/non-goals/scope/evidence/authority contract。
+2. 只加载一个与真实交付面匹配的 Profile：
+   - 0→1 产品、服务、库、CLI、数据管线：[run-development](sop/tier1-skeleton/run-development.md)
+   - 已批准 AI 顶会 proposal 的正确实现与实验：[research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)
+   - 竞赛、benchmark、leaderboard、hackathon：[run-competition](sop/tier1-skeleton/run-competition.md)
+3. 只有任务确实跨域时组合 Profile，例如产品黑客松或研究工件赛。
+4. Skill 由可观察能力缺口触发。稳定运行只允许 registry 中未过期的 `promoted` 能力隐式启用；其他候选只能用于显式选型实验。
+5. 验收始终回到项目真实 Oracle。Skill、模型、角色、文件存在、build、smoke 或自述不能替代 claim 所需证据。
+
+## AI proposal → 实验
+
+科研 Profile 的职责是把用户已批准 proposal 忠实、高效地实现，而不是重新生成一个更容易的 idea：
+
+- 冻结原 claim、primary estimand、method 语义、baseline、数据/split、analysis、成功标准和正式预算；
+- 建立 `proposal semantics → implementation → observable invariant → independent oracle` 的 method-fidelity mapping；
+- 检查 baseline/tuning parity、必要的 negative control/ablation、holdout/judge protocol；
+- evidence-bearing code fail fast，不写自动切 method/model/backend/device/data/metric/analysis 的 speculative runtime fallback；
+- diagnostic/smoke/synthetic/mock/code-readiness 均 `paper_eligible=false`；
+- raw runs 不可回写，过程视图和 final table 从 eligible evidence 确定性派生；
+- inferential claim 按 [AI statistics oracle](sop/tier1-skeleton/statistics-oracle.md) 的数据生成过程、replication unit 与 estimand 验证；
+- 远程资源由 project/local adapter 发现，通用 SOP 不包含默认服务器或 IP。
+
+## Skill 选型
+
+[`skill-registry.yaml`](skill-registry.yaml) 是严格 JSON 语法的 YAML 1.2 文件，为 source、commit/subpath/hash、license、依赖、副作用、触发与评测状态提供可机读字段。当前候选仍处于 declared 阶段；未核验的 exact bytes/license 必须显式为 `null` 并附 blocker，只有进入 `audited` 前才要求补齐。任何候选要相对强 GPT‑5.6 比较三臂：
+
+```text
+strong no-Skill baseline
+vs minimal reminder
+vs full pinned Skill
 ```
+
+只有 Full Skill 在固定模型、effort、工具、checkpoint 和预算下，经重复盲评证明净提升且没有 authority/acceptance 回归，才能 `promoted`。运行时禁止用 `find-skills` 自动搜索、安装和组合未知 Skill。
+
+## 目录
+
+```text
 agent-sop/
-├── AGENTS.md              # Codex 仓库级薄 dispatcher
-├── PRINCIPLES.md          # 四条核心纪律 + 收纳判据(全仓地基)
-├── PROSE_STANDARD.md      # 文字产出规范 v2(横切:产人读文字时遵守)
-├── SKILL-ADAPTERS.md      # 官方/维护者 Skill 与 SOP 的适配矩阵(不改变 SOP 权威)
-├── skeletons/             # 项目骨架(3 份 v1 原件 + v2.2 兼容 overlay)
-│   ├── README.md          # 骨架索引与 compatibility overlay 入口
-│   └── contestos-adaptive-overlay-v2.md
-├── sop/                   # 可组合规程库(三层)
-│   ├── README.md          # 三层 INDEX + 依赖图 + 纪律映射
-│   ├── _TEMPLATE.md       # 单条 SOP 统一模板
-│   ├── tier0-core/        # 核心横切(全场景共用,9 条)
-│   ├── tier1-skeleton/    # 骨架绑定(11 条)
-│   └── tier2-activity/    # 非项目型工作:运维/写作/调研(8 条)
-├── codex/                 # 个人模板与 custom-agent adapter
-└── scripts/               # 仓库独立验证器
+├── AGENTS.md
+├── PRINCIPLES.md
+├── PROSE_STANDARD.md
+├── SKILL-ADAPTERS.md
+├── skill-registry.yaml
+├── sop/
+│   ├── tier0-core/        # 9 条通用/横切 SOP
+│   ├── tier1-skeleton/    # 12 条 Domain Profile / project SOP
+│   └── tier2-activity/    # 8 条活动型 SOP
+├── codex/                 # Codex Adapter、roles、Hooks、安装与审计
+├── skeletons/             # explicit-only legacy provenance
+├── scripts/
+└── tests/
 ```
 
-## 使用流程
+## 维护与验证
 
-1. **判断任务是不是"项目"**(有 src/、跨时间存在、有交付物):
-   - **是** → 选骨架([skeletons/README.md](skeletons/README.md)),在项目级 `AGENTS.md` 引用相关 tier0/tier1 SOP。
-   - **不是**(运维/写作/调研)→ 直接走 [sop/tier2-activity/](sop/README.md) 的活动型 SOP。
-2. **所有情况都受 PRINCIPLES 约束**(任何 skeleton/SOP 必须落实至少一条纪律)。
-3. **产出人读文字时受 PROSE_STANDARD 约束**(产文字的 SOP 在门禁引用它,一处定义全库复用)。
-4. **需要自主编排时走 [autonomous-supervisor](sop/tier0-core/autonomous-supervisor.md)**:在授权包络内自动冻结契约并执行;真实方向分叉才进入 HUMAN gate。
-5. **选 Skill 适配器时读 [SKILL-ADAPTERS.md](SKILL-ADAPTERS.md)**:Skill 是按需、可替换的能力层;不改变 SOP 的授权、路由、claim、HUMAN 边界、门禁或完成判定。
-6. **实施已批准科研 proposal 前走 [research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)**:不重新生成 idea；按 claim 选择真正需要的 oracle、pilot、风险边界和 scale 证据，不强迫所有 proposal 进入同一 gate 链。
-   - 方法关键语义先形成最小 fidelity mapping；科学 run 无自动 runtime fallback，弱发现不替代原 claim。
-   - 中间实验/数据流与最终表按 [research evidence presentation](sop/tier1-skeleton/references/research-evidence-presentation.md) 从 raw runs 派生；远程算力按 [ops-remote-compute](sop/tier2-activity/ops-remote-compute.md) 执行。
+新增或修改 SOP 时遵循 [SOP 方法论](sop/_METHODOLOGY.md)，更新 [索引](sop/README.md) 和版本。测试要验证真实层边界和证据语义，不能只断言同一句话被复制到多个文件。
 
-7. **选用任一 ContestOS v1 骨架时同时启用 [adaptive overlay v2.2](skeletons/contestos-adaptive-overlay-v2.md)**:它只覆盖运行时语义，明确解释 fallback、HUMAN checkpoint、环境参数与 claim/risk-triggered gates；v1 原件保持 provenance-locked。参加算法/交互、榜单、性能、hidden-runtime、研究工件或产品型黑客松时，再用 [run-competition](sop/tier1-skeleton/run-competition.md) 按真实赛制组合路径。
+```sh
+python3 scripts/validate_sop_repo.py
+python3 -m unittest discover -s tests -p 'test_*.py'
+git diff --check
+```
 
-## 新增一个 SOP
+这些检查证明结构和可执行支持代码一致；SOP 的真实增益还必须通过固定任务上的 no-SOP / Kernel / Profile E2E，以及胜出 Profile 上的 no-Skill / reminder / Skill 对照实验验证。
 
-1. 用 [sop/_TEMPLATE.md](sop/_TEMPLATE.md) 建文件,放到对应层级目录(`tier0-core` / `tier1-skeleton` / `tier2-activity`)。
-2. 头部填"落实纪律"(必须映射到 PRINCIPLES 的某条,对不上则先补纪律)。
-3. 更新 [sop/README.md](sop/README.md) 索引。
-
-## 新增一个骨架
-
-1. 文档放 `skeletons/<语义名>-v<版本>.md`,头部声明落实的纪律。
-2. 更新 [skeletons/README.md](skeletons/README.md) 索引。
+Legacy ContestOS 文件及迁移方式见 [skeletons/README.md](skeletons/README.md) 与 [compatibility overlay](skeletons/contestos-adaptive-overlay-v2.md)。

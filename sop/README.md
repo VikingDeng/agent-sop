@@ -4,10 +4,10 @@
 > 每条 SOP 用 _TEMPLATE.md 结构;每条必须映射到 ../PRINCIPLES.md 的纪律。
 > **组织判据不是"分类整齐",而是"每条 SOP 都是四条纪律的实例化"。**
 >
-> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v6**，默认按 proposal
+> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v7**，默认按 proposal
 > claim 自适应选择证据、oracle 与 gate。`research-execution-grill-v3 / schema v3`
 > 是显式选择的 signed strict profile；历史 schema v1/v2 仅可匹配显式审计。
-> `tier1-skeleton/run-experiment.md` 当前版本为 **v6**，默认以真实运行和 claim-matched
+> `tier1-skeleton/run-experiment.md` 当前版本为 **v7**，默认以真实运行和 claim-matched
 > evidence 验收；只有项目选择 strict v3 时才要求 exact signed authorization。
 > 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
 > 的派生视图契约；它不要求新建 dashboard 或独立台账。
@@ -16,13 +16,13 @@
 
 | SOP | 档位 | 落实纪律 | 被谁依赖 |
 |---|---|---|---|
-| tier0-core/autonomous-supervisor.md | U1 | P1 P2 P3 P4 | write-contract, run-competition |
+| tier0-core/autonomous-supervisor.md | U0 | P1 P2 P3 P4 | write-contract, run-competition, run-development |
 | tier0-core/lock-env.md | U1 | P4 | add-dependency, fetch-assets, reproduce-result, run-experiment, release-version, ops-remote-compute |
 | tier0-core/add-dependency.md | U1 | P1 P4 | fetch-assets, drift-check, release-version |
-| tier0-core/build-oracle.md | U0 | P2 P3 | autonomous-supervisor, fetch-assets, profile-code, run-experiment, statistics-oracle, package-submission, build-local-proxy, research-execution-grill, run-competition, scientific-paper |
-| tier0-core/no-fallback-review.md | U0 | P3 | autonomous-supervisor, commit-and-pr, drift-check, statistics-oracle, research-execution-grill, run-competition, ops-remote-compute |
+| tier0-core/build-oracle.md | U0 | P2 P3 | autonomous-supervisor, fetch-assets, profile-code, run-experiment, statistics-oracle, package-submission, build-local-proxy, research-execution-grill, run-competition, run-development, scientific-paper |
+| tier0-core/no-fallback-review.md | U0 | P3 | autonomous-supervisor, commit-and-pr, drift-check, statistics-oracle, research-execution-grill, run-competition, run-development, ops-remote-compute |
 | tier0-core/commit-and-pr.md | U1 | P4 | autonomous-supervisor, release-version, package-submission, ops-remote-compute |
-| tier0-core/profile-code.md | U2 | P2 P4 | — |
+| tier0-core/profile-code.md | U2 | P2 P4 | research-execution-grill |
 | tier0-core/reproduce-result.md | U1 | P2 P4 | run-experiment, statistics-oracle, ops-deploy, scientific-paper |
 | tier0-core/fetch-assets.md | U1 | P1 P3 P4 | — |
 
@@ -30,16 +30,17 @@
 
 | SOP | 绑定骨架 | 档位 | 落实纪律 | 依赖 |
 |---|---|---|---|---|
-| tier1-skeleton/research-execution-grill.md | research | U2 | P1 P2 P3 P4 | build-oracle, no-fallback-review |
+| tier1-skeleton/research-execution-grill.md | research | U2 | P1 P2 P3 P4 | build-oracle, no-fallback-review, profile-code, statistics-oracle |
 | tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P3 P4 | lock-env, build-oracle, reproduce-result, statistics-oracle, research-execution-grill, ops-remote-compute |
-| tier1-skeleton/statistics-oracle.md | research | U1 | P2 P3 P4 | build-oracle, reproduce-result, no-fallback-review |
+| tier1-skeleton/statistics-oracle.md | research | U1 | P1 P2 P3 P4 | build-oracle, reproduce-result, no-fallback-review |
 | tier1-skeleton/contamination-check.md | research | U2 | P2 | — |
-| tier1-skeleton/run-competition.md | competition / development(hackathon) | U1 | P1 P2 P3 P4 | autonomous-supervisor, build-oracle, no-fallback-review, build-local-proxy, package-submission |
+| tier1-skeleton/run-competition.md | competition / development(hackathon) | U1 | P1 P2 P3 P4 | autonomous-supervisor, build-oracle, no-fallback-review, build-local-proxy, package-submission, run-development |
 | tier1-skeleton/package-submission.md | competition / development(hackathon) | U1 | P2 P3 P4 | build-oracle, commit-and-pr, maintain-patch-series |
 | tier1-skeleton/build-local-proxy.md | competition | U2 | P2 P3 | build-oracle |
 | tier1-skeleton/maintain-patch-series.md | competition | U1 | P4 | — |
 | tier1-skeleton/write-contract.md | development | U1 | P1 | autonomous-supervisor |
 | tier1-skeleton/drift-check.md | development | U1 | P1 | write-contract, add-dependency, no-fallback-review |
+| tier1-skeleton/run-development.md | development | U1 | P1 P2 P3 P4 | autonomous-supervisor, write-contract, drift-check, build-oracle, no-fallback-review |
 | tier1-skeleton/release-version.md | development | U1 | P4 | drift-check, lock-env, commit-and-pr, add-dependency |
 
 ## Tier 2 — 活动型(非项目工作)
@@ -59,7 +60,7 @@
 
 ## 使用方式
 
-1. 项目任务:选 skeleton 后,在项目级 `AGENTS.md` 引用相关 tier0/tier1 SOP。
+1. 项目任务:引用 Kernel 与一个匹配真实交付面的 Domain Profile；只有 legacy 项目显式选择时才加载 ContestOS v1/overlay。
 2. 非项目任务:直接选 tier2 SOP。
 3. 一条 SOP 引用另一条时,按"依赖"字段调用,不复制内容。
-4. 用户只给目标且授权范围清晰时,先走 `tier0-core/autonomous-supervisor.md`;它是唯一通用运行时决策源,负责风险分类、checkpoint、成本路由、验证与 Review。Tier-1、骨架、overlay 与 recipe 只做领域专门化,固定 artifact/step/gate 不得与其形成平行门禁。
+4. 用户只给目标且授权范围清晰时,先走 `tier0-core/autonomous-supervisor.md`;它是唯一通用运行时决策源，负责契约、授权、验证、re-contract 与交付真相。成本/模型路由属于 Codex Adapter；Tier-1、legacy overlay、Skill 与 recipe 不得形成平行门禁。

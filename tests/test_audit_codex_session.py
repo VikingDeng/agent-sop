@@ -159,12 +159,15 @@ class AuditCodexSessionTests(unittest.TestCase):
         extra: str = "",
         last_message: str = "",
         cwd: str = "",
+        source: dict | None = None,
     ) -> Path:
         payload = {"id": thread_id, "session_id": "root" if parent else thread_id}
         if parent:
             payload["parent_thread_id"] = parent
         if role:
             payload["agent_role"] = role
+        if source:
+            payload["source"] = source
         lines = [
             record("session_meta", payload),
             record("turn_context", {"model": model, **({"cwd": cwd} if cwd else {})}),
@@ -190,6 +193,41 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["weighted_cost_units"], 8_750)
             self.assertEqual(report["subagent_roles"], {"luna_executor": 1, "worker": 1})
             self.assertNotIn("no Terra or Luna tokens were observed", report["routing_violations"])
+
+    def test_session_start_provenance_is_reported_without_weakening_audit_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provenance = {
+                "generation": "sha256-deadbeef",
+                "adapter": "codex-runtime@v1@abc123",
+                "kernel": "autonomous-supervisor@v15@def456",
+                "routing_profile": "advisory",
+                "selected_domain_profile": "development",
+            }
+            marker = record("event_msg", {
+                "type": "agent_message",
+                "message": "SOP_RUNTIME " + json.dumps(provenance, separators=(",", ":")),
+            })
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=marker,
+            )
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="strict")
+
+            self.assertEqual(report["requested_enforcement_mode"], "strict")
+            self.assertEqual(report["enforcement_mode"], "strict")
+            self.assertEqual(report["recorded_routing_profile"], "advisory")
+            self.assertEqual(report["runtime_provenance_trust"], "unverified_trace_observation")
+            self.assertEqual(report["runtime_provenance"], [provenance])
+            self.assertTrue(any(
+                "differs from SessionStart routing profile" in item
+                for item in report["routing_observations"]
+            ))
 
     def test_sol_architect_is_canonical_sol_role_in_session_audit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1247,11 +1285,43 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(len(invalid), 1)
             self.assertEqual(
                 len([
-                    item for item in report["completeness_violations"]
+                    item for item in report["routing_policy_findings"]
                     if "opaque/encrypted App spawn message" in item
                 ]),
                 1,
             )
+
+    def test_production_shaped_guardian_is_reported_only_as_system_overhead(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(root, "parent", "root", "gpt-5.6-luna", [100])
+            self.write_log(
+                root,
+                "guardian",
+                "guardian-thread",
+                "gpt-5.6-terra",
+                [300],
+                "root",
+                "codex-auto-review",
+                source={"subagent": {"other": "guardian"}},
+            )
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+            self.assertEqual(report["session_count"], 1)
+            self.assertEqual(report["system_session_count"], 1)
+            self.assertEqual(report["total_tokens"], 100)
+            self.assertEqual(report["weighted_cost_units"], 100)
+            self.assertNotIn("gpt-5.6-terra", report["model_totals"])
+            self.assertEqual(report["subagent_roles"], {})
+            self.assertEqual(report["system_overhead_status"], "complete")
+            self.assertEqual(report["system_overhead_tokens"], 300)
+            self.assertEqual(
+                report["system_overhead_model_totals"]["gpt-5.6-terra"]["total_tokens"],
+                300,
+            )
+            self.assertEqual(report["system_overhead_findings"], [])
+            self.assertEqual(report["system_sessions"][0]["system_kind"], "guardian")
+            self.assertFalse(report["routing_violations"])
 
     def test_opaque_app_initial_spawns_with_children_and_close_stay_uncertain(self) -> None:
         def app_call(name: str, call_id: str, arguments: dict) -> str:
@@ -1317,12 +1387,19 @@ class AuditCodexSessionTests(unittest.TestCase):
                 )
 
                 report = AUDIT.audit_session_tree(str(parent), root)
+                advisory = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
                 root_session = next(item for item in report["sessions"] if item["thread_id"] == "root")
                 results = [
                     event for event in root_session["lifecycle_events"]
                     if event.get("kind") == "spawn_result"
                 ]
                 self.assertEqual(report["cost_status"], "partial_uncertain")
+                self.assertEqual(advisory["cost_status"], "complete")
+                self.assertFalse(advisory["routing_violations"])
+                self.assertTrue(any(
+                    "opaque/encrypted App spawn message" in item
+                    for item in advisory["routing_observations"]
+                ))
                 self.assertEqual(root_session["successful_spawns"], {"luna_executor": count})
                 self.assertEqual(
                     [event["identifiers"].get("thread_id") for event in results],
@@ -1435,7 +1512,7 @@ class AuditCodexSessionTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(advisory.returncode, 0)
-            self.assertIn("Routing mode: advisory", advisory.stdout)
+            self.assertIn("Audit policy: advisory", advisory.stdout)
             with path.open("a", encoding="utf-8") as handle:
                 handle.write("{corrupt-json\n")
             integrity = subprocess.run(

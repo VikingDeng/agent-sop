@@ -2,32 +2,28 @@
 
 ## Scope and authority
 
-This file governs maintenance of this repository. Read `PRINCIPLES.md` first and use `sop/_METHODOLOGY.md` as a quality guide. Load only the SOPs and references that support the current decision; do not load the whole library for safety theater.
+This file governs maintenance of this repository. Read `PRINCIPLES.md`, then use `sop/_METHODOLOGY.md` to evaluate SOP document quality. `sop/tier0-core/autonomous-supervisor.md` is the single runtime kernel; `codex/CODEX-ADAPTER.md` contains Codex-specific routing and telemetry. Do not duplicate either policy in a Domain Profile, Skill, test, or README.
 
-Treat user-supplied research proposals as approved directions unless idea generation is requested. Route implementation and material scale through the adaptive `sop/tier1-skeleton/research-execution-grill.md`; the signed v3 profile is opt-in, not the universal path.
+Load only files needed for the current decision. The three ContestOS v1 skeletons are provenance-locked legacy sources. Do not edit them and do not place them in the default runtime path; their compatibility overlay is used only when a project explicitly selects a legacy skeleton.
 
-## Outcome-driven work
+## Layer boundaries
 
-Follow `sop/tier0-core/autonomous-supervisor.md` as the repository's single runtime decision source. Freeze the desired outcome, non-goals, scope, quality bar, and observable evidence, then let the agent choose exploration order, tools, models, decomposition, and useful repair loops. Tier-1 SOPs, skeletons, overlays, recipes, role suggestions, named artifacts, and coordination metadata specialize that policy; they do not become independent permission gates unless the user or closest project instructions explicitly select a strict profile.
+- Kernel: outcome contract, authority/risk, evidence strength, re-contract, stopping, and delivery truth.
+- Domain Profile: only invariants that are necessary across the named class of tasks.
+- Codex Adapter: models, WCU, roles, sub-agent lifecycle, Hooks, installer, and session audit.
+- Skill: external, optional, replaceable capability; it cannot route work or modify acceptance.
+- Oracle: independent evidence from real execution, checker, browser, profiler, evaluator, or justified analysis.
 
-SOP 与 Skill/MCP 正交：SOP 负责结果契约、授权/风险边界、证据、停止/re-contract 与交付；Skill/MCP 只提供按需的领域、格式或工具能力，不能改写验收、claim、HUMAN 边界或制造固定阶段。
+Treat user-supplied research proposals as approved directions unless idea generation is requested. Implementation and material scale use `sop/tier1-skeleton/research-execution-grill.md`; the signed v3 protocol is an opt-in high-assurance profile, not the normal path.
 
-Use a HUMAN gate only for a real unauthorized direction: materially different semantics or research claim, public API/compatibility, credentials, production/public release, deletion or irreversible migration, significant unbounded spend, legal/privacy choices, or a direct contract conflict. Continue independent safe work when possible.
+## Repository work
 
-When a ContestOS v1 skeleton is selected, also apply [`skeletons/contestos-adaptive-overlay-v2.md`](skeletons/contestos-adaptive-overlay-v2.md). The overlay is a compatibility translator from provenance-locked v1 wording to the Supervisor policy; it supersedes conflicting v1 runtime language without creating a second runtime authority or modifying the v1 source files.
+Before the first write, confirm this repository root and preserve all existing user changes. Use `apply_patch` for edits. Material SOP changes increment their version and keep `sop/README.md`, root documentation, runtime snapshots, and semantic tests synchronized.
 
-For any deadline-bound judged competition or hackathon, load [`sop/tier1-skeleton/run-competition.md`](sop/tier1-skeleton/run-competition.md). Product hackathons compose it with the development skeleton: development owns the working product, while the competition SOP owns rules, rubric evidence, submission budget, deadline, external-action authorization, and platform feedback.
+Tests should verify meaningful layer and evidence invariants, not exact prose copied across files. A passing structural validator does not establish end-to-end quality; do not encode product-specific checklists into the universal Kernel merely to make a failed fixture pass.
 
-## Delegation and verification
+For repository changes run `python3 scripts/validate_sop_repo.py`, `python3 -m unittest discover -s tests -p 'test_*.py'`, and `git diff --check`. Add a focused behavioral or E2E check when executable behavior changes.
 
-Optimize `25*Sol + 10*Terra + 1*Luna` without weakening acceptance. Prefer Luna for bounded mechanical execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. Model unavailability permits a transparent lowest-cost fallback. Avoid tiny command-level delegation, full-context forks, repeated polling, overlapping writers, and unnecessary agent count.
+## Delivery
 
-Use real outputs as evidence. Choose verification and review depth according to the claim and failure cost; do not require independent review as ceremony. The universal gate is claim/contract↔evidence closure with no overclaim; reproduction, contamination, statistics, performance, and security checks are triggered by the claim or risk. Never fabricate evidence, hide failed checks, silently lower acceptance, overwrite unrelated user changes, or call internal GPT/Codex review external.
-
-没有具体且合理的失败路径不引入机制；优先 native primitive 和最便宜的 discriminating oracle，guardrail 成本与潜在伤害成比例。Review 不能以品味扩大冻结 acceptance；新的可信失败路径只能触发合并修复或架构重置，不能无限追加门禁。
-
-## Repository checks and delivery
-
-For repository changes, run `python3 scripts/validate_sop_repo.py`, `git diff --check`, and tests relevant to changed executable surfaces. Preserve user changes. Do not reset, force-push, bypass hooks, edit authentication/provider settings, write directly to `main`, merge automatically, or perform irreversible delivery without authorization.
-
-Material SOP changes increment their version and keep index metadata synchronized. Existing skeleton source artifacts marked provenance-locked remain unedited. Final reporting states actual changes, checks, meaningful review findings, remaining risks, and Git state.
+Do not reset, force-push, bypass hooks, change provider authentication, or write directly to the default branch. Commit and merge only when the user authorizes them. Report the actual diff, validation, remaining empirical gaps, and Git/PR state.

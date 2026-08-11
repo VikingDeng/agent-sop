@@ -168,6 +168,33 @@ class WeightedCostRouterTests(unittest.TestCase):
             with self.subTest(strict_term=strict_term):
                 self.assertNotIn(strict_term, context)
 
+    def test_session_start_emits_machine_readable_runtime_provenance(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_ROUTER_ENFORCEMENT": "advisory",
+                "SOP_DOMAIN_PROFILE": "development",
+            },
+        ):
+            result = ROUTER.handle({
+                "hook_event_name": "SessionStart",
+                "model": "gpt-5.6-terra",
+                "model_reasoning_effort": "high",
+                "session_id": "session-1",
+            })
+
+        context = result["hookSpecificOutput"]["additionalContext"]
+        marker = context.splitlines()[0]
+        self.assertTrue(marker.startswith("SOP_RUNTIME "))
+        provenance = json.loads(marker.removeprefix("SOP_RUNTIME "))
+        self.assertEqual(provenance["routing_profile"], "advisory")
+        self.assertEqual(provenance["selected_domain_profile"], "development")
+        self.assertEqual(provenance["foreground_model"], "gpt-5.6-terra")
+        self.assertEqual(provenance["foreground_effort"], "high")
+        self.assertEqual(provenance["session_id"], "session-1")
+        self.assertEqual(provenance["generation"], "SOURCE_CHECKOUT_UNPINNED")
+        self.assertIn("development", provenance["available_profiles"])
+
     def test_advisory_typed_sol_architect_is_known_and_read_only(self) -> None:
         with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
             context = ROUTER.handle({

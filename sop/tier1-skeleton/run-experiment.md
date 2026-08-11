@@ -4,7 +4,7 @@
 - **落实纪律**: P1(明确 claim) P2(可信 oracle) P3(预算与真实性边界) P4(可复现记录)
 - **绑定骨架**: research
 - **通用性档位**: U2
-- **版本**: v6
+- **版本**: v7
 
 ## 触发条件
 
@@ -41,7 +41,7 @@
 
 1. 记录本轮唯一问题、evidence class（`diagnostic|code_readiness|exploratory|confirmatory`）、`paper_eligible`、配置身份、代码版本、数据切分、seed、预算和 kill criteria。允许复用缓存做探索，但正式上报结果必须说明缓存与复现条件；当缓存可能改变结论时运行干净重跑。
 2. 先运行最便宜的 discriminating check。synthetic、mock/stub、plumbing smoke 和 code-readiness fixture 必须 `paper_eligible=false`，只验证 wiring、schema、provenance、异常路径、成本遥测、输出格式或实现 invariant；不得调参、选择数据、改变 hypothesis/estimand，也不得触发 scientific GO。
-3. 科学 producer/evaluator 代码 fail fast：NaN、维度错误、缺数据、parser/oracle 失败或 method component/model/backend/device 不可用时非零退出。禁止用默认值、旧结果、proxy metric、跳样本、自动 CPU/backend/model/dataset/method fallback 继续本 run。
+3. 科学 producer/evaluator 代码 fail fast：NaN、维度错误、缺数据、parser/oracle 失败或 method component/model/backend/device 不可用时非零退出。禁止用默认值、旧结果、proxy metric、跳样本、自动 CPU/backend/model/dataset/method fallback 继续本 run；不要保留 speculative catch-and-continue 或“不可用就换一个”的 runtime fallback code，除非该 resilience 行为本身属于冻结方法并有独立验收。
 4. 失败后可自主修复同一 method 的实现或准备一个显式新配置，但必须使用新 run ID 重新执行原 acceptance；不得修改旧 raw run。若变更 claim、primary estimand、method 语义、success criterion、baseline、正式 split、分析方法或正式预算，进入 HUMAN re-contract，而不是在代码中兼容两套语义。
 5. 用与 claim 匹配的 oracle 判定输出。correctness/method fidelity 不通过时，该 run 不支持科学结论，但保留原始失败状态；后续单元测试或 checker 修复不能追认它。
 6. 根据随机性和 claim 选择 seed/repetition 数；不要机械要求所有诊断 run 多 seed，也不要用单点结果声称稳定优势。

@@ -1,30 +1,19 @@
-# Workspace overlay
+# Workspace adapter
 
-## Workflow authority
+## Authority
 
-- `/Users/viking/code/agent-sop` is the source of truth for reusable workflow, project skeletons, Codex agent recipes, and the Research Execution Grill.
-- `/Users/viking/ops` is workstation automation only. Old Claude and retired Research OS material are not active workflow authority.
-- `~/.codex` is installed runtime output; edit the corresponding source in `agent-sop` first when one exists.
-- `agent-sop/sop/tier0-core/autonomous-supervisor.md` is the reusable workflow's single runtime decision source. When a ContestOS v1 skeleton is selected, `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md` translates its provenance-locked wording to that policy; it is not a parallel authority. Deadline-bound judged competitions and hackathons load `~/.codex/runtime-current/sop/tier1-skeleton/run-competition.md`; product hackathons compose it with development.
+- The directory containing this installed file is the workspace boundary unless a closer project `AGENTS.md` declares a narrower root.
+- `~/.codex/runtime-current` is immutable installed output. Change the source `agent-sop` repository and reinstall instead of editing installed files.
+- Reusable execution semantics come from the runtime Kernel; Codex routing comes from `codex/CODEX-ADAPTER.md`. This workspace file supplies local discovery only.
 
-## Local operating preferences
+## Local resources
 
-- Use Codex and GPT models only.
-- Optimize `25*Sol + 10*Terra + 1*Luna` while preserving the requested quality. Prefer Luna for substantial mechanical work, Terra for semantic/debugging pressure and ordinary independent review, and Sol for architecture, research design, ambiguity, and final judgment. Codex role-model unavailability permits a transparent lowest-cost routing fallback; this does not authorize model/backend fallback inside evidence-bearing research code and is not by itself a project gate.
-- Treat workflow steps, role recipes, package markers, and review counts as adaptive defaults unless the closest project instructions explicitly select a strict profile.
-- Skills are optional and replaceable adapters; their presence, version, or hash is not a normal completion gate, and they cannot change SOP authorization, acceptance, claims, HUMAN boundaries, or required stages.
-- Treat “zero fallback” in a selected v1 skeleton as the overlay’s prohibition on silent semantic degradation, fabricated success, and altered acceptance—not as a ban on explicit, quality-equivalent alternatives.
-- Treat a user-supplied proposal as approved. Use the adaptive Research Execution Grill before implementation and material scale; do not generate replacement ideas unless requested. Select only gates relevant to the proposal. The signed v3 event-ledger profile is opt-in for projects that need externally auditable authorization.
+- Discover projects, notes, datasets, models, and run directories from the closest project instructions and the actual local filesystem. Do not infer an absent directory from memory and do not create a historical layout unless the task requires it.
+- Discover remote compute from the project contract, `~/.ssh/config` including its `Include` files, and an explicitly configured local resource inventory if one exists. Reusable instructions must not contain a default host, IP, username, private path, card number, or credential.
+- Before freezing a remote work packet, use read-only probes to confirm host identity, available accelerator/VRAM, load, disk, authorized workspace, and current availability. An authorized host alias/resource envelope can be used autonomously; new credentials, shared-resource conflicts, unbounded spend, destructive cleanup, and production/public actions remain HUMAN boundaries.
+- Evidence-bearing remote runs remain fail-fast and keep immutable raw artifacts, logs, command, process/job identity, host/device, repo/environment identity, cost, status, and output location. Do not silently substitute local CPU, another host, backend, model, dataset, metric, or method.
 
-## Workspace layout
+## Local safety
 
-- Use `/Users/viking/code` for projects, `/Users/viking/runs` for worktree runs, `/Users/viking/notes` for notes, and `/Users/viking/papers` for literature assets.
-- There is no active `/Users/viking/research` workspace. Do not recreate it unless explicitly requested.
-- Preserve user changes, secrets, and recoverable data. Follow the closest project-level `AGENTS.md` for repository-specific rules.
-
-## Research compute profile
-
-- Resolve currently available research compute from the closest project contract and the local authoritative inventory: `~/.ssh/config` (including `Include` files) plus `/Users/viking/ops`. Do not infer availability from memory or hard-code a default host/IP in reusable workflow. Before freezing a remote work packet, perform read-only probes of resolved candidates for identity, GPU/VRAM, load, disk, workspace, and current availability; keep address/user/key mappings local and never put credentials or private-key material in this repository or logs.
-- When a project contract already authorizes a resolved host alias/resource profile, a bounded GPU/resource budget, and a project workspace, resource inspection and ordinary execution use an `AUTONOMOUS_CHECKPOINT`; do not ask for ritual confirmation of host/card/path. A new host/profile, new credentials, shared-resource conflict, unbounded/materially larger spend, destructive cleanup, or production/public action remains a HUMAN boundary.
-- Keep code in Git, build the locked compute environment and download pinned models/data on the server, and write only inside the authorized remote workspace/data root. Local Mac work is control-plane editing and lightweight code-readiness validation, not a silent CPU substitute for a failed remote scientific run.
-- Evidence-bearing remote runs are fail-fast and retain immutable raw artifacts, logs, command, PID/session, host/GPU identity, repo state, environment, cost, status, and output location. Do not auto-switch to local/CPU/another backend or host; any equivalent alternative is a new explicit run.
+- Preserve user changes, secrets, and recoverable data. Write only inside the resolved project/workspace root.
+- Follow the closest project commands and verification contract; do not impose a global package manager, directory tree, server, or deployment platform.
