@@ -50,7 +50,11 @@ After installing with `python3 scripts/install_codex_runtime.py --profile terra-
 
 ## Low-wait evidence
 
-Capture enough task evidence to show that the supervisor waited only when the next step depended on the result, used one reasonable bounded wait rather than interval polling, and counted actual monitoring/polling cost in WCU. After spawning, it should do useful non-overlapping work when such work exists; do not manufacture busywork merely to avoid waiting. Do not claim detached execution, zero waiting, or child-nested delegation when the trace does not show it.
+Capture enough task evidence to show that the supervisor waited only when the next step depended on the result, used one reasonable bounded wait rather than interval polling, and counted actual monitoring/polling cost in WCU. The wait bound must be proportional to the package; a timeout is incomplete status, not evidence that the child has no result. A supervisor must receive, intentionally cancel, or explicitly preserve an incomplete required child before ending. After spawning, it should do useful non-overlapping work when such work exists; do not manufacture busywork merely to avoid waiting. Do not claim detached execution, zero waiting, or child-nested delegation when the trace does not show it.
+
+For high-judgment tasks, also inspect whether delegation reduced uncertainty. Repeated Terra/Luna reasoning over the same unresolved invariant without a discriminating experiment or artifact is a routing failure even when the spawns were technically correct. The adaptive recovery is one compact `sol_architect` query with an explicit required output (construction, counterexample, tradeoff, or proof obligation), followed by a falsifiable path or an honest `[UNCERTAIN]` stop. Acceptance does not require Sol when Terra or an oracle is already converging.
+
+Inspect critical-path order and context transfer as cost evidence. An implementation worker should receive a sufficiently stable construction; an ordinary reviewer should receive an artifact/evidence packet or a narrow pre-mortem hypothesis. Spawning both before the core invariant exists is duplicate architecture search, not useful parallelism. Child prompts should be self-contained and use no inherited turns, or the smallest supported history, unless a named dependency requires more; a long-history fork needs a concrete justification in the trace.
 
 ## Terra/Sol A/B procedure
 

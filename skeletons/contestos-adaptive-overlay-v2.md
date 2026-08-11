@@ -33,13 +33,19 @@ v1 的“zero fallback”只表示：禁止**静默语义降级、fabricated suc
 
 模型绑定的 package work 不得通过 `resume_agent` 复用已关闭的 role-bound agent；runtime denial 保证该 closed role-bound resume primitive 无法运行。Hook telemetry 不会把 agent ID 绑定到 package/phase、requested role、actual model 或 open state。correction/re-review 应 fresh-spawn 一个显式 typed role；package ID/phase 与 one initial/one correction/one re-review budgets 不变，role/model 改变不会重置 budget。只有在 contract 与 role 均已确认相同的情况下，才可复用仍打开的 agent；实际 model 核验由 supervisor policy 加 PostToolUse/session audit 负责，一旦有 evidence 表明违规就 fail closed。
 
+按不确定性类型路由，而不是只看任务标签。若 Terra 主控及 Luna/Terra 子任务持续在同一核心算法、系统架构或研究执行不变量上枚举近似方案，却没有形成可证伪不变量、判别实验或工件，继续增加同质 token 不算进展。此时优先提出一次紧凑的 `sol_architect` 问题，要求返回具体构造、反例、tradeoff 或 proof obligation；随后主控必须选择可测试路径，或诚实标为 `[UNCERTAIN]` 停止。已有 oracle 或 Terra 正在收敛时不得把 Sol 变成固定阶段，也不得用固定分钟数代替进展判断。
+
+委派必须尊重 critical path。若核心不变量或架构尚未确定并阻断实现，不要提前让 Luna 重新发明架构，也不要让普通 reviewer 在没有工件时做同质搜索；先由主控、判别 oracle 或一次紧凑 architect 关闭该不确定性，再把稳定构造和客观验收交给 Luna。pre-implementation review 只有在问题被写成具体 hypothesis/failure mode 时才有价值。并行的是稳定 sidecar，不是多个 agent 争用同一个未知。
+
+子任务使用能保真的最小自包含上下文：优先 `fork_context=false` 或平台支持的最小 history，并在 compact packet 中给出 objective、scope、当前 artifact/evidence、acceptance 与 stop condition。仓库工件通常比继承多个长 turn 更便宜、更可审计；只有无法压缩的具体依赖才能正当化更多 inherited context。
+
 ## Gates 与环境参数
 
 所有 ContestOS 项目的共同 gate 是 claim/contract↔evidence closure 与 no overclaim。reproduction、contamination、statistics、performance、security、human review 等 gate 仅在对应 claim 或风险触发时启用，并记录 `applicable` 或 `not applicable` 的理由。
 
 Review 可使用 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 限定范围。API correctness 需要 Sol risk judgment 时，不自动升级为完整 security workflow；完整 codex-security workflow 只在具体 adversarial security trigger 存在时适用。Skill 是正交 adapter，不能扩大冻结 acceptance、stage 或 artifact；达到 verdict 所需证据即停止，非阻断项进入 backlog 或标为 `[UNCERTAIN]`，尤其是 pre-scale research hardening。
 
-在新 project directory 首次 write、stage 或 commit 前，先用 `git rev-parse --show-toplevel` 确认 root；若目录应独立，使用独立 `git init` 或 worktree。一次只运行一个 full suite；重跑前仅检查/关闭自己此前的 process/session。长任务在每个 decision point 使用一次 bounded long wait 与 compact evidence，避免短 polling、重复 raw transcript 读取，并把 monitoring WCU 计入成本记录。
+在新 project directory 首次 write、stage 或 commit 前，先用 `git rev-parse --show-toplevel` 确认 root；若目录应独立，使用独立 `git init` 或 worktree。一次只运行一个 full suite；重跑前仅检查/关闭自己此前的 process/session。长任务在每个 decision point 使用一次与 package 复杂度相称的 bounded long wait 与 compact evidence，避免短 polling、重复 raw transcript 读取，并把 monitoring WCU 计入成本记录。wait timeout 只表示“尚未完成”，不是负面 verdict；主控不得在所需子任务仍 open 时直接结束，除非明确取消并记录该 package 未完成。
 
 环境与锁定器由项目生态注入，不得假定 Python 或 uv：使用 `{ENV_CMD}` 准备/验证环境，使用 `{LOCK_CMD}` 生成 `{LOCK_FILE}`，并用项目声明的 verify command 证明可复现。只有 Python/AI 项目选择 uv 时，`uv`/`uv.lock` 才是一个合适的参数实例；它不是 universal default。
 
