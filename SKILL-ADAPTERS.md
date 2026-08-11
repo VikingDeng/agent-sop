@@ -103,7 +103,7 @@ K-Dense 子集经过源码、脚本和固定版本审阅，但其单元测试主
 
 | 能力槽 | 候选方向 | 触发证据 | 当前处置 |
 |---|---|---|---|
-| Method fidelity Reviewer | 待选型/自建的窄 Skill | equation、pseudocode、loss、gradient、mask、状态更新、trajectory/reward/credit assignment 或 silent fallback 可能与实现不一致 | `priority-1 reference/hold`；至少要求 tiny deterministic fixture、代码映射和独立 differential/property oracle |
+| Method fidelity Reviewer | 待选型/自建的窄 Skill | equation、pseudocode、loss、gradient、mask、状态更新、trajectory/reward/credit assignment 或 silent fallback 可能与实现不一致 | `priority-1 reference/hold`；Grill 已要求最小语义→代码→oracle mapping，候选仍须用 tiny deterministic fixture 与独立 differential/property oracle 证明额外净提升 |
 | AI experiment-design Reviewer | 待选型/自建的窄 Skill；K-Dense `experimental-design` 仅作参考 | baseline parity、ablation、negative control、seed、调参预算、holdout、judge 或 pilot→scale 设计可能不足 | `priority-2 reference/hold`；必须面向 AI benchmark 与机制 claim，不能机械移植传统 DOE |
 | AI evaluation executor | ModelScope EvalScope 或项目原生 harness | 项目明确使用 LLM/VLM/Agent benchmark、API endpoint 或推理性能测量 | `conditional challenger`；只执行固定 benchmark/config，不能决定数据、baseline、contamination、claim 或完成状态 |
 | AI statistics oracle | 待选型/自建的窄分析适配器 + 现有 `statistics-oracle` | 即将基于多 seed、样本、task、benchmark、judge 或失败/timeout 作比较性结论 | `priority-3 reference/hold`；需要 paired/hierarchical uncertainty 与 multiplicity，通用统计 Skill 不自动获得 oracle 独立性 |

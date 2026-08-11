@@ -4,7 +4,7 @@
 - **落实纪律**: P3
 - **绑定骨架**: 无
 - **通用性档位**: U0
-- **版本**: v3
+- **版本**: v4
 
 ## 触发条件
 
@@ -24,19 +24,21 @@
 2. 对每个分支判断：是否保留了原验收标准；是否向调用者或最终报告暴露了变化；是否可能返回看似成功但证据更弱的结果。
 3. 阻断以下模式：吞异常后伪装成功、用占位/旧结果顶替、关键配置静默默认、跳过失败检查却声称通过、未披露地降低精度/覆盖/claim、无限重试或 fallback 环。
 4. 允许显式且质量等价的自适应路径，例如 bounded retry、替代工具、模型或实现路径。必须记录触发原因，并用**未改变的 acceptance**与匹配的可信 oracle 重新验收；“零 fallback”只禁止静默语义降级、伪造成功和改变 acceptance，不禁止这种显式等价替代。
-5. 如果 fallback 改变 public behavior、research claim、数据/隐私边界、不可逆状态或 material/unbounded cost，进入对应 HUMAN gate 或 re-contract；否则记录并继续自主执行。
+5. 对 evidence-bearing research producer/evaluator，替代路径只能在失败 run 结束后以显式配置、代码变更和新 run ID 重新执行；同一 run 内自动切换 method component、model、backend、device、data、metric、parser 或 analysis 后继续产出证据，不属于允许的等价替代。smoke/code-readiness 的 mock/stub/synthetic 结果必须 `paper_eligible=false`，不能支持 claim 或 GO。
+6. 如果 fallback 改变 public behavior、research claim/method/primary estimand、数据/隐私边界、不可逆状态或 material/unbounded cost，进入对应 HUMAN gate 或 re-contract；否则记录并继续自主执行。
 
 ## 门禁
 
 - `[BLOCK]` 失败被隐藏、证据被伪造、success criterion 被静默降低或 fallback 结果冒充原结果；
 - `[BLOCK]` 替代路径无法由可信 oracle 验收，却仍声明等价；
+- `[BLOCK]` 科研证据 run 使用自动 runtime fallback，或将 smoke/mock/stub/synthetic 结果升级为 claim、GO、paper evidence；
 - `[SIGNAL]` 仅实现方式、工具或模型改变，且结果质量和边界不变：记录即可，不阻断。
 
 扫描器只能提供线索；`except`、`.get(default)`、capability probe 或 fallback 关键字本身不是违规。必须结合返回语义和验收证据判断。
 
 ## 完成判定
 
-所有重要失败路径都满足以下之一：明确失败；显式且经重新验收的等价替代；或诚实报告的有限结果。不存在伪装成功和未披露的质量下降。
+所有重要失败路径都满足以下之一：明确失败；显式且经重新验收的等价替代；或诚实报告的有限结果。不存在伪装成功和未披露的质量下降；科研证据路径中的替代实现使用新 run，而不是同一 run 的自动 fallback branch。
 
 ## 失败处理
 

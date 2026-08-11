@@ -4,11 +4,13 @@
 > 每条 SOP 用 _TEMPLATE.md 结构;每条必须映射到 ../PRINCIPLES.md 的纪律。
 > **组织判据不是"分类整齐",而是"每条 SOP 都是四条纪律的实例化"。**
 >
-> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v5**，默认按 proposal
+> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v6**，默认按 proposal
 > claim 自适应选择证据、oracle 与 gate。`research-execution-grill-v3 / schema v3`
 > 是显式选择的 signed strict profile；历史 schema v1/v2 仅可匹配显式审计。
-> `tier1-skeleton/run-experiment.md` 当前版本为 **v5**，默认以真实运行和 claim-matched
+> `tier1-skeleton/run-experiment.md` 当前版本为 **v6**，默认以真实运行和 claim-matched
 > evidence 验收；只有项目选择 strict v3 时才要求 exact signed authorization。
+> 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
+> 的派生视图契约；它不要求新建 dashboard 或独立台账。
 
 ## Tier 0 — 核心横切(所有场景共用)
 
@@ -29,7 +31,7 @@
 | SOP | 绑定骨架 | 档位 | 落实纪律 | 依赖 |
 |---|---|---|---|---|
 | tier1-skeleton/research-execution-grill.md | research | U2 | P1 P2 P3 P4 | build-oracle, no-fallback-review |
-| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P3 P4 | lock-env, build-oracle, reproduce-result, statistics-oracle, research-execution-grill |
+| tier1-skeleton/run-experiment.md | research | U2 | P1 P2 P3 P4 | lock-env, build-oracle, reproduce-result, statistics-oracle, research-execution-grill, ops-remote-compute |
 | tier1-skeleton/statistics-oracle.md | research | U1 | P2 P3 P4 | build-oracle, reproduce-result, no-fallback-review |
 | tier1-skeleton/contamination-check.md | research | U2 | P2 | — |
 | tier1-skeleton/run-competition.md | competition / development(hackathon) | U1 | P1 P2 P3 P4 | autonomous-supervisor, build-oracle, no-fallback-review, build-local-proxy, package-submission |

@@ -68,6 +68,8 @@ Before the first write, stage, or commit in a new project directory, confirm the
 
 Treat a supplied or selected proposal as an approved direction unless the user asks for idea generation or admission review. Before implementation and material scaling, use the adaptive `research-execution-grill` to strengthen execution quality without replacing the idea. Let the proposal determine which evidence, oracle, pilot, and scale checks are relevant. Use the signed v3 authorization state machine only when a project, external audit requirement, or genuinely high-assurance boundary explicitly selects that strict profile.
 
+Freeze the original claim, primary estimand, method semantics, baseline, data/split, analysis method, success criterion, and formal budget. A weaker secondary finding may be reported but cannot replace the original verdict or satisfy completion. Evidence-bearing research code is fail-fast: automatic runtime switching of method components, model/backend/device, data, metric/parser, or analysis path is forbidden. A quality-equivalent alternative is an explicit future configuration/code change with a new run ID and the original acceptance, never a fallback branch inside the same run. Synthetic, mock/stub, smoke, and code-readiness outputs are `paper_eligible=false` and cannot support a scientific GO or authoritative final result.
+
 ## Delivery
 
 Lead with the achieved outcome and decisive evidence. Mention review, remaining risk, Git delivery, or routing/WCU when it occurred or materially affects the handoff; do not add empty `N/A` sections to satisfy a template. Mark a claimed but unavailable usage value `[UNCERTAIN]` rather than zero. Do not make the user reproduce routine internal work.

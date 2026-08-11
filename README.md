@@ -46,6 +46,8 @@ agent-sop/
 4. **需要自主编排时走 [autonomous-supervisor](sop/tier0-core/autonomous-supervisor.md)**:在授权包络内自动冻结契约并执行;真实方向分叉才进入 HUMAN gate。
 5. **选 Skill 适配器时读 [SKILL-ADAPTERS.md](SKILL-ADAPTERS.md)**:Skill 是按需、可替换的能力层;不改变 SOP 的授权、路由、claim、HUMAN 边界、门禁或完成判定。
 6. **实施已批准科研 proposal 前走 [research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)**:不重新生成 idea；按 claim 选择真正需要的 oracle、pilot、风险边界和 scale 证据，不强迫所有 proposal 进入同一 gate 链。
+   - 方法关键语义先形成最小 fidelity mapping；科学 run 无自动 runtime fallback，弱发现不替代原 claim。
+   - 中间实验/数据流与最终表按 [research evidence presentation](sop/tier1-skeleton/references/research-evidence-presentation.md) 从 raw runs 派生；远程算力按 [ops-remote-compute](sop/tier2-activity/ops-remote-compute.md) 执行。
 
 7. **选用任一 ContestOS v1 骨架时同时启用 [adaptive overlay v2.2](skeletons/contestos-adaptive-overlay-v2.md)**:它只覆盖运行时语义，明确解释 fallback、HUMAN checkpoint、环境参数与 claim/risk-triggered gates；v1 原件保持 provenance-locked。参加算法/交互、榜单、性能、hidden-runtime、研究工件或产品型黑客松时，再用 [run-competition](sop/tier1-skeleton/run-competition.md) 按真实赛制组合路径。
 

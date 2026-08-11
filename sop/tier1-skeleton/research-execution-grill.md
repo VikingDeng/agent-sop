@@ -4,11 +4,11 @@
 - **落实纪律**: P1(冻结 claim 与验收) P2(证据真实性) P3(风险自适应) P4(可复现交付)
 - **绑定骨架**: research
 - **通用性档位**: U2
-- **版本**: v5（adaptive default；signed v3 为可选 strict profile）
+- **版本**: v6（adaptive default；signed v3 为可选 strict profile）
 
 ## 目标
 
-在不替换已批准 idea 的前提下，找出最可能让实现、实验或结论失效的问题，并把 proposal 转化为可执行、可证伪、可复现的工作。Grill 约束科研结论质量，不规定所有研究必须走同一组 gate。
+在不替换已批准 idea、method 语义或原始 claim 的前提下，找出最可能让实现、实验或结论失效的问题，并把 proposal 转化为可执行、可证伪、可复现的工作。Grill 约束科研结论质量，不规定所有研究必须走同一组 gate；弱发现不能替代原 contract 的完成状态。
 
 ## 触发条件
 
@@ -49,6 +49,8 @@ Agent 根据 proposal 类型、风险和现有证据选择检查与执行顺序�
 4. 哪个 oracle 能独立区分成功与失败？它可能与实现共享什么错误？
 5. 最小有信息量的 pilot 是什么？什么条件才值得扩大？
 6. 当前预算、kill criteria、随机性、数据边界和复现要求是什么？
+7. proposal 中哪些 equation、pseudocode、loss、gradient、mask、state/trajectory/reward/credit update 是 method 语义？它们分别落到哪里、由什么独立 oracle 验证？
+8. 本轮 run 属于 diagnostic、code readiness、exploratory 还是 confirmatory？是否具备进入 final results 的资格？
 
 答案可以写入现有 handoff、实验计划或 proposal companion；不强制创建特定文件名或 schema。
 
@@ -64,6 +66,8 @@ Agent 根据 proposal 类型、风险和现有证据选择检查与执行顺序�
 - 生成式或 model-judge 研究：检查 judge 偏差、提示泄漏、循环自评和人工抽查。
 
 只执行能改变决策或提升最终可信度的检查。不要为了满足模板制造无关 artifact。
+
+若 proposal 引入新方法，在首个经验性 run 前建立最小 method-fidelity mapping：`proposal 语义 → implementation location → 可观察 invariant → independent/naive/property oracle`。它可以写进现有设计文档或测试说明，不要求固定文件名。关键语义缺少映射或 oracle 时只表示 code readiness 未完成，不能靠 smoke、loss 下降或端到端分数自证方法已经忠实实现。
 
 ### 2. 让 gate 对应真实边界
 
@@ -81,7 +85,9 @@ Gate 的证据和 reviewer 数量按失败代价决定。低风险边界可由�
 
 Agent 可以自由选择实现顺序、实验 plumbing、诊断方式、subagent 分工和修复轮次。初始计划不是不可修改的承诺；只要核心 claim、数据使用、success criterion 和预算没有被偷偷改变，就可以根据新证据调整战术。
 
-Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新增建议若不影响本轮结论，进入 backlog，不移动当前验收线。相同失败类别重复且没有新证据时，停止局部补丁并重做设计或缩小 claim，不生成无界 successor gate。
+Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新增建议若不影响本轮结论，进入 backlog，不移动当前验收线。相同失败类别重复且没有新证据时，停止局部补丁并重做实现或缩小诊断问题，不生成无界 successor gate。原 proposal claim、primary estimand、成功标准、method 语义、baseline、数据、分析方法和正式预算仍保持原状态；任何物质改变必须 re-contract，不能用一个更弱发现替代原任务完成。
+
+科学 producer/evaluator 路径采用 fail-fast 语义：不得在同一 run 中自动切换 method component、model、backend、device、dataset、split、metric、parser 或 analysis path 后继续产出证据。失败后可以显式修代码或选择新配置，但替代路径必须成为新的可审计 run，并接受原 acceptance 与 oracle；这是 between-run adaptation，不是 runtime fallback code。
 
 若 pilot 的 immutable evidence 被判失败，保留该结论，不通过补 validator、补 provenance 文件或新 replay artifact 追认旧 run。修复只面向下一次获授权的 fresh run。便宜的真实性或确定性检查应尽量嵌入下一次执行并直接比较；只有跨环境复现本身是 claim 或独立 artifact 能改变决策时，才引入单独 replay 工具。代码修复通过单元/负例测试只代表 code readiness，不代表旧 pilot 或科学 claim 通过。
 
@@ -89,7 +95,7 @@ Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新�
 
 ### 4. 运行最小有信息量的实验
 
-先运行能验证 plumbing、oracle、资源估计和主要 failure mode 的最小实验。Pilot 可以产生科学信息；必须清楚标记其探索性以及哪些选择随后被冻结。只有满足预先声明或有证据更新的 scale criteria 才扩大。失败 pilot 是结果，不是流程违规。
+先运行最便宜且能区分当前未知量的检查。synthetic、mock/stub、plumbing smoke 与 code-readiness fixture 只能验证 wiring、schema、异常处理、provenance、成本遥测、输出格式和实现 invariant，必须 `paper_eligible=false`，不得触发 scientific GO 或支持 claim。真实任务/数据、冻结 protocol 且无 fallback 的 empirical pilot 才可作为预声明的 exploratory GO/NO-GO 证据；它默认不进入 final results。只有满足预先声明的 scale criteria 才扩大。失败 pilot 是结果，不是流程违规。
 
 ### 5. 验收最终质量
 
@@ -100,17 +106,24 @@ Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新�
 - 数据、labels、metrics 与最终 claim 是否对应；
 - 主要替代解释是否被测试或诚实保留；
 - 结果是否区分探索性、确认性和未验证结论；
+- final table、过程 run view 与必要的数据流视图是否都能回到 immutable raw run；
+- 原始 claim 的 verdict 是否被保留，而非由更弱的次级发现替换；
 - 下一步扩大是否由证据而非流程惯性驱动。
+
+结果与中间证据按 [research-evidence-presentation.md](references/research-evidence-presentation.md) 展示。该 reference 规定最小可比字段和 paper eligibility，不要求另建 dashboard、ledger 或固定文件名。
 
 ## 门禁
 
 - 伪造、代填或无法追溯的关键数据、人工判断、review、签名或运行结果；
 - 未披露的数据泄漏、benchmark contamination、outcome-driven cherry-picking 或 success criterion 漂移；
 - oracle 已知不能区分实现错误与科学结论，却仍据此声称通过；
+- 科学 run 在失败、能力缺失或资源不满足时自动走 runtime fallback 后仍产出结果；
+- smoke、synthetic、mock/stub、code-readiness 或不 eligible 的 pilot 被写入 authoritative final results、触发 GO 或支持 claim；
+- 用较弱 claim、简化方法、proxy metric、替代 baseline/数据/分析或缩减预算冒充原 contract 完成；
 - 超出用户授权预算、隐私、凭据、发布、不可逆采集或生产边界；
 - proposal 的核心 claim/语义必须改变但尚未获得用户决定。
 
-工具、模型、推荐 artifact、固定 reviewer 或某个 stage 不可用，本身不是科研 no-go。选择等价证据或降级为更窄、诚实的 claim；只有无法保持验收质量时才阻断。
+工具、模型、推荐 artifact、固定 reviewer 或某个 stage 不可用，本身不证明 proposal 科学上失败；但相关执行保持 `BLOCKED` 或 `NOT_ESTABLISHED`，不得自动换路径、缩小原 claim 或生成替代结果。可以修复未来执行路径或提出一个保持原 contract 的新 run；无法保持原验收时停止相关部分。
 
 ## 可选 strict signed-v3 profile
 
@@ -121,18 +134,23 @@ Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新�
 ## 完成判定
 
 - execution contract 足以指导下一步真实工作；
+- method-fidelity mapping 覆盖对 claim 有因果作用的关键语义，并有匹配 oracle 或明确的阻断项；
 - 与 claim 相关的主要 failure modes、oracle、预算和 scale criteria 已得到证据支持或诚实标为未决；
+- 原 claim 的 `SUPPORTED`、`FALSIFIED`、`NOT_ESTABLISHED` 或 `BLOCKED` 状态明确，次级发现没有替换它；
+- authoritative results 只消费 eligible evidence，并可追溯到 raw run；
 - 不相关的 stage/gate 没有被机械加入；
 - 下一步可以执行，或阻断点确实属于硬边界而不是缺少流程 artifact。
 
 ## 失败处理
 
-发现设计或 oracle 缺陷时允许重构计划、缩小本轮 claim 或补充最小证据；不得替换已批准 idea。模型、工具或 reviewer 不可用时选择等价路径。只有无法保持证据真实性、需要未授权的人类/资源决定或核心 claim 必须改变时，才停止相关执行并明确所需决定。
+发现实现、设计或 oracle 缺陷时允许重构未来执行路径、缩小诊断问题或补充最小 code-readiness 证据；不得替换已批准 idea、method 语义或原 claim。模型、工具或 reviewer 不可用时保留阻断状态；若存在保持原 contract 的替代实现，由显式新配置和 fresh run 重新验收，不写自动 runtime fallback。只有无法保持证据真实性、需要未授权的人类/资源决定或核心 contract 必须改变时，才停止相关执行并明确所需决定。
 
 ## 产物
 
 - 与 claim 匹配的简洁 execution contract；
+- 关键 proposal 语义到实现与 oracle 的最小 fidelity mapping；
 - 实际运行证据、关键决策和变更理由；
-- pilot/正式实验结果及其探索性或确认性标签；
+- pilot/正式实验结果、evidence class、`paper_eligible` 与原 claim verdict；
+- 从 raw run 派生的中间 run/data view 和 authoritative final table；
 - 与风险相称的 review/authorization；
 - 剩余替代解释、限制、scale 决定和复现入口。
