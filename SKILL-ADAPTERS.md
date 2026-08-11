@@ -111,15 +111,20 @@ K-Dense 子集经过源码、脚本和固定版本审阅，但其单元测试主
 
 benchmark 污染、环境/结果复现、claim、holdout、预算和 scale 继续由现有 `contamination-check`、`lock-env`、`reproduce-result`、`run-experiment`、`statistics-oracle` 与 Research Grill 控制。外部 Skill 只能补领域方法或执行器，不能复制控制面。
 
-### 比赛刷榜：测量与平台能力
+### 竞赛与黑客松：赛制专用能力
 
-| 候选 | 角色与触发 | 当前处置 |
+`run-competition` 先冻结判定、反馈、工件、环境、事件和外部动作包络；下列 adapter 只填充命中的能力槽。一个比赛可以组合多行，例如产品型 agent 黑客松同时需要官方 SDK/MCP、真实部署/browser evidence、演示材料和受控外部提交。
+
+| 能力槽 | 候选 / executor | 触发与边界 |
 |---|---|---|
-| differential/PBT/fuzz | 性能优化前的 correctness oracle | 按可观察结构条件启用；正确性先于速度 |
-| NVIDIA TensorRT-LLM Nsight Systems / Nsight Compute | 已有真实 nsys/ncu 证据时的系统级 / kernel 级测量 Reviewer | `reference/hold`；不得自动 sudo、sysctl、CAP_SYS_ADMIN 或弱化隔离 |
-| CUDA Graph 等窄 Implementer | nsys 已证明 launch overhead 且契约允许修改执行路径 | `conditional`；实现后必须用同一 workload 复测 |
-| 官方 Kaggle CLI | dataset、kernel、submission 等平台命令 executor | `conditional`；holdout、泄漏、submission budget、调参策略与是否提交仍归 ContestOS/SOP |
-| Ascend / ROCm / Triton / CPU profiler | 真实硬件与技术栈出现后的平台专用能力 | 未命中平台时不加载，不虚构“通用 profiler” |
+| 算法 / output / interactive correctness | 官方编译器、checker、local judge；differential/PBT/fuzz | 按输入/协议的可信失败路径启用；PBT/fuzz 不是每题固定阶段，interactive 需覆盖 timeout、flush、协议顺序等实际风险 |
+| Kernel / 系统性能 | 官方 benchmark；NVIDIA nsys/ncu、ROCm、Ascend、Triton、CPU 平台工具 | 先用同口径 benchmark 建基线；只有瓶颈/机制仍不确定时 profile，不自动 sudo、sysctl、CAP_SYS_ADMIN 或弱化隔离 |
+| 窄性能实现 | CUDA Graph 等平台专用 Implementer | 只有测量已指向相应瓶颈且契约允许修改路径时启用；实现后用同一 workload 与正确性语义复测 |
+| 数据 / leaderboard | 官方 Kaggle CLI 或平台 API/CLI | 只执行 dataset、kernel、submission 等已授权平台命令；split、holdout、泄漏、public/private gap、submission budget、final reserve 与是否提交归 SOP |
+| agent / hidden runtime | 官方 harness、container、verifier、trajectory/trace executor | 复用比赛的 interface、token/time/network/sandbox 与 injected verifier；不自建第二 judge，不因 timeout 丢弃本可保留的 checkpoint/partial output |
+| 产品型黑客松 | 比赛强制的 SDK/API/MCP/partner tech；browser/deploy oracle；按需的 notebook、deck、video 或文档 adapter | adapter 证明真实集成、运行路径和交付格式；不能替代 rubric、资格、业务事实或演示真实性，也不能为使用某 Skill 而虚构 partner-tech 价值 |
+| 论文到 notebook / 研究工件 | 官方 notebook runtime、paper implementation 工具与 evaluator | 验证方法 fidelity、可执行性、输出格式和资源限制；研究 claim 需要的复现/统计证据仍由科研 SOP 控制 |
+| 外部提交面 | GitHub/Kaggle/Devpost/竞赛平台 connector、CLI 或 browser executor | 只在已冻结的平台、账户、次数/费用、final reserve、数据与公开范围内执行；保存 receipt/ID，不能自行接受条款、组队、公开发布或扩大预算 |
 
 ### `find-skills` 的位置
 
@@ -154,7 +159,7 @@ K-Dense 是维护较好的通用科学 Skill 库，不是 OpenAI 官方 Skill，
 
 - 不安装新的 Superpowers 全局流程包：它的 brainstorming、planning、TDD、review、subagent workflow 与现有 SOP 重叠，会增加上下文和路由竞争。
 - `addyosmani/agent-skills` 可作为开发流程设计的参考，但暂不启用为第二路由器；已有 SOP + Vercel/GitHub 专项 Skill 足够覆盖当前开发门禁。
-- 不安装泛化的 Kaggle、自动刷榜或“AI research autopilot”包；比赛的 correctness gate、local proxy、submission ledger 和零 fallback 必须由 ContestOS/SOP 控制。
+- 不安装泛化的 Kaggle、自动刷榜或“AI research autopilot”包；比赛的 correctness/evaluation evidence、按需 local proxy、泄漏边界、submission budget/final reserve、外部授权和 fallback 语义必须由 ContestOS/SOP 控制，adapter 不得形成第二个刷榜状态机。
 - 不把 Impeccable 完整 umbrella、Taste `redesign-existing-projects` 或其他自带 router、持久上下文、hooks、评分/修复循环的包作为全局 Skill；只允许经验证的窄命令或角色。
 - 不采用由 browser 工具自行触发、自行修复并自行宣布通过的 verification wrapper；可复用底层浏览能力，但 route、flow 与 verdict 必须来自 SOP。
 - 不采用要求自动提交付费训练、强制上传模型/数据或强制启用外部跟踪的训练 Skill；只允许从中抽取经验证的栈知识，并由现有预算与远程动作边界控制执行。

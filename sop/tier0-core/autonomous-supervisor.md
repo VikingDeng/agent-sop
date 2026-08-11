@@ -4,11 +4,15 @@
 - **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1
-- **版本**: v10
+- **版本**: v12
 
 ## 目标
 
 把用户目标稳定地转化为高质量、可验证的结果，同时给 Agent 足够自由去探索、调整计划、选择工具与模型。SOP 负责结果契约、授权/风险边界、证据、停止/re-contract 与交付真相；不负责领域技术或工具实现。
+
+## 运行时权威
+
+`PRINCIPLES.md` 定义不变量；在用户指令和 closest project instructions 之下，本 SOP 是仓库内**唯一通用运行时决策源**。Tier-1 SOP、ContestOS overlay、骨架、recipe、Skill 和角色文件只补充当前领域的约束与能力：若其中的固定文件名、步骤数、review 次数、checkpoint 或 gate 与本 SOP 的自适应规则冲突，除非项目显式选择 strict profile，否则按本 SOP 判断其是否适用。ContestOS overlay 只负责把 provenance-locked v1 原件翻译到这一语义，不形成平行 authority。
 
 ## 触发条件
 
@@ -37,6 +41,7 @@
 5. **持续收敛而非固定轮次**：只要新尝试在增加证据或降低不确定性就可继续；同类失败重复且没有实质进展时重构方案或停止，而不是机械生成 vN+1。
 6. **SOP 与 Skill 正交**：Skill 是 optional、replaceable 的 capability adapter，可提供领域方法、工具操作、artifact format 或 specialized oracle；它服从 user/project/SOP authority，不能改写授权、路由、成功标准、claim、HUMAN 边界或制造 mandatory stage。只有指出冻结 claim 的具体失败路径时，Skill 才能建议额外检查。
 7. **执行模式诚实**：明确区分 supervised Sol（Sol 在该 session 中实际承担规划/判断；这不等于 Sol 机械执行了工作）与发生了真实子 Agent 路由的协作执行。没有发生的 Luna、Terra、review、WCU 或独立视角不得在报告中声称发生；不可用或未捕获的用量标为 `[UNCERTAIN]`。
+8. **连续性按需持久化**：只有跨 session、跨交接或多波次任务存在真实上下文丢失风险时才维护一个轻量恢复载体；能由当前 diff、issue、PR 或计划可靠恢复的短任务不创建状态文件。
 
 ## 不可协商的不变量
 
@@ -45,8 +50,7 @@
 - 不为了通过验收而静默降低用户要求；
 - 不覆盖无关用户改动，不泄露秘密，不越过授权 workspace；
 - 不把内部 GPT/Codex blind review 称为外部 review；
-- model-bound package work 不得用 `resume_agent` 恢复已关闭的 role-bound agent；runtime denial 保证该 closed role-bound resume primitive 无法运行。correction/re-review 必须 fresh-spawn 显式 typed role，package ID/phase 与 one initial/one correction/one re-review budgets 不变，role/model 改变不会重置 budget；
-- Hook telemetry 不会把 agent ID 绑定到 package/phase、requested role、actual model 或 open state。仍打开的 matching agent 复用与 actual model 核验属于 supervisor policy 加 PostToolUse/session audit；一旦 evidence 显示 role/model mismatch，立即停止该 phase，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
+- model-bound correction/re-review 只有在任务证据能确认 matching live package、role 与 actual model 时才复用 agent；否则 fresh-spawn 显式 typed role。advisory routing 可提示不可核验的 `resume_agent`，但不硬阻断；显式 strict profile 可拒绝。复用或 role/model 改变均不重置适用 budget；一旦 evidence 显示 mismatch，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
 - 未获授权不发布、部署、merge、force-push、删除持久数据或执行不可逆迁移。
 
 ## 步骤
@@ -78,6 +82,12 @@ Agent 可以根据证据自由决定是否：
 - 在局部修复与架构重构之间切换。
 
 不得把推荐 recipe 解释为唯一合法路径。`PACKAGE_ID`、`PACKAGE_PHASE`、`LUNA_ELIGIBLE`、固定 reviewer 数量与固定 repair 次数只在运行时协调确有帮助或项目选择 strict profile 时使用。
+
+典型尺度只用于校准，不构成固定阶段：
+
+- 小型局部修复：根 Agent 直接定位、修改并运行 focused oracle，通常不委派、不写正式 spec、不做独立 review；
+- 中型跨模块功能：先固定接口和第一个可运行 vertical slice，再把边界稳定、文件不重叠的完整结果包交给 Luna/Terra，根 Agent 负责真实集成；
+- 新建或长期产品：先解决会阻断实现的架构与 public contract，再分波次开发；只有持续高判断密度或具体高风险才使用 Sol，不预先铺满 agent、文档和 gate。
 
 ### 3. 风险自适应路由
 
@@ -117,9 +127,15 @@ Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 
 
 对于经验性工作，冻结证据边界：把探索/调参集、最终 holdout（final holdout，以及必要时的独立复核集）分开。不得根据 hidden/test labels 或 freeze 后才看到的 test-input 异常调参，除非在检查前已声明允许 transductive adaptation；freeze 后发现的 validity fix 必须用全新的、未触碰的 fresh untouched evidence 验证。与噪声或实际收益相比很小的同方向 delta 不自动构成继续理由。若先前报告有事实错误，必须显式更正并说明影响，不得只让数字静默漂移。
 
+#### 跨 session 与交接连续性（条件触发）
+
+当任务预计跨 session、需要由另一 Agent/人接手、包含多个依赖波次，或仅凭 Git diff 无法恢复关键“为什么”时，优先复用现有 issue、PR、项目计划或项目原生状态载体；仍不足时再维护一个轻量 durable state。它只需记录：当前结果契约或其链接、真实 branch/HEAD、已完成结果及决定性证据、正在进行且不得重复的工作、下一个最有区分力的动作、真实 blocker/待决策，以及必须保留的用户改动。
+
+只在 handoff 或关键 decision point 更新，不逐命令记账，不复制 raw transcript，不要求固定文件名、hash、签名或每步 checkpoint。任务在当前 session 可完成、现有 issue/PR 已足够，或状态可从代码和测试直接恢复时，不创建该 artifact；任务完成后按项目惯例关闭、归档或删除临时状态，避免永久维护第二套事实源。
+
 ### 5. 验收与审查
 
-验收直接针对用户要的结果，而不是检查 artifact 是否存在。根据任务选择最强且实际可用的证据：真实测试、端到端运行、独立实现对照、性质/不变量、统计检验、复现、人工审阅或外部系统状态。
+验收直接针对用户要的结果，而不是检查 artifact 是否存在。先选择能把 claim 与可信失败区分开的最小直接证据，例如 focused test、复现、性质/不变量、独立实现对照、统计检验、人工审阅或外部系统状态；只有具体风险、失败信号或弱/共享 oracle 才升级证据强度。
 
 当行为变化、高风险边界、弱或被复用的 oracle、实质研究/竞赛 deliverable 或剩余不确定性使第二视角能发现可信失败时，使用有用的独立只读第二视角（reviewer、独立实现、独立 oracle 或等价检查）。Reviewer 数量和轮次由风险决定，不因“标准任务”自动触发；trivial/no-op 工作不安排 review ceremony。实现者可以运行测试，但不能仅凭自述为自己提供独立性。
 
@@ -150,7 +166,7 @@ Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 
 - 关键验证命令及结果可查；
 - Git/发布状态与实际一致；
 - WCU/模型使用在可获得时被记录，未知项标为 `[UNCERTAIN]`。
-- 对 substantial behavior、research 或 competition deliverable，最终报告还要明确列出证据/命令、review disposition（包括明确的未运行/不可用/无）、routing/model/WCU、remaining risks/blockers，以及 repo-relevant 的 Git/外部交付状态。
+- 最终报告优先给出结果与决定性证据；review、routing/model/WCU、remaining risks/blockers、Git/外部交付只在实际发生或影响交接时报告，不为满足模板逐项添加空的 `N/A` 字段。
 
 ## 失败处理
 

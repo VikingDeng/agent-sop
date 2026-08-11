@@ -8,13 +8,15 @@ Treat user-supplied research proposals as approved directions unless idea genera
 
 ## Outcome-driven work
 
-Follow `sop/tier0-core/autonomous-supervisor.md`. Freeze the desired outcome, non-goals, scope, quality bar, and observable evidence, then let the agent choose exploration order, tools, models, decomposition, and useful repair loops. Recipe steps and coordination metadata are defaults unless a strict profile is explicitly selected.
+Follow `sop/tier0-core/autonomous-supervisor.md` as the repository's single runtime decision source. Freeze the desired outcome, non-goals, scope, quality bar, and observable evidence, then let the agent choose exploration order, tools, models, decomposition, and useful repair loops. Tier-1 SOPs, skeletons, overlays, recipes, role suggestions, named artifacts, and coordination metadata specialize that policy; they do not become independent permission gates unless the user or closest project instructions explicitly select a strict profile.
 
 SOP 与 Skill/MCP 正交：SOP 负责结果契约、授权/风险边界、证据、停止/re-contract 与交付；Skill/MCP 只提供按需的领域、格式或工具能力，不能改写验收、claim、HUMAN 边界或制造固定阶段。
 
 Use a HUMAN gate only for a real unauthorized direction: materially different semantics or research claim, public API/compatibility, credentials, production/public release, deletion or irreversible migration, significant unbounded spend, legal/privacy choices, or a direct contract conflict. Continue independent safe work when possible.
 
-When a ContestOS v1 skeleton is selected, also apply [`skeletons/contestos-adaptive-overlay-v2.md`](skeletons/contestos-adaptive-overlay-v2.md). The overlay is the active runtime authority for fallback semantics, HUMAN checkpoints, ecosystem parameters, and claim/risk-triggered gates; the v1 source files remain provenance-locked.
+When a ContestOS v1 skeleton is selected, also apply [`skeletons/contestos-adaptive-overlay-v2.md`](skeletons/contestos-adaptive-overlay-v2.md). The overlay is a compatibility translator from provenance-locked v1 wording to the Supervisor policy; it supersedes conflicting v1 runtime language without creating a second runtime authority or modifying the v1 source files.
+
+For any deadline-bound judged competition or hackathon, load [`sop/tier1-skeleton/run-competition.md`](sop/tier1-skeleton/run-competition.md). Product hackathons compose it with the development skeleton: development owns the working product, while the competition SOP owns rules, rubric evidence, submission budget, deadline, external-action authorization, and platform feedback.
 
 ## Delegation and verification
 

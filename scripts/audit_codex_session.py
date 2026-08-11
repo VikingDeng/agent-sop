@@ -26,6 +26,7 @@ from weighted_routing_policy import (  # noqa: E402
     classify_spawn_result,
     close_result_succeeded,
     command_text,
+    is_git_relevant,
     is_sol_execution,
     normalize_tool_name,
     parse_package_markers,
@@ -199,7 +200,12 @@ def _output_size(payload: dict[str, Any]) -> int:
     return len(_output_text(payload.get("output")))
 
 
-def _delivery_report_findings(message: str, *, repo_relevant: bool) -> list[str]:
+def _delivery_report_findings(
+    message: str,
+    *,
+    repo_relevant: bool,
+    strict: bool,
+) -> list[str]:
     lowered = message.lower()
     findings: list[str] = []
     patterns = {
@@ -228,8 +234,13 @@ def _delivery_report_findings(message: str, *, repo_relevant: bool) -> list[str]
             r"提交|分支|交付|部署|外部|不适用|不相关",
         ),
     }
+    required = {"outcome", "evidence/commands"}
+    if strict:
+        required.update({"review disposition", "routing/WCU", "remaining risks/blockers"})
+        if repo_relevant:
+            required.add("Git/delivery state")
     for category, (english, chinese) in patterns.items():
-        if category == "Git/delivery state" and not repo_relevant:
+        if category not in required:
             continue
         if re.search(english, lowered) or re.search(chinese, lowered):
             continue
@@ -328,18 +339,6 @@ def _turn_id(payload: dict[str, Any]) -> str:
         return ""
     value = metadata.get("turn_id")
     return value if isinstance(value, str) and value else ""
-
-
-def _is_git_checkout(cwd: Any) -> bool:
-    if not isinstance(cwd, str) or not cwd:
-        return False
-    try:
-        path = Path(cwd).expanduser().resolve()
-    except (OSError, RuntimeError):
-        return False
-    if not path.is_dir():
-        return False
-    return any((candidate / ".git").exists() for candidate in (path, *path.parents))
 
 
 def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, Any]:
@@ -1125,10 +1124,11 @@ def audit_session_tree(
             completeness_violations.append(f"thread {thread_id}: final token snapshot precedes later activity")
 
         if session["task_complete"] and not session["parent_thread_id"]:
-            repo_relevant = _is_git_checkout(session.get("cwd"))
+            repo_relevant = enforcement_mode == "strict" and is_git_relevant(session.get("cwd"))
             missing = _delivery_report_findings(
                 session["last_agent_message"],
                 repo_relevant=repo_relevant,
+                strict=enforcement_mode == "strict",
             )
             if missing:
                 finding = f"thread {thread_id}: completed root final report missing " + ", ".join(missing)
@@ -1251,7 +1251,7 @@ def render_report(report: dict[str, Any]) -> str:
         lines.append("Observations:")
         lines.extend(f"- {item}" for item in report["routing_observations"])
     if report.get("delivery_report_findings"):
-        lines.append("Delivery report findings (advisory):")
+        lines.append("Delivery report findings:")
         lines.extend(f"- {item}" for item in report["delivery_report_findings"])
     return "\n".join(lines)
 
