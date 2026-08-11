@@ -45,6 +45,23 @@ class AdaptiveSopContractTests(unittest.TestCase):
         supervisor = self.read("sop/tier0-core/autonomous-supervisor.md")
         self.assertRegex(supervisor, r"(?:^|\n)- \*\*版本\*\*:\s*v\d+", msg="missing formal version marker")
 
+    def test_development_runtime_is_single_source_and_artifact_proportional(self) -> None:
+        supervisor = self.read("sop/tier0-core/autonomous-supervisor.md")
+        contract = self.read("sop/tier1-skeleton/write-contract.md")
+        drift = self.read("sop/tier1-skeleton/drift-check.md")
+        overlay = self.read("skeletons/contestos-adaptive-overlay-v2.md")
+        methodology = self.read("sop/_METHODOLOGY.md")
+
+        self.assertIn("唯一通用运行时决策源", supervisor)
+        self.assertIn("跨 session 与交接连续性（条件触发）", supervisor)
+        self.assertIn("物理存在本身都不是门禁", contract)
+        self.assertNotIn("[AUTO] REQUIREMENTS + NON_GOALS", contract)
+        self.assertNotIn("每次提交(product)", drift)
+        self.assertIn("默认不新增映射表", drift)
+        self.assertIn("开发 v1 的 canonical mapping", overlay)
+        self.assertIn("不与 `tier0-core/autonomous-supervisor.md` 形成平行运行时", methodology)
+        self.assertNotIn("步骤数 ≥6", methodology)
+
     def test_strict_router_profile_remains_available(self) -> None:
         self.assertEqual(POLICY.MAX_CONCURRENT_OPEN_THREADS, 2)
         self.assertEqual(POLICY.MAX_RISK_REVIEWERS_PER_SESSION, 1)

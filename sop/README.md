@@ -59,4 +59,4 @@
 1. 项目任务:选 skeleton 后,在项目级 `AGENTS.md` 引用相关 tier0/tier1 SOP。
 2. 非项目任务:直接选 tier2 SOP。
 3. 一条 SOP 引用另一条时,按"依赖"字段调用,不复制内容。
-4. 用户只给目标且授权范围清晰时,先走 `tier0-core/autonomous-supervisor.md`;它负责风险分类、checkpoint、成本路由、验证与 Review,不替代具体任务 SOP。
+4. 用户只给目标且授权范围清晰时,先走 `tier0-core/autonomous-supervisor.md`;它是唯一通用运行时决策源,负责风险分类、checkpoint、成本路由、验证与 Review。Tier-1、骨架、overlay 与 recipe 只做领域专门化,固定 artifact/step/gate 不得与其形成平行门禁。

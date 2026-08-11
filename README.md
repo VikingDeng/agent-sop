@@ -23,8 +23,8 @@ agent-sop/
 ├── PRINCIPLES.md          # 四条核心纪律 + 收纳判据(全仓地基)
 ├── PROSE_STANDARD.md      # 文字产出规范 v2(横切:产人读文字时遵守)
 ├── SKILL-ADAPTERS.md      # 官方/维护者 Skill 与 SOP 的适配矩阵(不改变 SOP 权威)
-├── skeletons/             # 项目骨架(3 份 v1 原件 + 运行时 v2 overlay)
-│   ├── README.md          # 骨架索引与 active overlay 入口
+├── skeletons/             # 项目骨架(3 份 v1 原件 + v2.1 兼容 overlay)
+│   ├── README.md          # 骨架索引与 compatibility overlay 入口
 │   └── contestos-adaptive-overlay-v2.md
 ├── sop/                   # 可组合规程库(三层)
 │   ├── README.md          # 三层 INDEX + 依赖图 + 纪律映射

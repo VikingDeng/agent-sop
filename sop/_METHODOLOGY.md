@@ -2,7 +2,8 @@
 
 > 来源:《agent-sop_tier0细化与质量方法论_v1》(桌面施工单)。本文件回答三件事:一条 SOP 写到什么程度算合格、如何保证它合格、通用性与质量如何兼得。
 > 原则:**先定"合格的定义"和"通用性刻度",再动手写**。本文件自身就是方法的自证——可用 §1 验收清单逐条卡任何一条 SOP 成品。
-> **版本**: v3。相对 v2 将方法从“过程合规”转为“结果与证据合格”：保留可导航结构，但按任务脆弱程度设置自由度，允许显式、质量等价的自适应路径。
+> **版本**: v4。相对 v3 明确本文件只约束 SOP 文档质量，不与 `tier0-core/autonomous-supervisor.md` 形成平行运行时；checkpoint 的载体与粒度改为按风险选择，取消长 SOP 的固定步骤链留痕。
+> **运行时边界**:本方法论的 8 字段用于让 SOP 本身可导航，不要求执行任务时制造八份 artifact、逐步台账或独立 checkpoint 文件。用户/项目契约之下，运行时适用性统一由 `tier0-core/autonomous-supervisor.md` 判断。
 
 ## §1 一条 SOP 的验收标准(A1-A7)
 
@@ -102,13 +103,13 @@ Checkpoint 分三型,采用前必须按客观条件标注:
 | `INTERACTIVE_CHECKPOINT` | 用户要求阶段同步,或非阻断偏好会改善结果,但已授权方向仍可继续 | 汇报方向与判据;继续执行已授权部分,不把日常命令、验证或 Review 交还用户 |
 | `MANDATORY_HUMAN_CHECKPOINT` | 有两个以上同样合理但产品语义不同的方向;public API/兼容承诺、重大架构/生产依赖、凭据、生产发布、数据删除、不可逆迁移、显著不可预估付费、法律/合规/隐私决策;契约冲突;缺少关键需求只能靠猜 | 停止越权部分,向人提出明确方向决策并等待;不得静默选择或改走 fallback |
 
-三型 checkpoint 都落实 P1。`AUTONOMOUS_CHECKPOINT` 不削弱契约,它要求的留痕与 `MANDATORY_HUMAN_CHECKPOINT` 相同;区别只在于方向是否已经由任务和现有契约客观确定。自动执行不等于允许猜需求。PR 可以承担异步人类终审,但不能替代命中 mandatory 条件时的方向裁决。
+三型 checkpoint 都落实 P1，但载体与证据强度按风险不同。`AUTONOMOUS_CHECKPOINT` 可以由用户请求、活动计划、issue/PR 或已有 spec 中的 compact contract 直接满足，不要求复制一份与 `MANDATORY_HUMAN_CHECKPOINT` 同等的留痕；后者才需要把待决方向、影响与授权结果持久化到足以复核。自动执行不等于允许猜需求。PR 可以承担异步人类终审,但不能替代命中 mandatory 条件时的方向裁决。
 
 - **确认方向**:在阶段开始前确定本阶段要做什么、按什么判据做,并选择 checkpoint 类型。只有 mandatory 类型必须等待人。
 - **自动执行**:方向冻结后,本阶段内符合判据且位于授权包络的修改一律执行,不逐条请示。判据本身就是授权边界。
 - **汇总报告**:阶段结束报告改动、理由和证据,不逐条播报内部流水账。
 
-粒度原则:checkpoint 只设在方向可能分叉处,不设在判据已明确处。一条 SOP 的 checkpoint 数应与方向分叉点数相当。步骤数 ≥6 的长 SOP 在首个 checkpoint 记录完整步骤链;若命中 autonomous 条件,记录后立即执行;若命中 mandatory 条件,才外显等待。
+粒度原则:checkpoint 只设在方向可能分叉处,不设在判据已明确处；步骤多不自动意味着 checkpoint 多。长任务只在真实 handoff、跨 session 恢复或未授权方向需要时记录当前契约、已完成证据、下一关键动作与 blocker，不预先抄写完整步骤链。若命中 autonomous 条件,使用现有 compact contract 后立即执行；若命中 mandatory 条件,才外显等待。
 
 ## 重内容下沉:references 边车
 

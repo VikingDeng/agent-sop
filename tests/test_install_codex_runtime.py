@@ -142,13 +142,13 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             skill = codex_home / "skills/research-execution-grill/SKILL.md"
             self.assertIn("research-execution-grill", skill.read_text(encoding="utf-8"))
             overlay = home / INSTALL.RUNTIME_CURRENT / "skeletons/contestos-adaptive-overlay-v2.md"
-            self.assertIn("active operational overlay", overlay.read_text(encoding="utf-8"))
+            self.assertIn("active compatibility overlay", overlay.read_text(encoding="utf-8"))
             installed_reference = "~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md"
             for context in (codex_home / "AGENTS.md", workspace / "AGENTS.md"):
                 context_text = context.read_text(encoding="utf-8")
                 self.assertIn(installed_reference, context_text)
                 installed_overlay = Path(installed_reference.replace("~", str(home), 1))
-                self.assertIn("active operational overlay", installed_overlay.read_text(encoding="utf-8"))
+                self.assertIn("active compatibility overlay", installed_overlay.read_text(encoding="utf-8"))
 
     def test_failure_before_current_switch_preserves_old_active_generation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
