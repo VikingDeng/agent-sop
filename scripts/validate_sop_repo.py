@@ -38,13 +38,9 @@ SOP_INDEX_PATH = re.compile(
 DEPENDENCY_REF = re.compile(r"→\s*([^\s(]+\.md)")
 BACKTICK_TOKEN = re.compile(r"`([^`\n]+)`")
 LOCAL_RESOURCE_PREFIXES = ("sop/", "codex/", "scripts/", "skeletons/", "tests/", "references/", "./", "../")
-ACTIVE_OVERLAY = "skeletons/contestos-adaptive-overlay-v2.md"
-INSTALLED_ACTIVE_OVERLAY = "~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md"
-ACTIVE_OVERLAY_REFERENCES = (
+LEGACY_OVERLAY = "skeletons/contestos-adaptive-overlay-v2.md"
+LEGACY_OVERLAY_REFERENCES = (
     ("README.md", "skeletons/contestos-adaptive-overlay-v2.md"),
-    ("AGENTS.md", "skeletons/contestos-adaptive-overlay-v2.md"),
-    ("codex/AGENTS.global.md", INSTALLED_ACTIVE_OVERLAY),
-    ("codex/AGENTS.workspace.md", INSTALLED_ACTIVE_OVERLAY),
     ("skeletons/README.md", "contestos-adaptive-overlay-v2.md"),
 )
 
@@ -224,14 +220,19 @@ def validate_index(
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         path = cells[0]
+        sop_text = (root / "sop" / path).read_text(encoding="utf-8")
         if section == "tier0" and len(cells) == 4:
             actual = dependency_names(cells[3])
             expected = reverse[path]
             label = "reverse dependencies"
+            index_universality = cells[1]
+            index_discipline = cells[2]
         elif section in {"tier1", "tier2"} and len(cells) == 5:
             actual = dependency_names(cells[4])
             expected = direct[path]
             label = "dependencies"
+            index_universality = cells[2]
+            index_discipline = cells[3]
         else:
             errors.append(f"sop/README.md: malformed index row: {line}")
             continue
@@ -239,6 +240,20 @@ def validate_index(
             errors.append(
                 f"sop/README.md: {label} drift for {path}; "
                 f"expected {sorted(expected)}, found {sorted(actual)}"
+            )
+        metadata_discipline = set(re.findall(r"P[1-4]", metadata_value(sop_text, "落实纪律") or ""))
+        indexed_discipline = set(re.findall(r"P[1-4]", index_discipline))
+        if indexed_discipline != metadata_discipline:
+            errors.append(
+                f"sop/README.md: discipline drift for {path}; "
+                f"expected {sorted(metadata_discipline)}, found {sorted(indexed_discipline)}"
+            )
+        metadata_universality = re.match(r"U[012]", metadata_value(sop_text, "通用性档位") or "")
+        if not metadata_universality or index_universality != metadata_universality.group(0):
+            expected_universality = metadata_universality.group(0) if metadata_universality else "UNKNOWN"
+            errors.append(
+                f"sop/README.md: universality drift for {path}; "
+                f"expected {expected_universality}, found {index_universality}"
             )
     return errors
 
@@ -325,28 +340,35 @@ def validate_skill_resource_references(root: Path) -> list[str]:
     return errors
 
 
-def validate_active_overlay_references(root: Path) -> list[str]:
-    """Check active overlay existence and the reachability of its declared references."""
+def validate_legacy_overlay_references(root: Path) -> list[str]:
+    """Keep the provenance overlay reachable without making it a runtime default."""
     errors: list[str] = []
-    overlay = root / ACTIVE_OVERLAY
+    overlay = root / LEGACY_OVERLAY
     if not overlay.is_file():
-        errors.append(f"active overlay missing: {ACTIVE_OVERLAY}")
+        errors.append(f"legacy overlay missing: {LEGACY_OVERLAY}")
         return errors
 
-    for source_name, target in ACTIVE_OVERLAY_REFERENCES:
+    overlay_text = overlay.read_text(encoding="utf-8")
+    if "legacy, explicit-only" not in overlay_text:
+        errors.append(f"legacy overlay is not marked explicit-only: {LEGACY_OVERLAY}")
+
+    for source_name, target in LEGACY_OVERLAY_REFERENCES:
         source = root / source_name
         if not source.is_file():
-            errors.append(f"active overlay reference source missing: {source_name}")
+            errors.append(f"legacy overlay reference source missing: {source_name}")
             continue
         text = source.read_text(encoding="utf-8")
         if target not in text:
-            errors.append(f"active overlay reference missing from {source_name}: {target}")
-            continue
-        if target == INSTALLED_ACTIVE_OVERLAY:
+            errors.append(f"legacy overlay reference missing from {source_name}: {target}")
             continue
         resolved = (source.parent / target).resolve()
         if not resolved.is_file():
-            errors.append(f"active overlay reference is unreachable from {source_name}: {target}")
+            errors.append(f"legacy overlay reference is unreachable from {source_name}: {target}")
+
+    for runtime_source in ("codex/AGENTS.global.md", "codex/AGENTS.workspace.md"):
+        source = root / runtime_source
+        if source.is_file() and "runtime-current/skeletons/contestos-adaptive-overlay-v2.md" in source.read_text(encoding="utf-8"):
+            errors.append(f"legacy overlay is still a default runtime reference in {runtime_source}")
     return errors
 
 
@@ -375,7 +397,7 @@ def main() -> int:
         errors.extend(validate_index(root, files, direct, reverse))
         errors.extend(validate_markdown_links(root))
         errors.extend(validate_readme_counts(root, files))
-        errors.extend(validate_active_overlay_references(root))
+        errors.extend(validate_legacy_overlay_references(root))
         errors.extend(validate_skill_resource_references(root))
     except (OSError, UnicodeError, ValidationFailure) as exc:
         print(f"VALIDATOR ERROR: {exc}", file=sys.stderr)

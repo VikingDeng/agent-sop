@@ -1,181 +1,119 @@
-# SOP-autonomous-supervisor: 结果驱动的自主执行
+# SOP-autonomous-supervisor: 结果驱动执行内核
 
 - **层级**: tier0-core
-- **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
+- **落实纪律**: P1(结果契约) P2(可信验收) P3(失败与边界诚实) P4(比例化追溯)
 - **绑定骨架**: 无
-- **通用性档位**: U1
-- **版本**: v12
+- **通用性档位**: U0
+- **版本**: v15
 
 ## 目标
 
-把用户目标稳定地转化为高质量、可验证的结果，同时给 Agent 足够自由去探索、调整计划、选择工具与模型。SOP 负责结果契约、授权/风险边界、证据、停止/re-contract 与交付真相；不负责领域技术或工具实现。
+把用户目标转化为可观察、可验证且不越权的结果。内核只规定结果契约、授权/风险边界、证据强度、re-contract、停止条件与交付真相；不规定技术栈、领域方法、模型选择、Agent 拓扑、固定阶段或工具顺序。
 
 ## 运行时权威
 
-`PRINCIPLES.md` 定义不变量；在用户指令和 closest project instructions 之下，本 SOP 是仓库内**唯一通用运行时决策源**。Tier-1 SOP、ContestOS overlay、骨架、recipe、Skill 和角色文件只补充当前领域的约束与能力：若其中的固定文件名、步骤数、review 次数、checkpoint 或 gate 与本 SOP 的自适应规则冲突，除非项目显式选择 strict profile，否则按本 SOP 判断其是否适用。ContestOS overlay 只负责把 provenance-locked v1 原件翻译到这一语义，不形成平行 authority。
+在 system/developer/user 指令与 closest project instructions 之下，本文件是仓库内唯一通用运行时决策源。Domain Profile 只增加同类任务必需的不变量，Codex Adapter 只实现平台路由与遥测，Skill 只增强专门能力，Oracle 只提供判定证据；它们都不能改写本内核或扩大冻结契约。
+
+一次任务只加载当前决定所需的最少 Profile、Skill 与 reference。provenance-locked skeleton 和 compatibility overlay 是显式选择时才使用的历史兼容材料，不属于默认运行上下文，也不形成平行 authority。
 
 ## 触发条件
 
-- 用户提出需要调查、修改、验证、执行或交付的明确目标；
-- 用户要求自主推进、多 Agent 协作、Review 或完整交付。
+- 用户要求调查、实现、修改、验证、运行或交付一个结果；
+- 用户要求自主推进、协作执行、Review 或端到端完成。
 
 ## 前置条件
 
-- 能从用户目标与本地证据识别一个可观察结果；若只能靠猜测方向，则仅阻断依赖该方向的部分；
-- 当前 workspace 与适用项目指令可识别，已有用户改动可被保留。
+- 能从用户请求和最近证据识别至少一个可观察结果；
+- 能识别当前授权 workspace、适用项目指令与需要保留的用户改动；
+- 只能靠猜测的方向被隔离，不阻断无须该方向即可安全完成的工作。
 
 ## 依赖 SOP
 
-→ tier0-core/build-oracle.md（需要构造独立验收时）
+→ tier0-core/build-oracle.md（需要构造或加强验收 Oracle 时）
 
-→ tier0-core/no-fallback-review.md（检查静默造假或降级时）
+→ tier0-core/no-fallback-review.md（需要判断重试、替代或降级是否合法时）
 
 → tier0-core/commit-and-pr.md（用户要求 Git 交付时）
 
-## 核心原则
-
-1. **验收硬，过程软**：目标、不可接受结果和验收证据要明确；探索顺序、分工、工具、模型、修复轮次和中间产物由 Agent 根据新证据调整。
-2. **边界硬，策略软**：凭据、隐私、不可逆操作、生产发布、删除、重大兼容承诺和无界成本需要授权；普通可逆工作不因流程缺件而停摆。
-3. **证据优先于仪式**：真实测试、复现、独立 oracle 和最终行为比 package 字段、固定 stage、review 次数或文档数量更重要。
-4. **复杂度与约束成比例**：没有具体且合理的失败路径就不引入机制；优先平台/原生 primitive，先用最便宜能区分成败的 oracle。guardrail 成本与潜在伤害成比例；当 guardrail 接近工作量时，复杂度就是 finding。每个持久门禁都应有适用条件与移除条件。
-5. **持续收敛而非固定轮次**：只要新尝试在增加证据或降低不确定性就可继续；同类失败重复且没有实质进展时重构方案或停止，而不是机械生成 vN+1。
-6. **SOP 与 Skill 正交**：Skill 是 optional、replaceable 的 capability adapter，可提供领域方法、工具操作、artifact format 或 specialized oracle；它服从 user/project/SOP authority，不能改写授权、路由、成功标准、claim、HUMAN 边界或制造 mandatory stage。只有指出冻结 claim 的具体失败路径时，Skill 才能建议额外检查。
-7. **执行模式诚实**：明确区分 supervised Sol（Sol 在该 session 中实际承担规划/判断；这不等于 Sol 机械执行了工作）与发生了真实子 Agent 路由的协作执行。没有发生的 Luna、Terra、review、WCU 或独立视角不得在报告中声称发生；不可用或未捕获的用量标为 `[UNCERTAIN]`。
-8. **连续性按需持久化**：只有跨 session、跨交接或多波次任务存在真实上下文丢失风险时才维护一个轻量恢复载体；能由当前 diff、issue、PR 或计划可靠恢复的短任务不创建状态文件。
-
-## 不可协商的不变量
-
-- 不伪造数据、运行结果、review、签名、来源或通过状态；
-- 不把失败检查、缺失 oracle 或未知用量写成成功或零；
-- 不为了通过验收而静默降低用户要求；
-- 不覆盖无关用户改动，不泄露秘密，不越过授权 workspace；
-- 不把内部 GPT/Codex blind review 称为外部 review；
-- model-bound correction/re-review 只有在任务证据能确认 matching live package、role 与 actual model 时才复用 agent；否则 fresh-spawn 显式 typed role。advisory routing 可提示不可核验的 `resume_agent`，但不硬阻断；显式 strict profile 可拒绝。复用或 role/model 改变均不重置适用 budget；一旦 evidence 显示 mismatch，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
-- 未获授权不发布、部署、merge、force-push、删除持久数据或执行不可逆迁移。
-
 ## 步骤
 
-### 1. 建立最小结果契约
+### 1. RESOLVE — 解析真实执行边界
 
-从用户请求和最近的项目证据提取：
+读取 closest instructions 与任务直接依赖。写入前确认目标 workspace；Git 项目用 `pwd` 和 `git rev-parse --show-toplevel`，非 Git 项目显式确认根目录。发现目标根不一致时先纠正，不在错误目录落盘，也不覆盖无关改动。
 
-- 要达到的可观察结果；
-- 关键 non-goals 与允许范围；
-- 失败代价和真正不可接受的结果；
-- 能证明结果的验收方法；
-- 已知预算、时间或资源边界。
+根据任务只选择必要的 Domain Profile。跨域任务可以组合 Profile，但每个 Profile 必须对应一个真实交付面，不能因为“更保险”而全量加载。
 
-契约可以是任务计划中的几句话，不要求为每个任务生成正式 artifact。只有当继续会改变产品语义、公开兼容承诺、研究 claim 或资源承诺时才重新确认契约。
+### 2. CONTRACT — 冻结最小结果契约
 
-### 2. 自主选择执行策略
+从请求、spec、issue、测试或已有项目事实中确定：
 
-Agent 可以根据证据自由决定是否：
+- 期望的可观察结果与质量标准；
+- 关键 non-goals、允许范围和必须保留的行为；
+- 真正不可接受的失败；
+- 能支持实际 claim 的验收证据；
+- 已知授权、时间、成本、数据和外部动作边界。
 
-- 先探索还是直接实现；
-- 单 Agent 完成还是委派一个或多个完整结果包；
-- 使用 Luna、Terra 或 Sol；
-- 选择前景模式：日常开发、比赛与 approved proposal 的工程执行默认由顶层 Terra/high 调度；Luna 承担大块边界清楚的执行；高判断密度的架构或科研执行设计使用一次紧凑的 `sol_architect`；普通 review 使用 Terra；具体高风险 review 使用 `risk_reviewer` Sol/max；持续高歧义、持续 Sol 判断的任务仍可选择 Sol 顶层；
-- 使用扁平根调度：顶层直接派 Luna、Terra 或 Sol specialist；不把 child 再派 child 作为成功前提，也不依赖公开配置中不存在的 `agents.max_depth`；
-- 合并、跳过或重排非依赖步骤；
-- 编写临时诊断、fixture、prototype 或替代实现；
-- 增加、减少或更换验证方式；
-- 在局部修复与架构重构之间切换。
+契约的详细程度与失败代价成比例。清晰小任务可由几句话满足；只有生命周期确实需要时才持久化正式 artifact。缺少非关键偏好不暂停已授权工作。
 
-不得把推荐 recipe 解释为唯一合法路径。`PACKAGE_ID`、`PACKAGE_PHASE`、`LUNA_ELIGIBLE`、固定 reviewer 数量与固定 repair 次数只在运行时协调确有帮助或项目选择 strict profile 时使用。
+### 3. EXECUTE — 用最短反馈回路收敛
 
-典型尺度只用于校准，不构成固定阶段：
+Agent 自主决定探索顺序、实现策略、工具、分工、并行度、修复次数和中间产物。优先做最便宜且能区分当前主要不确定性的动作，得到证据后更新计划；recipe、角色名、文件名和阶段名不是权限门禁。
 
-- 小型局部修复：根 Agent 直接定位、修改并运行 focused oracle，通常不委派、不写正式 spec、不做独立 review；
-- 中型跨模块功能：先固定接口和第一个可运行 vertical slice，再把边界稳定、文件不重叠的完整结果包交给 Luna/Terra，根 Agent 负责真实集成；
-- 新建或长期产品：先解决会阻断实现的架构与 public contract，再分波次开发；只有持续高判断密度或具体高风险才使用 Sol，不预先铺满 agent、文档和 gate。
+允许显式 retry、换工具或换实现路径，只要不改变冻结的结果语义和验收标准。若准备改变产品语义、public contract、research claim/method、正式数据/分析、授权资源或不可逆状态，先 re-contract；不得把变化隐藏在 fallback、兼容分支或默认值中。
 
-### 3. 风险自适应路由
+Skill 是可替换的能力增强：只能在已识别的能力缺口或专门工具节点调用，不能新增成功标准、强制阶段或外部动作。Skill 缺失不自动阻断任务；Oracle 缺失但 claim 仍要求该证据时，相关 claim 保持 `NOT_ESTABLISHED` 或 `PARTIAL`。
 
-优化 `WCU = 25*T_sol + 10*T_terra + 1*T_luna`，但质量契约优先：
+出现下列信号时停止当前策略并 replan，而不是机械继续：同类失败重复且最近一次未降低不确定性；Oracle 被证明无效或与实现共享错误；新增收益明显低于成本；或继续必须跨越 HUMAN 边界。
 
-- Luna 优先承担边界清楚、劳动密集、可被真实 oracle 验收的代码、测试、数据、实验 plumbing、日志和命令；
-- Terra 承担高语义密度的跨文件实现、未知根因诊断和普通独立审查；
-- Sol 承担架构、研究设计、歧义消解、高风险判断与最终综合。
+### 4. VERIFY — 闭合 claim 与证据
 
-这是偏好而非能力证明。Luna 不可用时可转 Terra；Terra 不可用或委派成本高于工作本身时，主 Agent 可完成必要的窄工作。任何替代都保持相同验收标准并在成本审计中如实记录。不要按单条命令拆 Agent，不 fork 完整父历史，通常保持不超过两个并发 child。
+验收直接检查用户要的结果，不以文件存在、构建成功、模型自述或流程完成替代。先使用最小直接 Oracle；只有具体失败路径、高风险、弱/shared Oracle 或实质剩余不确定性才升级到独立实现、第二视角、统计验证、真实环境或外部系统状态。
 
-实现、review、correction 与 re-review 分别视为新的 package boundary。后继 child 默认不继承 conversation turns；给它冻结契约、commit/diff、决定性 artifact、前一轮 findings 和 stop condition 的紧凑 packet 即可。不要把 supervisor commentary、raw tool output 或前一 child 的完整 trace 当作“连续性”继续 fork。只有具体依赖无法落到仓库或紧凑 packet 时才继承最少 turns，并记录原因。
+Review 只能依据冻结契约和可复现失败路径提出 blocker，不能用品味扩张范围。新发现若确实影响当前 acceptance，聚合修复后重新验证；非阻断 hardening 进入 backlog 或作为限制披露，不生成无限 Review 链。
 
-### 4. 按结果迭代
+### 5. DELIVER — 交付真实状态
 
-使用最短反馈回路推进：调查一个关键未知量、做出可检查改变、运行能区分成败的检查、根据结果更新方案。默认聚合 reviewer finding 后修复，但允许在新证据出现时追加合理修复。
+先给出已达到的结果和决定性证据，再说明仍影响使用的限制、失败或未验证项。Git、发布、部署、外部提交、Review 独立性、资源使用和运行状态必须与事实一致；未知值标为 `[UNCERTAIN]`，环境阻塞的验收标为 `PARTIAL`/`ENV-BLOCKED`，不能写成通过。
 
-Review 必须对齐冻结契约与具体失败路径，不能以品味性要求扩大 acceptance。新的可信失败路径可触发一次合并修复或架构重置，但不得无限追加后继门禁。
-
-不可把失败且 immutable 的 run 事后改造成通过。保留原 verdict，只修下一次执行路径；只有用户授权 fresh run 后，新证据才可能改变结论。若关键区分检查很便宜，优先把它直接放进下一次 run（例如同一输入第二次 verifier 调用并比较），不要为兼容旧 artifact 新建 replay service、validator stack、迁移层或授权协议。code-readiness patch 只能证明代码准备度，不能升级历史 run。
-
-修复若改变 producer-consumer contract，除针对旧漏洞的负例外，还要运行最便宜的 producer→consumer 正向兼容检查。只有负例不能证明修复后的 happy path 能组合工作。该检查可用 synthetic/in-memory fixture 且只证明 code readiness，不得冒充新的 empirical run 或 accepted result。
-
-Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 以限定证据范围。API correctness 可需要 Sol risk judgment，但不因此自动进入完整 codex-security workflow；只有具体 adversarial security trigger 才触发完整 security workflow。Skill 仍是正交、可替换 adapter，不能扩大冻结 acceptance、stage 或 artifact；verdict 证据充分后停止，非阻断 hardening 尤其是 pre-scale research 问题进入 backlog 或保持 `[UNCERTAIN]`。
-
-新 project directory 在首次 write、stage 或 commit 前先运行 `git rev-parse --show-toplevel`；需要独立 root 时使用独立 `git init` 或 worktree，避免空目录继承 `/Users/viking` 或 ContestOS 的父 repo。Full suite 一次只运行一个；重启前仅检查/关闭自己此前的 process/session，不为更清晰摘要启动重复重型 suite。派发 child 后，有真实的不重叠工作才并行推进，不制造 busywork；只在下一步依赖结果时 wait，使用一次最长合理的 bounded wait 而非固定间隔 polling，保留实际等待证据并计入 monitoring WCU。不承诺 detached、零等待或 child 可嵌套。长任务每个 decision point 仍应使用 compact evidence，避免 raw transcript 循环。
-
-满足下列任一条件时停止当前策略并重新规划：
-
-- 同一失败类别连续出现且最近一次没有降低不确定性；
-- 修复开始改变目标、claim、public behavior 或预算；
-- 验收 oracle 被证明无效或与实现共享同一错误路径；
-- 预期新增收益已明显低于成本；
-- 需要人类专属判断、凭据或不可逆授权。
-
-停止当前策略不等于停止整个任务；优先缩小问题、换 oracle、换实现路径或重新切分工作。
-
-对于经验性工作，冻结证据边界：把探索/调参集、最终 holdout（final holdout，以及必要时的独立复核集）分开。不得根据 hidden/test labels 或 freeze 后才看到的 test-input 异常调参，除非在检查前已声明允许 transductive adaptation；freeze 后发现的 validity fix 必须用全新的、未触碰的 fresh untouched evidence 验证。与噪声或实际收益相比很小的同方向 delta 不自动构成继续理由。若先前报告有事实错误，必须显式更正并说明影响，不得只让数字静默漂移。
-
-#### 跨 session 与交接连续性（条件触发）
-
-当任务预计跨 session、需要由另一 Agent/人接手、包含多个依赖波次，或仅凭 Git diff 无法恢复关键“为什么”时，优先复用现有 issue、PR、项目计划或项目原生状态载体；仍不足时再维护一个轻量 durable state。它只需记录：当前结果契约或其链接、真实 branch/HEAD、已完成结果及决定性证据、正在进行且不得重复的工作、下一个最有区分力的动作、真实 blocker/待决策，以及必须保留的用户改动。
-
-只在 handoff 或关键 decision point 更新，不逐命令记账，不复制 raw transcript，不要求固定文件名、hash、签名或每步 checkpoint。任务在当前 session 可完成、现有 issue/PR 已足够，或状态可从代码和测试直接恢复时，不创建该 artifact；任务完成后按项目惯例关闭、归档或删除临时状态，避免永久维护第二套事实源。
-
-### 5. 验收与审查
-
-验收直接针对用户要的结果，而不是检查 artifact 是否存在。先选择能把 claim 与可信失败区分开的最小直接证据，例如 focused test、复现、性质/不变量、独立实现对照、统计检验、人工审阅或外部系统状态；只有具体风险、失败信号或弱/共享 oracle 才升级证据强度。
-
-当行为变化、高风险边界、弱或被复用的 oracle、实质研究/竞赛 deliverable 或剩余不确定性使第二视角能发现可信失败时，使用有用的独立只读第二视角（reviewer、独立实现、独立 oracle 或等价检查）。Reviewer 数量和轮次由风险决定，不因“标准任务”自动触发；trivial/no-op 工作不安排 review ceremony。实现者可以运行测试，但不能仅凭自述为自己提供独立性。
-
-工具返回默认保持紧凑，实际可行时目标不超过约 20,000 字符；完整日志保留为 artifact，向当前上下文返回摘要、关键行和退出码。任何压缩都不得丢失支持验收的证据。
+追溯强度按风险决定：普通工作保留关键命令、结果与改动定位；跨 session、高风险、正式科研、竞赛提交或不可逆动作保留足以恢复和复核的项目原生记录。平台遥测可以辅助审计，但其缺失本身不能把一个已经由直接证据验收的产品结果改判失败。
 
 ## HUMAN gate
 
-只在继续必须猜测以下方向时使用：
+只有继续必须决定下列未授权方向时才等待人：
 
-- 两个以上同样合理但语义不同的产品/科研方向；
-- public API、兼容承诺或 research claim 的物质改变；
-- 新凭据、生产发布、删除、不可逆迁移；
-- 显著且未设上限的付费或算力；
-- 法律、合规、隐私或人类专属 oracle；
-- 用户要求与权威契约直接冲突。
+- 两个以上同样合理但语义不同的产品或科研方向；
+- public API/兼容承诺、research claim/method 或正式分析的物质改变；
+- 新凭据、隐私/法律选择、生产/公开发布、删除或不可逆迁移；
+- 显著且未设上限的付费、算力或共享资源冲突；
+- 用户要求与更高权威契约直接冲突。
 
-明确说明所需决定，同时继续不依赖该决定的安全工作。普通工具失败、模型不可用、reviewer 不可用或缺少推荐 artifact 不是 HUMAN gate。
+明确说明需要的决定和影响，同时继续不依赖该决定的安全工作。普通复杂度、工具/模型/Skill 不可用、推荐 artifact 缺失或可逆失败不是 HUMAN gate。
 
 ## 门禁
 
-仅以下条件硬阻断相关动作：违反不可协商不变量；跨越 HUMAN gate 未获决定；高风险动作缺少与潜在损害相称的证据；或没有任何能支持用户 claim 的可信验收方法。流程字段、角色、模型、review 次数、package 状态、Skill presence/version/hash 和推荐 artifact 不单独构成门禁。
+- 伪造、隐藏或篡改数据、运行、Review、来源、外部状态或通过结论；
+- 静默降低用户要求、替换 claim 或改变成功定义；
+- 越过 workspace、秘密、隐私、成本、发布、删除或不可逆授权边界；
+- 对实际 claim 没有任何可信验收方法，却声称完成；
+- 必须 re-contract 的语义变化尚未获得决定。
+
+模型、角色、并发、package 字段、Review 次数、Skill presence/version、推荐文件或遥测字段不单独构成完成门禁。
 
 ## 完成判定
 
-- 用户要求的结果已出现，并由与 claim 匹配的证据支持；
-- 重要失败路径已经检查，或限制已如实报告；
-- 没有伪造、静默降级、越权或未披露的高风险动作；
-- 关键验证命令及结果可查；
-- Git/发布状态与实际一致；
-- WCU/模型使用在可获得时被记录，未知项标为 `[UNCERTAIN]`。
-- 最终报告优先给出结果与决定性证据；review、routing/model/WCU、remaining risks/blockers、Git/外部交付只在实际发生或影响交接时报告，不为满足模板逐项添加空的 `N/A` 字段。
+- 冻结结果已出现，并由强度匹配的直接证据支持；
+- 关键失败路径已检查，或其影响被诚实限定；
+- 没有静默降级、越权、伪造或未披露的语义漂移；
+- 关键证据、Git/外部状态和剩余风险足以让用户接手；
+- 未满足的 claim 明确保持 `PARTIAL`、`NOT_ESTABLISHED`、`BLOCKED` 或 `[UNCERTAIN]`。
 
 ## 失败处理
 
-工具、模型或 reviewer 不可用时，选择能保持验收标准的最低成本替代路径；无法替代时才阻断相关部分。验证失败时保留证据并继续诊断，不得改写成功定义。发现架构方向错误时允许重新设计，不要求沿用旧 package 或复制旧 gate 历史。只有真正的授权边界或缺少可行验收 oracle 才停止整个任务。
+保留失败证据并诊断最有区分力的下一步。可在原契约内显式重试或换质量等价路径，并用同一验收重新验证；不能保持原标准时停止相关部分并报告真实状态。若核心方向或授权必须改变，进入 re-contract/HUMAN gate；不要用额外流程 artifact、旧结果或降级实现掩盖失败。
 
 ## 产物
 
-- 简洁的结果契约；
-- 与风险相称的实现、实验或分析产物；
-- 直接支持验收结论的证据；
-- 必要的 review、限制和成本说明；
-- 用户要求时的可追溯 Git 交付。
+- 与风险相称的最小结果契约；
+- 实现、实验、分析或外部动作的真实产物；
+- 支持结论的直接证据及其限制；
+- 必要的 re-contract、Review、Git/外部交付和剩余风险记录。

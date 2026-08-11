@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import stat
@@ -60,6 +61,8 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             generation = installer.snapshot_path
             assert generation is not None
             self.assertTrue((generation / INSTALL.SNAPSHOT_MANIFEST).is_file())
+            self.assertTrue((generation / "PRINCIPLES.md").is_file())
+            self.assertTrue((generation / "PROSE_STANDARD.md").is_file())
             self.assertTrue(all(not item.is_symlink() for item in generation.rglob("*")))
             self.assertTrue(all(item.stat().st_mode & 0o222 == 0 for item in [generation, *generation.rglob("*")]))
 
@@ -86,6 +89,9 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             (codex_home / "agents").mkdir()
             (codex_home / "hooks").mkdir()
             (codex_home / "skills").mkdir()
+            retired_source = source / "codex/skills/research-execution-grill"
+            retired_source.mkdir(parents=True, exist_ok=True)
+            (retired_source / "SKILL.md").write_text("retired\n", encoding="utf-8")
             (codex_home / "AGENTS.md").symlink_to(source / "codex/AGENTS.global.md")
             (codex_home / "agents/luna_executor.toml").symlink_to(source / "codex/agents/luna_executor.toml")
             (codex_home / "skills/research-execution-grill").symlink_to(
@@ -96,14 +102,57 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             installer = INSTALL.Installer(source, home, workspace)
             installer.install()
             current = installer.runtime_current
-            for link in (codex_home / "AGENTS.md", codex_home / "agents/luna_executor.toml", codex_home / "skills/research-execution-grill", workspace / "AGENTS.md"):
+            for link in (codex_home / "AGENTS.md", codex_home / "agents/luna_executor.toml", workspace / "AGENTS.md"):
                 self.assertTrue(os.readlink(link).startswith(str(current)), link)
+            self.assertFalse((codex_home / "skills/research-execution-grill").exists())
+            self.assertFalse((codex_home / "skills/research-execution-grill").is_symlink())
             backups = list(codex_home.glob("*.backup-*")) + list((codex_home / "agents").glob("*.backup-*")) + list((codex_home / "skills").glob("*.backup-*")) + list(workspace.glob("*.backup-*"))
             self.assertTrue(backups)
 
             repeated = INSTALL.Installer(source, home, workspace)
             repeated.install()
             self.assertFalse(any(action.startswith("backup") for action in repeated.actions))
+
+    def test_retirement_preserves_unrecognized_same_named_skill_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home, workspace, codex_home = self.make_environment(base)
+            external = base / "external-fork/codex/skills/research-execution-grill"
+            external.mkdir(parents=True)
+            destination = codex_home / "skills/research-execution-grill"
+            destination.parent.mkdir()
+            destination.symlink_to(external, target_is_directory=True)
+
+            installer = self.install(home, workspace)
+
+            self.assertTrue(destination.is_symlink())
+            self.assertEqual(destination.resolve(), external.resolve())
+            self.assertTrue(any("preserve unrecognized retired-link" in action for action in installer.actions))
+
+    def test_snapshot_markdown_dependencies_are_closed(self) -> None:
+        snapshot_files = set(INSTALL.SNAPSHOT_FILES)
+        missing: list[str] = []
+        for relative in sorted(snapshot_files):
+            source = ROOT / relative
+            if source.suffix != ".md":
+                continue
+            text = source.read_text(encoding="utf-8")
+            for target in re.findall(r"\]\(([^)#?]+\.md)(?:#[^)]*)?\)", text):
+                if "://" in target:
+                    continue
+                resolved = (source.parent / target).resolve().relative_to(ROOT).as_posix()
+                if resolved not in snapshot_files:
+                    missing.append(f"{relative} -> {resolved}")
+            for target in re.findall(r"→\s*([A-Za-z0-9_./-]+\.md)", text):
+                if target.startswith(("tier0-", "tier1-", "tier2-")):
+                    resolved = f"sop/{target}"
+                elif target.startswith(("../", "./")):
+                    resolved = (source.parent / target).resolve().relative_to(ROOT).as_posix()
+                else:
+                    resolved = target
+                if resolved not in snapshot_files:
+                    missing.append(f"{relative} -> {resolved}")
+        self.assertEqual(missing, [])
 
     def test_update_builds_new_generation_and_switches_one_current_link(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -128,7 +177,7 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertTrue(Path(old_target).is_dir())
             self.assertEqual(current.resolve(), second.snapshot_path.resolve())
 
-    def test_source_checkout_removal_leaves_roles_skills_overlay_and_competition_sop_available(self) -> None:
+    def test_source_checkout_removal_leaves_runtime_layers_and_profiles_available(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             source = base / "source"
@@ -139,26 +188,34 @@ class InstallCodexRuntimeTests(unittest.TestCase):
 
             self.assertIn("Weighted-cost routing", (codex_home / "hooks/weighted_cost_router.py").read_text())
             self.assertTrue((codex_home / "agents/luna_executor.toml").read_text())
-            skill = codex_home / "skills/research-execution-grill/SKILL.md"
-            self.assertIn("research-execution-grill", skill.read_text(encoding="utf-8"))
-            evidence_reference = (
-                home
-                / INSTALL.RUNTIME_CURRENT
-                / "sop/tier1-skeleton/references/research-evidence-presentation.md"
-            )
+            runtime = home / INSTALL.RUNTIME_CURRENT
+            self.assertIn("唯一通用运行时决策源", (runtime / "sop/tier0-core/autonomous-supervisor.md").read_text())
+            self.assertIn("platform adapter", (runtime / "codex/CODEX-ADAPTER.md").read_text())
+            self.assertIn("0→1 development", (runtime / "sop/tier1-skeleton/run-development.md").read_text())
+            self.assertIn("已批准 proposal", (runtime / "sop/tier1-skeleton/research-execution-grill.md").read_text())
+            self.assertIn("有截止时间", (runtime / "sop/tier1-skeleton/run-competition.md").read_text())
+            evidence_reference = runtime / "sop/tier1-skeleton/references/research-evidence-presentation.md"
             self.assertIn("authoritative final table", evidence_reference.read_text(encoding="utf-8"))
-            overlay = home / INSTALL.RUNTIME_CURRENT / "skeletons/contestos-adaptive-overlay-v2.md"
-            self.assertIn("active compatibility overlay", overlay.read_text(encoding="utf-8"))
-            installed_reference = "~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md"
+            overlay = runtime / "skeletons/contestos-adaptive-overlay-v2.md"
+            self.assertIn("legacy, explicit-only", overlay.read_text(encoding="utf-8"))
+            registry = json.loads((runtime / "skill-registry.yaml").read_text(encoding="utf-8"))
+            self.assertTrue(registry["entries"])
+            self.assertFalse(any(item["lifecycle"]["promoted"] for item in registry["entries"]))
             competition_reference = "~/.codex/runtime-current/sop/tier1-skeleton/run-competition.md"
-            competition = home / INSTALL.RUNTIME_CURRENT / "sop/tier1-skeleton/run-competition.md"
+            competition = runtime / "sop/tier1-skeleton/run-competition.md"
             self.assertIn("执行通用竞赛与黑客松", competition.read_text(encoding="utf-8"))
-            for context in (codex_home / "AGENTS.md", workspace / "AGENTS.md"):
-                context_text = context.read_text(encoding="utf-8")
-                self.assertIn(installed_reference, context_text)
-                self.assertIn(competition_reference, context_text)
-                installed_overlay = Path(installed_reference.replace("~", str(home), 1))
-                self.assertIn("active compatibility overlay", installed_overlay.read_text(encoding="utf-8"))
+            global_context = (codex_home / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("~/.codex/runtime-current/codex/CODEX-ADAPTER.md", global_context)
+            self.assertIn("~/.codex/runtime-current/sop/tier1-skeleton/run-development.md", global_context)
+            self.assertIn(competition_reference, global_context)
+            workspace_context = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("Codex routing comes from `codex/CODEX-ADAPTER.md`", workspace_context)
+            for context_text in (global_context, workspace_context):
+                self.assertNotIn("runtime-current/skeletons/contestos-adaptive-overlay", context_text)
+            manifest = json.loads((runtime / INSTALL.SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v1")
+            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v1")
+            self.assertRegex(manifest["runtime_components"]["kernel"]["sha256"], r"^[0-9a-f]{64}$")
 
     def test_failure_before_current_switch_preserves_old_active_generation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -193,7 +250,6 @@ class InstallCodexRuntimeTests(unittest.TestCase):
                 (codex_home / "AGENTS.md", "codex/AGENTS.global.md"),
                 (workspace / "AGENTS.md", "codex/AGENTS.workspace.md"),
                 *((codex_home / "agents" / f"{role}.toml", f"codex/agents/{role}.toml") for role in INSTALL.ROLES),
-                (codex_home / "skills/research-execution-grill", "codex/skills/research-execution-grill"),
                 *((codex_home / "hooks" / hook, f"codex/hooks/{hook}") for hook in INSTALL.HOOK_FILES),
             ]
             (codex_home / "agents").mkdir()
@@ -316,10 +372,18 @@ with installer._install_lock():
             hooks = json.loads((codex_home / "hooks.json").read_text())
             self.assertIn("user-hook", json.dumps(hooks))
             self.assertIn("CODEX_ROUTER_ENFORCEMENT=advisory", json.dumps(hooks))
+            self.assertFalse(any(INSTALL.Installer._is_router_registration(item, home) for item in hooks["hooks"]["Stop"]))
+            self.assertNotEqual(hooks["hooks"]["PreToolUse"][-1]["matcher"], ".*")
+            self.assertNotIn("functions\\.exec", hooks["hooks"]["PreToolUse"][-1]["matcher"])
+            self.assertNotIn("functions\\.exec", hooks["hooks"]["PostToolUse"][-1]["matcher"])
 
             strict = INSTALL.Installer(ROOT, home, workspace, routing_profile="strict")
             strict.install()
-            self.assertIn("CODEX_ROUTER_ENFORCEMENT=strict", (codex_home / "hooks.json").read_text())
+            strict_hooks = json.loads((codex_home / "hooks.json").read_text())
+            self.assertIn("CODEX_ROUTER_ENFORCEMENT=strict", json.dumps(strict_hooks))
+            self.assertTrue(any(INSTALL.Installer._is_router_registration(item, home) for item in strict_hooks["hooks"]["Stop"]))
+            self.assertEqual(strict_hooks["hooks"]["PreToolUse"][-1]["matcher"], ".*")
+            self.assertIn("functions\\.exec", strict_hooks["hooks"]["PostToolUse"][-1]["matcher"])
 
     def test_named_foreground_profiles_set_only_the_requested_model_values(self) -> None:
         for profile, model in (("sol-supervisor", "gpt-5.6-sol"), ("terra-supervisor", "gpt-5.6-terra")):

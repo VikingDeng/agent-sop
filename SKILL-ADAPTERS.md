@@ -1,166 +1,115 @@
-# Skill / MCP adapters（SOP 增强层）
+# Skill / MCP capability registry
 
-> 本文件不是第二套路由器。任务先按 `README.md` 选择骨架与 SOP，再按需选择 Skill 或 MCP 适配器。它们不能替代 P1–P4、SOP 门禁、独立 oracle 或 HUMAN gate。
+> 本文件只定义能力层的边界、准入和证据要求，不分类任务、不选择模型/角色、不规定阶段顺序，也不改变任何 SOP 的验收与授权。候选、来源和状态的唯一登记表是 [`skill-registry.yaml`](skill-registry.yaml)。该文件采用严格 JSON 语法（JSON 是 YAML 1.2 子集），可直接用 Python 标准库 `json` 读取，不依赖 YAML parser。
 
 更新时间：2026-08-11
 
-## 统一调用契约
+## 1. 正交边界
 
 ```text
-任务 → agent-sop 任务分类 → skeleton / SOP →（按需）Skill / MCP adapter → 证据 → SOP gate
+用户 / 项目契约
+  → SOP Kernel：outcome、non-goals、授权/风险、claim↔evidence、停止/re-contract、交付真相
+  → Domain Profile：同类任务特有的不变式
+  → Capability slot：当前结果缺少的可观察能力
+  → Skill / MCP / native tool：可替换的能力实现
+  → Oracle evidence：回到原契约判定，不由能力实现自证
 ```
 
-## SOP 与 Skill 的正交边界
+- **SOP** 决定什么算完成、什么需要授权、什么证据足以支持 claim。它不因某个 Skill 存在而新增固定阶段。
+- **Skill** 只补充专门知识、确定性工具操作、artifact 格式或窄 oracle。它不能改写 acceptance、claim、HUMAN 边界、预算、模型路由或失败语义。
+- **MCP** 只提供受控的外部读取或动作能力。数据范围、写入/发布权限、凭据、费用和回写产物仍由原契约与对应 SOP 管理。
+- **Oracle** 给出与 claim 匹配的真实证据。Skill 作者、实现者或 MCP 返回值不能仅凭自己的 verdict 宣布完成。
+- **Codex adapter** 管理模型、sub-agent、Hook、WCU 和会话实现；这些不是 Skill registry 的字段或选择依据。
 
-- SOP 负责 outcome contract、授权/风险边界、evidence quality、停止与 re-contract 规则，以及交付真相；不负责领域技术或工具实现。
-- Skill 是 capability adapter：提供领域方法、工具操作、artifact format 或 specialized oracle。它可以在已选 SOP 外直接按需使用，但不能改变授权、路由政策、成功标准、claim、HUMAN 边界或制造 mandatory stage。
-- Skill 指令服从 user、project 和 SOP authority。它只能在指出与冻结 claim 相关的具体失败路径后，建议额外检查。
-- Skill 是 optional、replaceable capability；安装更多 Skill 不是质量证据。Skill 的 presence、version 或 hash 不构成通常的完成门禁。
+能力缺口必须由可观察失败路径触发，例如：没有真实浏览器交互证据、方法公式与实现无法 differential、性能瓶颈尚未测量、平台格式只能由官方 checker 判定。实现者的“我会做”或“我需要更多 Skill”都不是证据。
 
-- Skill 只负责领域知识、文件格式和工具操作；完成判定仍由 SOP 负责。
-- MCP 只负责受控的外部数据或动作能力；不能自行决定任务分类、授权范围、失败策略或完成状态。
-- Skill 产生的事实、数字、引用和图表必须进入项目规定的 ledger、manifest、results 或交付物目录。
-- 失败、缺证据、缺依赖和外部服务不可用时按 P3 失败；不得静默换数据、换模型、换搜索源或生成占位结果。
-- 远程、凭据、外发数据和发布动作仍受对应 SOP 与 HUMAN gate 控制。
+没有合格 Skill 时，Agent 继续使用原生能力、项目工具和最便宜的 discriminating oracle。**Skill 缺失本身不是项目 blocker，也不能降低验收。**
 
-## MCP 的位置
+## 2. Registry 只登记能力，不进行任务路由
 
-MCP 是能力层，不是流程层。调用前必须已经有：任务契约、允许的数据范围、工具用途、失败处理和回写产物。MCP 返回的数据仍需经过独立核验；MCP 执行的写入、发布、提交、消息发送或远程操作仍需命中对应 SOP 的授权和 HUMAN gate。
+[`skill-registry.yaml`](skill-registry.yaml) 每条记录必须有下列可机读字段；`declared` 阶段未知值可以是 `null`，但必须附 blocker，不能伪装成已审计事实：
 
-## 选择纪律（不是新门禁）
+- `id`、`kind`、`capability_slot` 与可检验的 `value_claim`；
+- 生命周期事实：`declared / audited / installed / enabled / evaluated / promoted`；
+- repository、commit、subpath、content SHA-256、license evidence；进入 `audited` 前这些来源字段必须 exact 且非空；
+- runtime/service/credential dependencies 和所有已知 side effects；
+- positive trigger、negative trigger、non-goals 与 authority exclusions；
+- 固定基线、fixture、重复次数、盲评、质量/成本/副作用指标、阈值、结果和失效日期。
 
-- 先由 SOP 冻结任务类型、结果契约与验收，再从已覆盖的能力槽中选择**最小充分集合**；不能因为某个 Skill 已安装就触发它。
-- 能力缺口由可观察证据触发，例如缺少视觉目标、真实数据比较、键盘/浏览器证据、方法到代码的 fidelity 证据、性质测试或平台 profiler 解释；不得让实现者用“我觉得我会/不会”自判。
-- 同一角色槽位默认单选。多个 Author 应隔离产出候选后再比较；Author、Implementer、Reviewer、oracle executor 可按真实失败路径跨角色组合，但不形成固定流水线。
-- 下文的 `explicit-only`、`conditional`、`reference/hold` 与 `reject` 是选型结论，不是新的完成状态机。单一 fixture 或 Skill presence/version/hash 均不能成为通常门禁。
-- 候选评测的 fixture、截图、缓存和盲审产物留在独立实验目录；本仓库只保留稳定的适配边界与来源，避免把评测台变成第二套 SOP。
+Registry 明确不保存：任务类型到 Skill 的自动映射、Sol/Terra/Luna 选择、Agent 角色链、下一阶段、completion verdict 或强制调用次数。项目可以按当前 failure path 查询 `capability_slot`，但不能把 registry 反向当成第二套工作流。
 
-## 已安装适配器（固定来源不等于已验证）
+### 生命周期语义
 
-### 目标与开发
-
-| Skill | 适配 SOP | 用途 | 约束 |
-|---|---|---|---|
-| `define-goal`（OpenAI） | `autonomous-supervisor`、`write-contract` | 把模糊意图变成可测目标、证据和范围 | 只定义目标，不创建执行台账或替代项目契约 |
-| `web-design-guidelines`（Vercel） | `write-contract`、`drift-check` | UI、可访问性和 Web Interface Guidelines 审查 | 只作 UI oracle，不替代功能验收 |
-| `composition-patterns`（Vercel） | `write-contract`、`drift-check` | React 组件边界、组合模式和长期可维护性 | 只在 React/组件架构任务触发 |
-
-### AI 顶会科研：批准 proposal 的执行
-
-默认输入是用户已经批准的 AI proposal。Agent 的责任是忠实实现方法，正确且高效地运行有判别力的实验，并交付可复现、可审计、足以支撑实际 claim 的证据。除非用户明确要求 proposal admission、idea generation、collision review 或论文交付，不重新选题，也不默认触发泛文献综述、泛写作或完整科研生命周期。
-
-| 能力槽 | Skill | 触发与产物 | 当前处置 |
-|---|---|---|---|
-| 默认执行入口 | `research-execution-grill`（本仓库） | 把批准的 claim 转成实现/实验契约、主要 failure mode、oracle、预算、最小 pilot、kill/scale criteria 和下一可执行步骤 | `default`；不生成 idea，不替换 proposal |
-| claim-to-test Reviewer | `hypothesis-generation` | 已批准 claim 缺少 rival explanation、可证伪预测、negative control 或 indeterminate outcome | `conditional challenger`；只使用窄子集，不生成新方向或宣布 novelty |
-| 数据与预处理 Reviewer | `exploratory-data-analysis` | 数据来源、split、预处理、缺失、泄漏或异常可能改变结论 | `conditional challenger`；只报告有因果关系的风险，不自动清洗或改数据 |
-| 科学有效性 Reviewer | `scientific-critical-thinking` | 已有具体的偏差、混杂、替代解释或 claim 越界失败路径 | `conditional challenger`、默认 report-only；不能自建新 gate |
-| 通用方法参考 | `experimental-design`、`statistical-analysis` | 需要传统随机化/阻断/DOE 或通用检验选择时 | `reference/hold`；其生物/临床/经典统计默认不能替代 AI 实验设计或 AI statistics oracle |
-| 论文交付旁路 | `scientific-visualization`、`scientific-writing` | 用户明确进入图表、论文或投稿交付 | `explicit-only`；不参与默认实现和实验执行 |
-| proposal 上游旁路 | `scientific-brainstorming`、`literature-review` | 用户明确要求 idea generation、proposal admission 或顶会 collision review | `explicit-only`；输出不是已验证的新颖性或实验结论 |
-
-K-Dense 子集经过源码、脚本和固定版本审阅，但其单元测试主要验证 bundled helpers，不证明 Agent 能更好地完成 AI 顶会 proposal。除 `research-execution-grill` 外，不把安装状态写成稳定质量结论；候选需在冻结 gold、无 Skill 基线和独立盲审下证明净提升。
-
-### 外部搜索的本机治理覆盖
-
-`literature-review` 只在显式上游任务中使用；其默认推荐的 `parallel-cli` 和可选 OpenRouter 图示脚本不获得运行权。当前工作站规则覆盖这些默认值：
-
-1. 先用本地 SearXNG、已配置 Zotero 和受治理的论文工具。
-2. 外部搜索或 API 只有在对应 SOP 明确允许时才启用，并记录查询、日期、来源和凭据边界。
-3. 未发表、敏感、私有、受控或个人数据不得送入外部搜索、模型或图示服务。
-4. OpenRouter 图示脚本默认不调用；缺少凭据必须失败，不得自动换提供商。
-
-## 受控候选（未自动安装）
-
-这些候选只在命中对应证据时显式调用。`reference/hold` 表示候选本身有价值，但现有对照尚未证明相对强基线有稳定净提升。
-
-### 项目开发：Product UI 与 Marketing
-
-| Profile / 槽位 | 候选 | 触发证据 | 负触发与边界 |
-|---|---|---|---|
-| Product UI / Visual Author | OpenAI Product Design `ideate`；Anthropic `frontend-design` 仅作隔离对照 | 用户要求产品级视觉质量，但 brief 尚无桌面/移动视觉目标，或现有结果明显通用化 | 不用于 backend-only、小 UI bug、已有精确 Figma/设计系统的照图实现；同槽 Author 不串联 |
-| Product UI / data-viz | `visualization-strategy-and-critique` | 存在真实多变量数据和明确比较问题 | 不得虚构时间序列、阈值、告警、实时遥测或因果解释 |
-| Product UI / Implementer | 中性实现者；有冻结 mock 时可对照 `image-to-code` | 已选视觉目标需要落到当前工程栈 | 不得另起视觉方向、扩大产品范围或自行宣布 fidelity/pass |
-| Product UI / Reviewer | `improve-ui`；主方向成立后可用 `make-interfaces-feel-better` quick | 截图/运行态暴露层级、密度、响应式、hit area、排版或 motion 的具体失败路径 | 默认 report-only；没有高置信 finding 时停止，不能用品味扩大 acceptance |
-| Marketing / Author→Implementer | Taste `imagegen-frontend-web` → `image-to-code` | landing、portfolio 或品牌营销页，素材与 art direction 属于交付质量 | 不用于 dashboard、后台工具或普通 preserve-brand 小改动；生成图片中的文字/数字不是事实来源 |
-| Browser oracle executor | 固定版本 browser executor + axe | contract 要求真实交互、响应式、键盘、console/request 或 a11y 证据 | flow 与 pass/fail 由 SOP 提供；工具不能自修复后自证完成 |
-
-营销页需要展示产品时，应消费 Product UI Profile 已验证的真实截图或工件，不能让 Marketing Author 虚构产品界面。正常依赖、字体、图标、chart primitive 与图片资产是否允许，继续由项目契约和 `add-dependency` 决定。
-
-### 项目开发：正确性、安全与性能
-
-| 候选 | 角色与触发 | 当前处置 |
+| 状态 | 可验证含义 | 不意味着 |
 |---|---|---|
-| Vercel `react-best-practices` | React/Next 多组件实现后的性能与实现质量 Reviewer | `conditional`；不解决 taste，不在非 React 项目触发 |
-| Trail of Bits property-based testing / libFuzzer | roundtrip、inverse、idempotence、parser、codec 或 protocol 的 Author/Reviewer | PBT 为 `reference/hold`；fuzz 按语言和真实输入面条件测试，依赖/时长需授权 |
-| GitHub Actions hardening | workflow diff 出现 untrusted metadata、token、runner trust 或 mutable action ref | `reference/hold`；安全 finding 仍需独立 validation |
-| Addy accessibility | UI 已实现且需要源码/截图层面的 a11y Reviewer | `conditional challenger`；最终由 axe、keyboard、focus、contrast 实证判定 |
-| Grafana k6 | 有明确性能目标和允许施压的目标时生成负载脚本 | `conditional challenger`；脚本生成与实际打目标分开授权，默认只打本地 fixture |
+| `declared` | 已记录候选及预期增益 | 源码可信、可安装或有质量提升 |
+| `audited` | exact bytes、license、依赖、副作用和权限排除已静态核验 | 相对强模型有净提升 |
+| `installed` | 审计过的 digest 确实存在于目标环境 | 自动启用或稳定质量 |
+| `enabled` | 在明确 activation policy 下允许被调用 | 每个匹配任务都应调用 |
+| `evaluated` | 已完成登记的对照实验并保存原始证据 | 已达到 promotion 阈值 |
+| `promoted` | 在当前模型、版本、fixture 与期限内证明净提升 | 永久有效或可以改变 SOP |
 
-### AI 顶会科研：待验证能力槽
+这些是候选状态事实，不是项目阶段。正常新增候选必须按上表前向推进；若导入历史安装，必须明确记录例外，且不得越级成为 `audited` 或 `promoted`。任何 source bytes、依赖边界、主要模型/Codex 能力或 fixture 分布发生 material change，均把 `promoted` 降回 `evaluated=false`，重新对照。
 
-以下是当前真实能力缺口，不是新增强制阶段；只有具体 proposal 暴露对应失败路径时才选用。
+只有 `promoted=true` 且未过期的窄能力可以进入默认候选集；`evaluated` 但未晋级的能力仅供显式实验；其余候选不得在稳定运行路径自动安装或启用。
 
-| 能力槽 | 候选方向 | 触发证据 | 当前处置 |
-|---|---|---|---|
-| Method fidelity Reviewer | 待选型/自建的窄 Skill | equation、pseudocode、loss、gradient、mask、状态更新、trajectory/reward/credit assignment 或 silent fallback 可能与实现不一致 | `priority-1 reference/hold`；Grill 已要求最小语义→代码→oracle mapping，候选仍须用 tiny deterministic fixture 与独立 differential/property oracle 证明额外净提升 |
-| AI experiment-design Reviewer | 待选型/自建的窄 Skill；K-Dense `experimental-design` 仅作参考 | baseline parity、ablation、negative control、seed、调参预算、holdout、judge 或 pilot→scale 设计可能不足 | `priority-2 reference/hold`；必须面向 AI benchmark 与机制 claim，不能机械移植传统 DOE |
-| AI evaluation executor | ModelScope EvalScope 或项目原生 harness | 项目明确使用 LLM/VLM/Agent benchmark、API endpoint 或推理性能测量 | `conditional challenger`；只执行固定 benchmark/config，不能决定数据、baseline、contamination、claim 或完成状态 |
-| AI statistics oracle | 待选型/自建的窄分析适配器 + 现有 `statistics-oracle` | 即将基于多 seed、样本、task、benchmark、judge 或失败/timeout 作比较性结论 | `priority-3 reference/hold`；需要 paired/hierarchical uncertainty 与 multiplicity，通用统计 Skill 不自动获得 oracle 独立性 |
-| 栈专用 Implementer | 项目已选 HF/TRL、verl、Ray、NeMo 或其他训练栈后的窄 Skill | 仓库和 proposal 已明确使用该栈且原生文档/测试仍有能力缺口 | `discovery-only`；不得自动提交付费训练、上传 Hub、启用外部跟踪或改变用户的 scale 决定 |
+## 3. 相对于 GPT-5.6 的净增益测试
 
-benchmark 污染、环境/结果复现、claim、holdout、预算和 scale 继续由现有 `contamination-check`、`lock-env`、`reproduce-result`、`run-experiment`、`statistics-oracle` 与 Research Grill 控制。外部 Skill 只能补领域方法或执行器，不能复制控制面。
+每个候选至少使用相同模型、effort、工具权限、项目 checkpoint、任务输入和预算比较三臂：
 
-### 竞赛与黑客松：赛制专用能力
+1. **Strong no-Skill baseline**：GPT-5.6 使用项目原生工具与完整任务上下文；不能故意弱化 prompt。
+2. **Minimal reminder**：只给出候选最核心的一两条提醒，不加载完整 Skill。
+3. **Full Skill**：加载固定 digest 的完整 Skill，记录实际触发和上下文成本。
 
-`run-competition` 先冻结判定、反馈、工件、环境、事件和外部动作包络；下列 adapter 只填充命中的能力槽。一个比赛可以组合多行，例如产品型 agent 黑客松同时需要官方 SDK/MCP、真实部署/browser evidence、演示材料和受控外部提交。
+第二臂用来区分“模型只是忘了提醒”与“Skill 真正提供了模型没有的能力”。只有 Full Skill 相对前两臂在盲评中产生稳定、可复现的净提升，才可能晋级。
 
-| 能力槽 | 候选 / executor | 触发与边界 |
-|---|---|---|
-| 算法 / output / interactive correctness | 官方编译器、checker、local judge；differential/PBT/fuzz | 按输入/协议的可信失败路径启用；PBT/fuzz 不是每题固定阶段，interactive 需覆盖 timeout、flush、协议顺序等实际风险 |
-| Kernel / 系统性能 | 官方 benchmark；NVIDIA nsys/ncu、ROCm、Ascend、Triton、CPU 平台工具 | 先用同口径 benchmark 建基线；只有瓶颈/机制仍不确定时 profile，不自动 sudo、sysctl、CAP_SYS_ADMIN 或弱化隔离 |
-| 窄性能实现 | CUDA Graph 等平台专用 Implementer | 只有测量已指向相应瓶颈且契约允许修改路径时启用；实现后用同一 workload 与正确性语义复测 |
-| 数据 / leaderboard | 官方 Kaggle CLI 或平台 API/CLI | 只执行 dataset、kernel、submission 等已授权平台命令；split、holdout、泄漏、public/private gap、submission budget、final reserve 与是否提交归 SOP |
-| agent / hidden runtime | 官方 harness、container、verifier、trajectory/trace executor | 复用比赛的 interface、token/time/network/sandbox 与 injected verifier；不自建第二 judge，不因 timeout 丢弃本可保留的 checkpoint/partial output |
-| 产品型黑客松 | 比赛强制的 SDK/API/MCP/partner tech；browser/deploy oracle；按需的 notebook、deck、video 或文档 adapter | adapter 证明真实集成、运行路径和交付格式；不能替代 rubric、资格、业务事实或演示真实性，也不能为使用某 Skill 而虚构 partner-tech 价值 |
-| 论文到 notebook / 研究工件 | 官方 notebook runtime、paper implementation 工具与 evaluator | 验证方法 fidelity、可执行性、输出格式和资源限制；研究 claim 需要的复现/统计证据仍由科研 SOP 控制 |
-| 外部提交面 | GitHub/Kaggle/Devpost/竞赛平台 connector、CLI 或 browser executor | 只在已冻结的平台、账户、次数/费用、final reserve、数据与公开范围内执行；保存 receipt/ID，不能自行接受条款、组队、公开发布或扩大预算 |
+评测必须与能力槽匹配：
 
-### `find-skills` 的位置
+- UI Author/Reviewer：同 brief、真实数据、相同素材预算，盲评运行态截图与关键交互；同时检查 responsive、a11y、console/request 和功能回归。
+- Code Reviewer：植入已知缺陷并测 precision/recall、误报、scope 扩张和修复回归，不能只比较文字建议数量。
+- Method/Statistics Reviewer：使用有 gold mapping 或已知统计陷阱的 AI 实验 fixture，测关键错误发现率与错误建议率。
+- Tool executor：比较真实执行成功率、artifact 有效性、幂等/恢复、权限越界和未披露副作用。
 
-`find-skills` 只用于显式 discovery escalation：当冻结验收暴露未覆盖能力槽，且现有已批准适配器无法处理时，返回候选的 source commit、license、角色、触发/负触发、副作用、authority exclusions 与独立 oracle。它不得自动安装、激活、写入“已安装”列表、改变 acceptance 或决定完成；候选必须先在仓库外做静态审阅和真实对照。
+共同记录 task success、gold-defect recall/precision、独立质量分、原验收回归、trigger precision、token/context/WCU、wall time、外部费用和副作用。阈值必须在看结果前填入 registry；单个宣传案例、单次截图、star 数、作者声誉、安装成功或 Skill 自评都不能作为 promotion 证据。
 
-## 版本与来源
+## 4. 默认选型政策
 
-安装时固定了来源 commit，便于 P4 追溯：
+- 优先评测**外部开源、窄范围、版本可固定、输出可由真实 oracle 核验**的能力，而不是再写本地 prompt 包装器。
+- 官方 checker/compiler/browser/axe/profiler/benchmark/platform CLI 等工具型适配器优先，因为其增益和输出通常更可判定；具体项目工具只有形成可复用、固定来源的 adapter 时才登记为 Skill。
+- 纯文本的 goal decomposition、brainstorming、planning、TDD、generic review、critical thinking、scientific writing 等能力，默认视为 GPT-5.6 已具备。没有三臂对照的显著增益时保持 `reject/hold`，不得默认启用。
+- umbrella router、autopilot、持久上下文、自动评分修复循环或自带 sub-agent workflow 的包不得作为全局 Skill；若其中确有价值，只能抽取可单测的窄能力重新审计。
+- 同一能力槽可以保留多个实验候选，但稳定调用一次只选一个。若要比较多个 Author，必须隔离生成并盲选，不能串联造成无法归因的“Skill soup”。
+- Skill/MCP 的事实、数字、引用、图表和外部 receipt 必须写回项目规定的证据载体；缺依赖、缺凭据或服务失败时诚实失败，不自动换来源、数据、模型或服务商。
 
-- OpenAI `define-goal`: `openai/skills@49f948faa9258a0c61caceaf225e179651397431`
-- Vercel `web-design-guidelines`、`composition-patterns`: `vercel-labs/agent-skills@7c180d9044c9ae2b442b567aad4e42a28dd5ed62`
-- K-Dense 科研子集：`K-Dense-AI/scientific-agent-skills@d767725c6e93b1d02a220e6be75b261a9833ede5`
+### Research Grill wrapper 的退役状态
 
-以下是候选评测时使用的固定来源，不表示已经安装或获得运行权：
+历史上的 `codex/skills/research-execution-grill` 只把本仓库科研 SOP 再包装给 Codex discovery。它没有独立工具、外部知识或相对于直接读取 SOP 的增益证据，因此：
 
-- Taste：`Leonxlnx/taste-skill@e988add20dab0fa97d7a76781c48961c8184288e`
-- OpenAI Product Design：`openai/role-specific-plugins@fe5608d2512a7d6a7b9821ce8a88c48464ecd6e4`
-- OpenAI data visualization：`openai/plugins@11c74d6ba24d3a6d48f54a194cd00ef3beea18f9`
-- Product UI Reviewer：`ibelick/ui-skills@fdc667270fd2c71b3a8b7aca04dda154a7b8a5d5`
-- Interface polish：`jakubkrehel/make-interfaces-feel-better@5f3c3c26c512b3469e6dbcab8a0d73e8b575a566`
-- Anthropic frontend-design：`anthropics/skills@f17010c9bb483898c1d9c9f42dde2b3a98889434`
-- Trail of Bits testing：`trailofbits/skills@7b9bd5f950f89a9ba71b249b9801c1a95be3928e`
-- Addy accessibility：`addyosmani/web-quality-skills@95d6e255afe1596b557d7a8498517884438f5b3a`
-- Grafana k6：`grafana/skills@d9dfb9ec7a6b1ac6c8ec9741ec045ad6f412dec6`
-- GitHub Actions hardening：`github/awesome-copilot@3f0bba475ec40b9680e1d0311b9caffeec5ad4c3`
-- ModelScope EvalScope：`modelscope/evalscope@e82fd3845d18ae5379edd33136dae9342f6875a3`
-- NVIDIA profiling：`NVIDIA/TensorRT-LLM@10689401f113efb1212c51943a5a239d5d21345f`
+- 不再称为默认科研 Skill，不计入能力覆盖或“已验证 Skill”；
+- 科研实施直接以 `sop/tier1-skeleton/research-execution-grill.md` 为控制面；
+- 该 wrapper 已从稳定 installer/runtime 退役，registry 只保留其历史 provenance，不计为 installed/enabled；
+- 若平台将来确实需要 discovery 入口，应另建 explicit-only thin launcher，并先做“直接 SOP vs SOP+launcher”对照；它仍不能被计作领域能力。
 
-K-Dense 是维护较好的通用科学 Skill 库，不是 OpenAI 官方 Skill，也不是已验证的 AI 顶会实验执行系统。具体研究结论仍须经过本地数据、独立 oracle、复现和人工审查。
+## 5. MCP 与外部动作
 
-## 不采用的替代方案
+MCP adapter 也使用同一来源、依赖、副作用、trigger 和 evaluation 字段，但服务可用不等于数据可信或动作获授权：
 
-- 不安装新的 Superpowers 全局流程包：它的 brainstorming、planning、TDD、review、subagent workflow 与现有 SOP 重叠，会增加上下文和路由竞争。
-- `addyosmani/agent-skills` 可作为开发流程设计的参考，但暂不启用为第二路由器；已有 SOP + Vercel/GitHub 专项 Skill 足够覆盖当前开发门禁。
-- 不安装泛化的 Kaggle、自动刷榜或“AI research autopilot”包；比赛的 correctness/evaluation evidence、按需 local proxy、泄漏边界、submission budget/final reserve、外部授权和 fallback 语义必须由 ContestOS/SOP 控制，adapter 不得形成第二个刷榜状态机。
-- 不把 Impeccable 完整 umbrella、Taste `redesign-existing-projects` 或其他自带 router、持久上下文、hooks、评分/修复循环的包作为全局 Skill；只允许经验证的窄命令或角色。
-- 不采用由 browser 工具自行触发、自行修复并自行宣布通过的 verification wrapper；可复用底层浏览能力，但 route、flow 与 verdict 必须来自 SOP。
-- 不采用要求自动提交付费训练、强制上传模型/数据或强制启用外部跟踪的训练 Skill；只允许从中抽取经验证的栈知识，并由现有预算与远程动作边界控制执行。
-- 不允许运行时动态 `find-skills` 自由搜索、安装和组合；这只适合隔离探索，不属于稳定交付路径。
+- 读取类 MCP 记录查询范围、时间、来源和缓存/新鲜度；高影响事实按 claim 风险交叉核验，而不是机械要求所有返回值双重验证。
+- 写入、提交、发布、消息发送、付费调用和远程变更只能在原授权包络内执行，并保存 receipt/ID；MCP 不能自行扩大范围或接受新条款。
+- 私有、未发表、受控、个人或敏感数据不得因 adapter 默认配置而外发。缺凭据必须失败，不得偷偷换 provider。
+
+## 6. Discovery 与 `find-skills`
+
+稳定运行路径**禁止运行时调用 `find-skills` 搜索、安装、组合或激活新 Skill**。动态 discovery 会引入未固定代码、未知 license/side effect、prompt injection 和无法归因的质量变化。
+
+只有在单独的离线选型任务中，已冻结的 capability slot 确实没有候选时，才允许使用 `find-skills` 生成 `declared` 记录。此时未知来源字段保持 `null + blocker`；进入 `audited/installed` 前必须补齐 exact source、license、依赖、副作用、negative trigger 和评测计划。在隔离环境静态审阅和三臂对照前，不得安装到稳定 runtime。`find-skills` 不是让 Agent 自己判断能力缺口的机制，也不拥有任何项目完成权。
+
+## 7. 当前候选结论
+
+具体候选与缺失审计项见 [`skill-registry.yaml`](skill-registry.yaml)。当前没有任何外部候选达到 `promoted`：
+
+- Product UI / taste、React、accessibility、property testing、workflow hardening、k6、EvalScope 和 NVIDIA profiling 均保留为待审计或待对照候选；
+- `define-goal`、K-Dense 泛化文本子集与内部 Grill wrapper 不默认启用；
+- method-fidelity、AI experiment design、AI statistics 与具体 HF/TRL/verl/Ray/NeMo 栈仍是待选型能力槽，不用未经验证的通用科研 Skill 填空。
+
+这一结论只说明 Skill 层尚未证明净增益，不降低 development、research 或 competition 的原验收，也不阻止 Agent 使用项目原生工具完成任务。

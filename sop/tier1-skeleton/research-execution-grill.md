@@ -4,7 +4,7 @@
 - **落实纪律**: P1(冻结 claim 与验收) P2(证据真实性) P3(风险自适应) P4(可复现交付)
 - **绑定骨架**: research
 - **通用性档位**: U2
-- **版本**: v6（adaptive default；signed v3 为可选 strict profile）
+- **版本**: v7（adaptive default；signed v3 为可选 strict profile）
 
 ## 目标
 
@@ -26,6 +26,10 @@
 → tier0-core/build-oracle.md（需要独立 correctness/measurement oracle 时）
 
 → tier0-core/no-fallback-review.md（检查隐藏失败与证据降级时）
+
+→ tier0-core/profile-code.md（scale feasibility 或 efficiency claim 存在真实测量未知量时）
+
+→ tier1-skeleton/statistics-oracle.md（正式 inferential claim 需要统计设计或复核时）
 
 ## 默认自由度
 
@@ -51,6 +55,7 @@ Agent 根据 proposal 类型、风险和现有证据选择检查与执行顺序�
 6. 当前预算、kill criteria、随机性、数据边界和复现要求是什么？
 7. proposal 中哪些 equation、pseudocode、loss、gradient、mask、state/trajectory/reward/credit update 是 method 语义？它们分别落到哪里、由什么独立 oracle 验证？
 8. 本轮 run 属于 diagnostic、code readiness、exploratory 还是 confirmatory？是否具备进入 final results 的资格？
+9. baseline 是否同数据、同信息、同评测与可比 tuning budget？主张所需的 negative control、ablation、holdout/judge protocol 和失败处理是什么？
 
 答案可以写入现有 handoff、实验计划或 proposal companion；不强制创建特定文件名或 schema。
 
@@ -67,7 +72,9 @@ Agent 根据 proposal 类型、风险和现有证据选择检查与执行顺序�
 
 只执行能改变决策或提升最终可信度的检查。不要为了满足模板制造无关 artifact。
 
-若 proposal 引入新方法，在首个经验性 run 前建立最小 method-fidelity mapping：`proposal 语义 → implementation location → 可观察 invariant → independent/naive/property oracle`。它可以写进现有设计文档或测试说明，不要求固定文件名。关键语义缺少映射或 oracle 时只表示 code readiness 未完成，不能靠 smoke、loss 下降或端到端分数自证方法已经忠实实现。
+若 proposal 引入新方法，在首个经验性 run 前建立最小 method-fidelity mapping：`proposal 语义 → implementation location → 可观察 invariant → independent/naive/property oracle`。它可以写进现有设计文档或测试说明，不要求固定文件名。关键语义缺少映射或 oracle 时只表示 code readiness 未完成，不能靠 smoke、loss 下降或端到端分数自证方法已经忠实实现。若同一实现者同时解释 proposal、编写 mapping 和实现核心方法，至少让一个不依赖该实现路径的 oracle、tiny deterministic fixture、独立推导或只读 fidelity reviewer 尝试证伪关键语义；换一个共享同一 mapping 的 reviewer 不构成独立性。
+
+在 material pilot 前检查最小实验设计闭环：关键 baseline 使用可比输入、信息、预处理、推理/训练预算与 tuning opportunity；调参集和最终证据集分离；主张因果机制时有能区分替代解释的 negative control/ablation；model/human judge 的 rubric、顺序、重复与冲突处理匹配 claim。缺什么只阻断依赖它的 claim，不把所有 proposal 塞进固定矩阵。
 
 ### 2. 让 gate 对应真实边界
 
@@ -87,7 +94,7 @@ Agent 可以自由选择实现顺序、实验 plumbing、诊断方式、subagent
 
 Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新增建议若不影响本轮结论，进入 backlog，不移动当前验收线。相同失败类别重复且没有新证据时，停止局部补丁并重做实现或缩小诊断问题，不生成无界 successor gate。原 proposal claim、primary estimand、成功标准、method 语义、baseline、数据、分析方法和正式预算仍保持原状态；任何物质改变必须 re-contract，不能用一个更弱发现替代原任务完成。
 
-科学 producer/evaluator 路径采用 fail-fast 语义：不得在同一 run 中自动切换 method component、model、backend、device、dataset、split、metric、parser 或 analysis path 后继续产出证据。失败后可以显式修代码或选择新配置，但替代路径必须成为新的可审计 run，并接受原 acceptance 与 oracle；这是 between-run adaptation，不是 runtime fallback code。
+科学 producer/evaluator 路径采用 fail-fast 语义：不得在同一 run 中自动切换 method component、model、backend、device、dataset、split、metric、parser 或 analysis path 后继续产出证据。不要为“以后也许能跑通”保留 catch-and-continue、默认值、旧结果复用或自动替代分支；除非 resilience/fallback 本身就是已冻结方法的一部分并被单独验收。失败后可以显式修代码或选择新配置，但替代路径必须成为新的可审计 run，并接受原 acceptance 与 oracle；这是 between-run adaptation，不是 runtime fallback code。
 
 若 pilot 的 immutable evidence 被判失败，保留该结论，不通过补 validator、补 provenance 文件或新 replay artifact 追认旧 run。修复只面向下一次获授权的 fresh run。便宜的真实性或确定性检查应尽量嵌入下一次执行并直接比较；只有跨环境复现本身是 claim 或独立 artifact 能改变决策时，才引入单独 replay 工具。代码修复通过单元/负例测试只代表 code readiness，不代表旧 pilot 或科学 claim 通过。
 
@@ -95,7 +102,7 @@ Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新�
 
 ### 4. 运行最小有信息量的实验
 
-先运行最便宜且能区分当前未知量的检查。synthetic、mock/stub、plumbing smoke 与 code-readiness fixture 只能验证 wiring、schema、异常处理、provenance、成本遥测、输出格式和实现 invariant，必须 `paper_eligible=false`，不得触发 scientific GO 或支持 claim。真实任务/数据、冻结 protocol 且无 fallback 的 empirical pilot 才可作为预声明的 exploratory GO/NO-GO 证据；它默认不进入 final results。只有满足预先声明的 scale criteria 才扩大。失败 pilot 是结果，不是流程违规。
+先运行最便宜且能区分当前未知量的检查。synthetic、mock/stub、plumbing smoke 与 code-readiness fixture 只能验证 wiring、schema、异常处理、provenance、成本遥测、输出格式和实现 invariant，必须 `paper_eligible=false`，不得触发 scientific GO 或支持 claim。真实任务/数据、冻结 protocol 且无 fallback 的 empirical pilot 才可作为预声明的 exploratory GO/NO-GO 证据；它默认不进入 final results。只有满足预先声明的 scale criteria 才扩大。扩大前估算目标配置的时间、显存、吞吐、存储与失败成本；只有 scale feasibility 仍未知、瓶颈会改变实验设计或论文提出 efficiency claim 时才调用 `profile-code`/平台 profiler，并使用同口径 workload，不把 profiling 变成每个 pilot 的固定阶段。失败 pilot 是结果，不是流程违规。
 
 ### 5. 验收最终质量
 
@@ -103,6 +110,7 @@ Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新�
 
 - 代码和实验是否真实运行，输出能否重现；
 - baseline、预算和调参是否公平；
+- negative control/ablation、holdout 与 judge protocol 是否足以区分主张和主要替代解释；
 - 数据、labels、metrics 与最终 claim 是否对应；
 - 主要替代解释是否被测试或诚实保留；
 - 结果是否区分探索性、确认性和未验证结论；
@@ -135,6 +143,7 @@ Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新�
 
 - execution contract 足以指导下一步真实工作；
 - method-fidelity mapping 覆盖对 claim 有因果作用的关键语义，并有匹配 oracle 或明确的阻断项；
+- baseline parity、tuning opportunity、必要的 negative control/ablation 与 judge/holdout protocol 已有匹配证据或被明确限制；
 - 与 claim 相关的主要 failure modes、oracle、预算和 scale criteria 已得到证据支持或诚实标为未决；
 - 原 claim 的 `SUPPORTED`、`FALSIFIED`、`NOT_ESTABLISHED` 或 `BLOCKED` 状态明确，次级发现没有替换它；
 - authoritative results 只消费 eligible evidence，并可追溯到 raw run；

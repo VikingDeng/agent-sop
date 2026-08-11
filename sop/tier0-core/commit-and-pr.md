@@ -33,7 +33,7 @@
 
 [AUTO] 选定 `commit`/远端 delivery 时 `git_dirty=false`(要提交的变更已全部 stage,无未跟踪的意图内文件遗漏);commit message 符合 `{type}: {...}` 规范。`local handoff` 至少保留可追溯 diff/status 证据。
 [REVIEW] PR 至少能回答:每个改动对应哪条需求?有无未声明的依赖/抽象?
-[REVIEW] 产出符合 → PROSE_STANDARD.md(commit message / PR 描述)。
+[REVIEW] 产出符合 → [PROSE_STANDARD.md](../../PROSE_STANDARD.md)(commit message / PR 描述)。
 [HUMAN] `direct authorized push/merge` 只有在用户明确授权时可用；未授权不得把本地 handoff 改成远端交付。
 
 ## 完成判定

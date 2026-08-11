@@ -54,32 +54,46 @@ SNAPSHOT_MANIFEST = "snapshot-manifest.json"
 INSTALL_LOCK = Path(".codex/install.lock")
 
 SNAPSHOT_FILES = (
+    "PRINCIPLES.md",
+    "PROSE_STANDARD.md",
+    "SKILL-ADAPTERS.md",
+    "skill-registry.yaml",
     "codex/AGENTS.global.md",
     "codex/AGENTS.workspace.md",
+    "codex/CODEX-ADAPTER.md",
     "codex/README.md",
     "codex/ROUTING_ACCEPTANCE.md",
     "codex/hooks/hooks.json",
     "codex/hooks/weighted_cost_router.py",
     "codex/hooks/weighted_routing_policy.py",
     *(f"codex/agents/{role}.toml" for role in ROLES),
-    "codex/skills/research-execution-grill/SKILL.md",
-    "codex/skills/research-execution-grill/agents/openai.yaml",
     "sop/tier0-core/autonomous-supervisor.md",
+    "sop/tier0-core/add-dependency.md",
     "sop/tier0-core/build-oracle.md",
     "sop/tier0-core/commit-and-pr.md",
+    "sop/tier0-core/lock-env.md",
     "sop/tier0-core/no-fallback-review.md",
     "sop/tier0-core/profile-code.md",
+    "sop/tier0-core/reproduce-result.md",
     "sop/tier1-skeleton/build-local-proxy.md",
+    "sop/tier1-skeleton/drift-check.md",
     "sop/tier1-skeleton/maintain-patch-series.md",
     "sop/tier1-skeleton/package-submission.md",
     "sop/tier1-skeleton/research-execution-grill.md",
     "sop/tier1-skeleton/references/research-execution-grill-artifact.md",
     "sop/tier1-skeleton/references/research-evidence-presentation.md",
+    "sop/tier1-skeleton/references/statistics-redlines.md",
     "sop/tier1-skeleton/run-competition.md",
+    "sop/tier1-skeleton/run-development.md",
+    "sop/tier1-skeleton/run-experiment.md",
+    "sop/tier1-skeleton/statistics-oracle.md",
+    "sop/tier1-skeleton/write-contract.md",
+    "sop/tier2-activity/ops-remote-compute.md",
     "scripts/validate_research_execution_grill.py",
     "scripts/research_grill_state_machine.py",
     "skeletons/contestos-adaptive-overlay-v2.md",
 )
+RETIRED_MANAGED_LINKS = (Path(".codex/skills/research-execution-grill"),)
 SUPPORTED_MODEL_FAMILIES = ("sol", "terra", "luna")
 
 
@@ -311,6 +325,32 @@ class Installer:
         os.chmod(path, 0o555)
         os.chmod(path / SNAPSHOT_MANIFEST, 0o444)
 
+    def _runtime_components(self, file_hashes: dict[str, str]) -> dict[str, Any]:
+        component_paths = {
+            "kernel": "sop/tier0-core/autonomous-supervisor.md",
+            "codex_adapter": "codex/CODEX-ADAPTER.md",
+            "development_profile": "sop/tier1-skeleton/run-development.md",
+            "research_profile": "sop/tier1-skeleton/research-execution-grill.md",
+            "competition_profile": "sop/tier1-skeleton/run-competition.md",
+            "statistics_oracle": "sop/tier1-skeleton/statistics-oracle.md",
+        }
+        components: dict[str, Any] = {}
+        for name, relative in component_paths.items():
+            text = (self.repo_root / relative).read_text(encoding="utf-8")
+            match = re.search(r"^- \*\*版本\*\*:\s*([^\n]+)$", text, re.MULTILINE)
+            components[name] = {
+                "path": relative,
+                "version": match.group(1).strip() if match else "UNKNOWN",
+                "sha256": file_hashes[relative],
+            }
+        registry = json.loads((self.repo_root / "skill-registry.yaml").read_text(encoding="utf-8"))
+        components["skill_registry"] = {
+            "path": "skill-registry.yaml",
+            "schema_version": registry.get("schema_version", "UNKNOWN"),
+            "sha256": file_hashes["skill-registry.yaml"],
+        }
+        return components
+
     def prepare_snapshot(self) -> Path:
         sources = self._snapshot_source_paths()
         missing = [str(path) for path in sources if not path.is_file() or path.is_symlink()]
@@ -343,6 +383,7 @@ class Installer:
                 "schema_version": 1,
                 "content_address": f"sha256-{digest}",
                 "files": file_hashes,
+                "runtime_components": self._runtime_components(file_hashes),
             }
             self._atomic_text(staging / SNAPSHOT_MANIFEST, json.dumps(manifest, sort_keys=True, indent=2) + "\n")
             self._lock_snapshot(staging, sources)
@@ -536,9 +577,36 @@ class Installer:
                 if not isinstance(registration, dict) or not isinstance(registration.get("hooks"), list):
                     raise ValueError(f"{label} contains a malformed {event} registration")
 
+    def _profile_hook_source(self, source: dict[str, Any]) -> dict[str, Any]:
+        """Reduce advisory instrumentation to lifecycle-relevant events.
+
+        Strict mode retains the repository policy verbatim because it is an
+        explicitly selected enforcement profile.  Advisory mode records
+        provenance and observes sub-agent lifecycle/routing calls without
+        paying a Python process launch on every unrelated tool and Stop.
+        """
+        if self.routing_profile == "strict":
+            return source
+        profiled = json.loads(json.dumps(source))
+        profiled["hooks"]["Stop"] = []
+        for registration in profiled["hooks"].get("PreToolUse", []):
+            registration["matcher"] = (
+                "Agent|spawn_agent|create_agent|resume_agent|close_agent|"
+                "multi_agent_v1__spawn_agent|multi_agent_v1__create_agent|"
+                "multi_agent_v1__close_agent"
+            )
+        for registration in profiled["hooks"].get("PostToolUse", []):
+            registration["matcher"] = (
+                "Agent|spawn_agent|create_agent|close_agent|"
+                "multi_agent_v1__spawn_agent|multi_agent_v1__create_agent|"
+                "multi_agent_v1__close_agent"
+            )
+        return profiled
+
     def _render_hooks(self) -> str:
         source = json.loads((self.repo_root / "codex/hooks/hooks.json").read_text(encoding="utf-8"))
         source = self._hook_command(source, self.home, self.routing_profile)
+        source = self._profile_hook_source(source)
         self._validate_hook_shape(source, "repository hooks.json")
         if self.hooks_path.is_symlink():
             raise ValueError(f"refusing to modify symlink {self.hooks_path}")
@@ -650,7 +718,6 @@ class Installer:
                 (codex_home / "agents" / f"{role}.toml", current / "codex/agents" / f"{role}.toml")
                 for role in ROLES
             ),
-            (codex_home / "skills/research-execution-grill", current / "codex/skills/research-execution-grill"),
             *(
                 (codex_home / "hooks" / hook_file, current / "codex/hooks" / hook_file)
                 for hook_file in HOOK_FILES
@@ -661,6 +728,29 @@ class Installer:
         if not self.dry_run and not self._snapshot_is_verified(snapshot, self._snapshot_hashes(snapshot)):
             raise ValueError(f"generation failed verification before linking: {snapshot}")
         return tuple(links)
+
+    def _retire_obsolete_links(self) -> None:
+        """Remove only legacy symlinks that this adapter can identify as its own."""
+        for relative in RETIRED_MANAGED_LINKS:
+            destination = self.home / relative
+            if not destination.is_symlink():
+                continue
+            raw_target = os.readlink(destination)
+            target = (destination.parent / raw_target).resolve() if not Path(raw_target).is_absolute() else Path(raw_target).resolve()
+            recognized_targets = {
+                (self.runtime_current / "codex/skills/research-execution-grill").resolve(strict=False),
+                (self.repo_root / "codex/skills/research-execution-grill").resolve(strict=False),
+            }
+            # A stable link through runtime-current resolves into the active
+            # generation, so compare its literal form as well as resolved paths.
+            stable_literal = str(self.runtime_current / "codex/skills/research-execution-grill")
+            if target not in recognized_targets and raw_target != stable_literal:
+                self._record(f"preserve unrecognized retired-link target {destination} -> {raw_target}")
+                continue
+            self._backup(destination)
+            self._record(f"retire obsolete managed link {destination}")
+            if not self.dry_run:
+                destination.unlink()
 
     def _current_generation_is_valid(self) -> bool:
         if not self.runtime_current.is_symlink():
@@ -734,6 +824,7 @@ class Installer:
                 self._switch_current(snapshot)
                 if not current_is_valid:
                     self._prepare_stable_links(snapshot)
+                self._retire_obsolete_links()
             except BaseException as exc:
                 backups = ", ".join(str(path) for path in self.backups) or "none"
                 raise RuntimeError(
@@ -746,7 +837,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--home", type=Path, default=Path.home())
-    parser.add_argument("--workspace", type=Path, default=Path("/Users/viking"))
+    parser.add_argument(
+        "--workspace",
+        type=Path,
+        default=Path.home(),
+        help="workspace root that receives the lightweight AGENTS.md overlay (default: current home)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--profile",

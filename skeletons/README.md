@@ -1,27 +1,32 @@
-# 项目骨架索引(Skeletons)
+# Legacy ContestOS skeletons
 
-> 骨架 = 一个**项目**的完整结构标准(目录树 + 防腐职责 + 硬锚)。跨时间存在、有 src/ 有交付物。
-> 与 SOP 的区别:骨架是"项目长什么样",SOP 是"怎么正确做一件事"。SOP 见 ../sop/。
-> 三骨架共用地基见 ../PRINCIPLES.md。
+本目录保存三份 provenance-locked ContestOS v1 项目骨架。它们记录了历史来源和完整项目结构，但不再进入新任务的默认运行上下文。
 
-三份 `contestos-*-v1.md` 是带版本与来源身份的 provenance-locked 原件,不得在原文件上叠加运行时规则。选中任一 v1 时，同时启用 [ContestOS adaptive compatibility overlay v2.2](contestos-adaptive-overlay-v2.md)：它把冲突的 v1 runtime wording 翻译到 `autonomous-supervisor` 的当前语义，但不改写 v1 来源声明或原文件。`autonomous-supervisor` 是唯一通用运行时决策源；overlay 是兼容层，不是第二套 authority。
+新项目使用：
 
-项目启用骨架时,在项目级 Agent 指令文件中引用:Codex 使用 `AGENTS.md`,Claude 使用 `CLAUDE.md`。v1 原件中专指 `CLAUDE.md` 的历史启用文字保留以维护来源完整性。
+- 通用执行内核：[`autonomous-supervisor`](../sop/tier0-core/autonomous-supervisor.md)
+- 0→1 开发：[`run-development`](../sop/tier1-skeleton/run-development.md)
+- approved AI proposal 实现：[`research-execution-grill`](../sop/tier1-skeleton/research-execution-grill.md)
+- 竞赛/benchmark/hackathon：[`run-competition`](../sop/tier1-skeleton/run-competition.md)
 
-启用模板：项目级指令同时引用 `sop/tier0-core/autonomous-supervisor.md`、所选 `contestos-*-v1.md` 与 `contestos-adaptive-overlay-v2.md`;若运行时语义冲突，以 Supervisor 及 overlay 的 canonical mapping 为准。
+| Legacy source | 历史适用范围 | 状态 |
+|---|---|---|
+| [contestos-ai-research-v1.md](contestos-ai-research-v1.md) | AI research project skeleton | provenance-locked；explicit-only |
+| [contestos-competition-v1.md](contestos-competition-v1.md) | performance/competition skeleton | provenance-locked；explicit-only |
+| [contestos-development-v1.md](contestos-development-v1.md) | development project skeleton | provenance-locked；explicit-only |
+| [contestos-adaptive-overlay-v2.md](contestos-adaptive-overlay-v2.md) | 将所选 v1 翻译到当前 Kernel/Profile 语义 | legacy compatibility overlay v2.4 |
 
-| 骨架 | 适用 | 落实纪律 | 硬锚 |
-|---|---|---|---|
-| [contestos-ai-research-v1.md](contestos-ai-research-v1.md) | AI 科研:LLM/agent/RL/推理期/数据中心 | P1-P4 | §6 |
-| [contestos-competition-v1.md](contestos-competition-v1.md) | 客观评测竞赛的 provenance-locked 性能主轴；当前通用赛制由 overlay mapping 扩展 | P1-P4 | §8 |
-| [contestos-development-v1.md](contestos-development-v1.md) | 高质量项目交付(库/服务/CLI/管线/infra组件/应用/黑客松MVP) | P1-P4 | §7 |
-| [contestos-adaptive-overlay-v2.md](contestos-adaptive-overlay-v2.md) | 选中任一 ContestOS v1 时的 compatibility overlay v2.2 | P1-P4 | translates conflicting v1 wording to the Supervisor; preserves provenance |
+## 显式启用
 
-## 选骨架
+只有 closest project instructions 已经选择某份 v1，或用户要求复现/迁移 legacy workflow 时，项目级 `AGENTS.md` 才同时引用：
 
-- 做实验/验证方法 → research
-- 打 deadline-bound、受规则约束且被 judge/评委验收的比赛 → 启用 [`run-competition`](../sop/tier1-skeleton/run-competition.md)
-- 算法、榜单、性能、系统、hidden-runtime 等客观评测主轴 → competition + overlay
-- 产品型黑客松 → development 负责成品开发，同时组合 `run-competition` 管理 rubric、必用技术、截止、材料与外部提交
-- 交付一个非比赛项目 → development
-- **不是项目(运维/写作/调研)→ 不用骨架,走 ../sop/tier2-activity/**
+1. 当前 Kernel；
+2. 当前 Domain Profile；
+3. 所选 v1；
+4. compatibility overlay。
+
+冲突时以用户/项目 contract、当前 Kernel 和 Domain Profile 为准。不得编辑 v1 原件，也不得把 overlay 当成新的通用 authority。
+
+## 迁移
+
+迁移项目时，把仍有价值的 outcome、domain、evidence 和 risk requirements 写入项目 contract；把工具、模型、命令和目录细节写入项目/平台 adapter。完成后删除项目运行时对 v1/overlay 的引用，历史文件继续留在本目录供 provenance 查询。
