@@ -2,7 +2,7 @@
 
 > 本文件不是第二套路由器。任务先按 `README.md` 选择骨架与 SOP，再按需选择 Skill 或 MCP 适配器。它们不能替代 P1–P4、SOP 门禁、独立 oracle 或 HUMAN gate。
 
-更新时间：2026-08-07
+更新时间：2026-08-11
 
 ## 统一调用契约
 
@@ -26,6 +26,14 @@
 ## MCP 的位置
 
 MCP 是能力层，不是流程层。调用前必须已经有：任务契约、允许的数据范围、工具用途、失败处理和回写产物。MCP 返回的数据仍需经过独立核验；MCP 执行的写入、发布、提交、消息发送或远程操作仍需命中对应 SOP 的授权和 HUMAN gate。
+
+## 选择纪律（不是新门禁）
+
+- 先由 SOP 冻结任务类型、结果契约与验收，再从已覆盖的能力槽中选择**最小充分集合**；不能因为某个 Skill 已安装就触发它。
+- 能力缺口由可观察证据触发，例如缺少视觉目标、真实数据比较、键盘/浏览器证据、性质测试或平台 profiler 解释；不得让实现者用“我觉得我会/不会”自判。
+- 同一角色槽位默认单选。多个 Author 应隔离产出候选后再比较；Author、Implementer、Reviewer、oracle executor 可按真实失败路径跨角色组合，但不形成固定流水线。
+- 下文的 `explicit-only`、`conditional`、`reference/hold` 与 `reject` 是选型结论，不是新的完成状态机。单一 fixture 或 Skill presence/version/hash 均不能成为通常门禁。
+- 候选评测的 fixture、截图、缓存和盲审产物留在独立实验目录；本仓库只保留稳定的适配边界与来源，避免把评测台变成第二套 SOP。
 
 ## 已安装的精品适配器
 
@@ -63,6 +71,51 @@ MCP 是能力层，不是流程层。调用前必须已经有：任务契约、�
 3. 未发表、敏感、私有、受控或个人数据不得送入外部搜索、模型或图示服务。
 4. OpenRouter 图示脚本默认不调用；缺少凭据必须失败，不得自动换提供商。
 
+## 受控候选（未自动安装）
+
+这些候选只在命中对应证据时显式调用。`reference/hold` 表示候选本身有价值，但现有对照尚未证明相对强基线有稳定净提升。
+
+### 项目开发：Product UI 与 Marketing
+
+| Profile / 槽位 | 候选 | 触发证据 | 负触发与边界 |
+|---|---|---|---|
+| Product UI / Visual Author | OpenAI Product Design `ideate`；Anthropic `frontend-design` 仅作隔离对照 | 用户要求产品级视觉质量，但 brief 尚无桌面/移动视觉目标，或现有结果明显通用化 | 不用于 backend-only、小 UI bug、已有精确 Figma/设计系统的照图实现；同槽 Author 不串联 |
+| Product UI / data-viz | `visualization-strategy-and-critique` | 存在真实多变量数据和明确比较问题 | 不得虚构时间序列、阈值、告警、实时遥测或因果解释 |
+| Product UI / Implementer | 中性实现者；有冻结 mock 时可对照 `image-to-code` | 已选视觉目标需要落到当前工程栈 | 不得另起视觉方向、扩大产品范围或自行宣布 fidelity/pass |
+| Product UI / Reviewer | `improve-ui`；主方向成立后可用 `make-interfaces-feel-better` quick | 截图/运行态暴露层级、密度、响应式、hit area、排版或 motion 的具体失败路径 | 默认 report-only；没有高置信 finding 时停止，不能用品味扩大 acceptance |
+| Marketing / Author→Implementer | Taste `imagegen-frontend-web` → `image-to-code` | landing、portfolio 或品牌营销页，素材与 art direction 属于交付质量 | 不用于 dashboard、后台工具或普通 preserve-brand 小改动；生成图片中的文字/数字不是事实来源 |
+| Browser oracle executor | 固定版本 browser executor + axe | contract 要求真实交互、响应式、键盘、console/request 或 a11y 证据 | flow 与 pass/fail 由 SOP 提供；工具不能自修复后自证完成 |
+
+营销页需要展示产品时，应消费 Product UI Profile 已验证的真实截图或工件，不能让 Marketing Author 虚构产品界面。正常依赖、字体、图标、chart primitive 与图片资产是否允许，继续由项目契约和 `add-dependency` 决定。
+
+### 项目开发：正确性、安全与性能
+
+| 候选 | 角色与触发 | 当前处置 |
+|---|---|---|
+| Vercel `react-best-practices` | React/Next 多组件实现后的性能与实现质量 Reviewer | `conditional`；不解决 taste，不在非 React 项目触发 |
+| Trail of Bits property-based testing / libFuzzer | roundtrip、inverse、idempotence、parser、codec 或 protocol 的 Author/Reviewer | PBT 为 `reference/hold`；fuzz 按语言和真实输入面条件测试，依赖/时长需授权 |
+| GitHub Actions hardening | workflow diff 出现 untrusted metadata、token、runner trust 或 mutable action ref | `reference/hold`；安全 finding 仍需独立 validation |
+| Addy accessibility | UI 已实现且需要源码/截图层面的 a11y Reviewer | `conditional challenger`；最终由 axe、keyboard、focus、contrast 实证判定 |
+| Grafana k6 | 有明确性能目标和允许施压的目标时生成负载脚本 | `conditional challenger`；脚本生成与实际打目标分开授权，默认只打本地 fixture |
+
+### 科研实验：阶段补充
+
+现有 K-Dense 子集已经覆盖文献调研、假设、实验设计、EDA、统计、批判思考、可视化与写作，不再安装科研全家桶。Nature Academic Search、ModelScope EvalScope 等只进入后续 discovery/评测队列；在固定来源、许可、副作用和 E2E 证据前不列为已批准适配器。benchmark 污染、复现、claim 与 holdout 继续由现有 `contamination-check`、`reproduce-result`、`statistics-oracle` 和 Research Grill 控制，外部 Skill 不能复制控制面。
+
+### 比赛刷榜：测量与平台能力
+
+| 候选 | 角色与触发 | 当前处置 |
+|---|---|---|
+| differential/PBT/fuzz | 性能优化前的 correctness oracle | 按可观察结构条件启用；正确性先于速度 |
+| NVIDIA TensorRT-LLM Nsight Systems / Nsight Compute | 已有真实 nsys/ncu 证据时的系统级 / kernel 级测量 Reviewer | `reference/hold`；不得自动 sudo、sysctl、CAP_SYS_ADMIN 或弱化隔离 |
+| CUDA Graph 等窄 Implementer | nsys 已证明 launch overhead 且契约允许修改执行路径 | `conditional`；实现后必须用同一 workload 复测 |
+| 官方 Kaggle CLI | dataset、kernel、submission 等平台命令 executor | `conditional`；holdout、泄漏、submission budget、调参策略与是否提交仍归 ContestOS/SOP |
+| Ascend / ROCm / Triton / CPU profiler | 真实硬件与技术栈出现后的平台专用能力 | 未命中平台时不加载，不虚构“通用 profiler” |
+
+### `find-skills` 的位置
+
+`find-skills` 只用于显式 discovery escalation：当冻结验收暴露未覆盖能力槽，且现有已批准适配器无法处理时，返回候选的 source commit、license、角色、触发/负触发、副作用、authority exclusions 与独立 oracle。它不得自动安装、激活、写入“已安装”列表、改变 acceptance 或决定完成；候选必须先在仓库外做静态审阅和真实对照。
+
 ## 版本与来源
 
 安装时固定了来源 commit，便于 P4 追溯：
@@ -71,6 +124,20 @@ MCP 是能力层，不是流程层。调用前必须已经有：任务契约、�
 - Vercel `web-design-guidelines`、`composition-patterns`: `vercel-labs/agent-skills@7c180d9044c9ae2b442b567aad4e42a28dd5ed62`
 - K-Dense 科研子集：`K-Dense-AI/scientific-agent-skills@d767725c6e93b1d02a220e6be75b261a9833ede5`
 
+以下是候选评测时使用的固定来源，不表示已经安装或获得运行权：
+
+- Taste：`Leonxlnx/taste-skill@e988add20dab0fa97d7a76781c48961c8184288e`
+- OpenAI Product Design：`openai/role-specific-plugins@fe5608d2512a7d6a7b9821ce8a88c48464ecd6e4`
+- OpenAI data visualization：`openai/plugins@11c74d6ba24d3a6d48f54a194cd00ef3beea18f9`
+- Product UI Reviewer：`ibelick/ui-skills@fdc667270fd2c71b3a8b7aca04dda154a7b8a5d5`
+- Interface polish：`jakubkrehel/make-interfaces-feel-better@5f3c3c26c512b3469e6dbcab8a0d73e8b575a566`
+- Anthropic frontend-design：`anthropics/skills@f17010c9bb483898c1d9c9f42dde2b3a98889434`
+- Trail of Bits testing：`trailofbits/skills@7b9bd5f950f89a9ba71b249b9801c1a95be3928e`
+- Addy accessibility：`addyosmani/web-quality-skills@95d6e255afe1596b557d7a8498517884438f5b3a`
+- Grafana k6：`grafana/skills@d9dfb9ec7a6b1ac6c8ec9741ec045ad6f412dec6`
+- GitHub Actions hardening：`github/awesome-copilot@3f0bba475ec40b9680e1d0311b9caffeec5ad4c3`
+- NVIDIA profiling：`NVIDIA/TensorRT-LLM@10689401f113efb1212c51943a5a239d5d21345f`
+
 K-Dense 是高质量的维护者/领域库，不是 OpenAI 官方 Skill；它的科研内容作为 SOP 的专业适配器使用，不能获得“官方 oracle”地位。具体研究结论仍须经过本地数据、独立 oracle、复现和人工审查。
 
 ## 不采用的替代方案
@@ -78,3 +145,6 @@ K-Dense 是高质量的维护者/领域库，不是 OpenAI 官方 Skill；它的
 - 不安装新的 Superpowers 全局流程包：它的 brainstorming、planning、TDD、review、subagent workflow 与现有 SOP 重叠，会增加上下文和路由竞争。
 - `addyosmani/agent-skills` 可作为开发流程设计的参考，但暂不启用为第二路由器；已有 SOP + Vercel/GitHub 专项 Skill 足够覆盖当前开发门禁。
 - 不安装泛化的 Kaggle、自动刷榜或“AI research autopilot”包；比赛的 correctness gate、local proxy、submission ledger 和零 fallback 必须由 ContestOS/SOP 控制。
+- 不把 Impeccable 完整 umbrella、Taste `redesign-existing-projects` 或其他自带 router、持久上下文、hooks、评分/修复循环的包作为全局 Skill；只允许经验证的窄命令或角色。
+- 不采用由 browser 工具自行触发、自行修复并自行宣布通过的 verification wrapper；可复用底层浏览能力，但 route、flow 与 verdict 必须来自 SOP。
+- 不允许运行时动态 `find-skills` 自由搜索、安装和组合；这只适合隔离探索，不属于稳定交付路径。
