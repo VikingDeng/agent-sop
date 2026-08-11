@@ -83,6 +83,10 @@ Agent 可以自由选择实现顺序、实验 plumbing、诊断方式、subagent
 
 Reviewer 只能用与当前 claim 相关、可复现的失败路径阻断。新增建议若不影响本轮结论，进入 backlog，不移动当前验收线。相同失败类别重复且没有新证据时，停止局部补丁并重做设计或缩小 claim，不生成无界 successor gate。
 
+若 pilot 的 immutable evidence 被判失败，保留该结论，不通过补 validator、补 provenance 文件或新 replay artifact 追认旧 run。修复只面向下一次获授权的 fresh run。便宜的真实性或确定性检查应尽量嵌入下一次执行并直接比较；只有跨环境复现本身是 claim 或独立 artifact 能改变决策时，才引入单独 replay 工具。代码修复通过单元/负例测试只代表 code readiness，不代表旧 pilot 或科学 claim 通过。
+
+若修复改变 runner、artifact 与 checker 之间的 schema 或语义契约，必须补一个最小正向 runner→checker 兼容检查；负例回归不能替代 happy-path composition。该检查可以是 synthetic/in-memory code-readiness fixture，不消耗新的正式 pilot 配额，也不能产生科学结论。
+
 ### 4. 运行最小有信息量的实验
 
 先运行能验证 plumbing、oracle、资源估计和主要 failure mode 的最小实验。Pilot 可以产生科学信息；必须清楚标记其探索性以及哪些选择随后被冻结。只有满足预先声明或有证据更新的 scale criteria 才扩大。失败 pilot 是结果，不是流程违规。

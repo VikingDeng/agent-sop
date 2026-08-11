@@ -89,11 +89,17 @@ Agent 可以根据证据自由决定是否：
 
 这是偏好而非能力证明。Luna 不可用时可转 Terra；Terra 不可用或委派成本高于工作本身时，主 Agent 可完成必要的窄工作。任何替代都保持相同验收标准并在成本审计中如实记录。不要按单条命令拆 Agent，不 fork 完整父历史，通常保持不超过两个并发 child。
 
+实现、review、correction 与 re-review 分别视为新的 package boundary。后继 child 默认不继承 conversation turns；给它冻结契约、commit/diff、决定性 artifact、前一轮 findings 和 stop condition 的紧凑 packet 即可。不要把 supervisor commentary、raw tool output 或前一 child 的完整 trace 当作“连续性”继续 fork。只有具体依赖无法落到仓库或紧凑 packet 时才继承最少 turns，并记录原因。
+
 ### 4. 按结果迭代
 
 使用最短反馈回路推进：调查一个关键未知量、做出可检查改变、运行能区分成败的检查、根据结果更新方案。默认聚合 reviewer finding 后修复，但允许在新证据出现时追加合理修复。
 
 Review 必须对齐冻结契约与具体失败路径，不能以品味性要求扩大 acceptance。新的可信失败路径可触发一次合并修复或架构重置，但不得无限追加后继门禁。
+
+不可把失败且 immutable 的 run 事后改造成通过。保留原 verdict，只修下一次执行路径；只有用户授权 fresh run 后，新证据才可能改变结论。若关键区分检查很便宜，优先把它直接放进下一次 run（例如同一输入第二次 verifier 调用并比较），不要为兼容旧 artifact 新建 replay service、validator stack、迁移层或授权协议。code-readiness patch 只能证明代码准备度，不能升级历史 run。
+
+修复若改变 producer-consumer contract，除针对旧漏洞的负例外，还要运行最便宜的 producer→consumer 正向兼容检查。只有负例不能证明修复后的 happy path 能组合工作。该检查可用 synthetic/in-memory fixture 且只证明 code readiness，不得冒充新的 empirical run 或 accepted result。
 
 Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 以限定证据范围。API correctness 可需要 Sol risk judgment，但不因此自动进入完整 codex-security workflow；只有具体 adversarial security trigger 才触发完整 security workflow。Skill 仍是正交、可替换 adapter，不能扩大冻结 acceptance、stage 或 artifact；verdict 证据充分后停止，非阻断 hardening 尤其是 pre-scale research 问题进入 backlog 或保持 `[UNCERTAIN]`。
 
