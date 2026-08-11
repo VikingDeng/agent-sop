@@ -4,7 +4,7 @@
 - **落实纪律**: P1 P2 P3 P4
 - **绑定骨架**: competition；development（产品型黑客松的成品开发）
 - **通用性档位**: U1(竞赛机制通用；平台命令与阈值由项目注入)
-- **版本**: v3
+- **版本**: v4
 
 ## 触发条件
 
@@ -50,12 +50,12 @@
    - **产品型黑客松**：用 Development Profile 交付可运行产品，本 SOP 额外控制 eligibility、rubric、必用 SDK/MCP/partner tech、deploy/demo/video/deck/repo/form 和外部提交。评委分不是可伪装成二值测试的“客观分”；用 rubric-to-evidence 覆盖与真实演示证据降低不确定性；
    - **论文到 notebook、研究工件与 output-only**：验证方法/论文 fidelity、可执行性、输出格式与官方 evaluator；只有比赛 claim 需要时追加复现或统计证据。
 3. 选择最早的高信息基线。官方 evaluator 能本地运行时直接使用，不重复造 proxy；核心正确性未知时先建最小 oracle；线上 pipeline/格式本身是主要未知、且授权包络允许一次廉价 smoke 时，可以早交 baseline；只有在线反馈慢、贵、噪声大或稀缺时才建 local surrogate/holdout。`local proxy first` 不是绝对顺序。
-4. 进入 `build → verify → evaluate → learn` 循环：每轮只冻结当前候选、准备验证的假设、决定性证据和下一动作。多候选并行时隔离工件；核心算法/架构不变量未定时先关闭 critical-path uncertainty，再委派稳定实现。在线反馈回来后区分实现问题、代理失真、平台噪声和规则误读，不把 rank 的自然波动当代码回归。
+4. 进入 `build → verify → evaluate → learn` 循环：每轮只冻结当前候选、准备验证的假设、决定性证据和下一动作。多候选并行时隔离工件；核心算法/架构不变量未定时先关闭 critical-path uncertainty，再委派稳定实现。在线反馈回来后区分实现问题、代理失真、平台噪声和规则误读，不把 rank 的自然波动当代码回归。一个实质路线在可信 public/official evaluation 中得到按 contest contract 的指标方向与语义代表失败的零分，或相对相关 baseline/目标明显不具竞争力时，把它判为 route-level no-go 并更换算法/架构或停止；只有会使该分数、合法性、提交工件或诚实报告无效的问题仍留在关键路径，不围绕已知 no-go 继续扩建 validator、provenance、receipt、freeze、hash 或 Review 系统。
 5. 把探索预算、外部提交预算与 deadline 一起管理。反推平台上传/构建、视频处理、部署、人工检查与故障恢复所需时间，设置停止开发和冻结候选的 time reserve；在最终窗口之前提交或保存一个已验证的 last-known-good。只有多次提交、反馈稀缺、跨 session 或候选混淆风险真实存在时维护轻量 ledger；至少能回答“哪份工件、为什么交、占了多少预算、返回什么、下一次因此改变什么”。保留 final reserve，不为微小同向 delta 或无新信息的重复 probe 消耗它。
 6. 用 `package-submission` 生成并核验候选 bundle。运行本地/官方验证的必须是将要提交的同一候选；如果平台会重新构建或运行，则验证其可按平台规则重建，而不是无条件要求 byte-identical rebuild、固定 SHA256 或 clean-tree 仪式。
 7. **把打包与外部提交分开**。只有外部动作包络已明确时，才可在其中自主上传、提交、选择 final、部署或公开；一次授权可以覆盖包络内的后续提交，不逐次重复 HUMAN gate。超出平台、次数、final reserve、费用、数据或公开范围时停止越界动作，但继续准备可安全完成的候选。
 8. 外部动作后保存平台 receipt/提交 ID、时间、确切工件身份及可取得的 score/verdict/rubric feedback；将有决策价值的 local↔official gap 回填到现有 issue/ledger/状态。单次提交不为形式创建完整目录树；live leaderboard 的当前 rank 必须标明时间，不能承诺其稳定。随机 tournament、对抗 judge、噪声 leaderboard 或人工 rubric 的单次反馈只是一条随机/主观观测；在影响候选选择时，记录其重复单位、可用预算和不确定性，不能把波动解释成确定改进。
-9. 在以下任一条件满足时停止本轮策略并交付当前最佳合法成品：验收已满足；deadline/budget/reserve 到界；预计收益低于一次可靠验证或提交成本；相同失败不再降低不确定性；需要越出授权包络；规则或 evaluator 已无法支持更强 claim。停止刷分不等于丢弃已完成成品。
+9. 在以下任一条件满足时停止本轮策略并交付当前最佳合法成品：验收已满足；deadline/budget/reserve 到界；预计收益低于一次可靠验证或提交成本；相同失败不再降低不确定性；可信结果已经给出当前路线的 no-go 且剩余 hardening 不会改变 verdict；需要越出授权包络；规则或 evaluator 已无法支持更强 claim。停止刷分不等于丢弃已完成成品。
 
 ## 门禁
 

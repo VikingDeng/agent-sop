@@ -35,9 +35,10 @@ from weighted_routing_policy import (
 SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode unless CODEX_ROUTER_ENFORCEMENT=strict.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
 Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
-Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. resume_agent is allowed in advisory mode; because Hook telemetry cannot bind an agent ID to package/phase, requested role, actual model, or open state, use a fresh typed correction/re-review spawn when matching identity cannot be established. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. resume_agent is allowed in advisory mode; because Hook telemetry cannot bind an agent ID to package/phase, requested role, actual model, or open state, use a fresh typed correction/re-review spawn when matching identity cannot be established. Keep a child open only for a current purpose or imminent dependent correction; otherwise close it before spawning successors. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Choosing Sol as the top level does not make it the mechanical executor. Route repeated writing, full-suite, browser, packaging, and log work as coherent Luna/Terra outcomes when available.
 Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
-Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
+Continue assurance work only when it can improve the real outcome, change the next decision, invalidate the current conclusion, or prevent concrete material harm. Reliability or audit work remains on the critical path when it is itself a frozen deliverable or a concrete high-risk path requires it. A trustworthy route-level no-go means re-architect or stop rather than expanding proof machinery. Preserve real evidence and never lower acceptance criteria silently.
 """
 
 STRICT_SESSION_CONTEXT = """Weighted-cost routing is active in strict enforcement mode.
@@ -55,7 +56,7 @@ ROLE_CONTEXT = {
     "verifier": "Run the declared oracle and return concise raw evidence plus exit codes; do not edit source.",
     "worker": "Resolve only the documented semantic/cross-file issue. A Terra initial requires a nonempty objective LUNA_ELIGIBLE=no(reason); otherwise this is the single consolidated correction.",
     "terra_debugger": "Diagnose an unknown root cause hypothesis-first: rank competing hypotheses and run discriminating checks. Adapt tools or implementation paths explicitly while preserving the outcome contract; return a compact evidence packet.",
-    "reviewer": "Review independently and read-only; findings need severity, location, failure path, impact on frozen acceptance, and minimal repair. Use REVIEW_PROFILE=ordinary|api|security|architecture/data when useful; stop when verdict evidence is sufficient.",
+    "reviewer": "Review independently and read-only; findings need severity, location, failure path, impact on frozen acceptance, and minimal repair. Block only defects that can break acceptance, invalidate decisive evidence, or realize a proportional concrete risk; send other hardening to backlog. Use REVIEW_PROFILE=ordinary|api|security|architecture/data when useful; stop when verdict evidence is sufficient.",
     "sol_architect": "Return only a compact read-only decision packet for architecture or research execution design; do not mechanically execute work or dispatch agents.",
     "risk_reviewer": "Review only the explicit HIGH_RISK_TRIGGER against the compact EVIDENCE_PACK. Stay read-only and avoid broad rediscovery.",
 }
@@ -1024,7 +1025,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
                 if "HIGH_RISK_TRIGGER:" not in prompt or "EVIDENCE_PACK:" not in prompt:
                     advisories.append("an expensive Sol risk review lacks a concrete trigger/evidence pack")
         if "gpt-5.6-sol" in active_model and is_sol_execution(tool_name, tool_input):
-            advisories.append("this is direct Sol execution; prefer Luna/Terra for long mechanical work when delegation is available")
+            advisories.append("this is direct Sol execution; keep only narrow integration/judgment here and route repeated writing, full-suite, browser, packaging, or log work as one Luna/Terra outcome")
         if advisories:
             return _context("PreToolUse", "Weighted router advisory: " + "; ".join(advisories) + ". Preserve the outcome contract and record material WCU tradeoffs.")
         return None
