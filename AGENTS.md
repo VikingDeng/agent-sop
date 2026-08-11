@@ -16,6 +16,8 @@ Use a HUMAN gate only for a real unauthorized direction: materially different se
 
 When a ContestOS v1 skeleton is selected, also apply [`skeletons/contestos-adaptive-overlay-v2.md`](skeletons/contestos-adaptive-overlay-v2.md). The overlay is a compatibility translator from provenance-locked v1 wording to the Supervisor policy; it supersedes conflicting v1 runtime language without creating a second runtime authority or modifying the v1 source files.
 
+For any deadline-bound judged competition or hackathon, load [`sop/tier1-skeleton/run-competition.md`](sop/tier1-skeleton/run-competition.md). Product hackathons compose it with the development skeleton: development owns the working product, while the competition SOP owns rules, rubric evidence, submission budget, deadline, external-action authorization, and platform feedback.
+
 ## Delegation and verification
 
 Optimize `25*Sol + 10*Terra + 1*Luna` without weakening acceptance. Prefer Luna for bounded mechanical execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. Model unavailability permits a transparent lowest-cost fallback. Avoid tiny command-level delegation, full-context forks, repeated polling, overlapping writers, and unnecessary agent count.

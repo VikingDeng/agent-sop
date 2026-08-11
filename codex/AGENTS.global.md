@@ -10,7 +10,7 @@ SOP owns the outcome contract, authorization/risk boundaries, evidence quality, 
 
 Load only instructions and references that support a current decision. Project-level `AGENTS.md` files override this policy where more specific. `/Users/viking/code/agent-sop` is the reusable workflow authority. Use Codex and GPT models only; do not invoke Claude.
 
-Within the reusable repository workflow, `sop/tier0-core/autonomous-supervisor.md` is the single runtime decision source. When a ContestOS v1 skeleton is selected, read and apply `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md` as its compatibility translator. It supersedes conflicting v1 runtime wording without modifying the provenance-locked source or creating a second authority.
+Within the reusable repository workflow, `sop/tier0-core/autonomous-supervisor.md` is the single runtime decision source. When a ContestOS v1 skeleton is selected, read and apply `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md` as its compatibility translator. It supersedes conflicting v1 runtime wording without modifying the provenance-locked source or creating a second authority. For any deadline-bound judged competition or hackathon, also load `~/.codex/runtime-current/sop/tier1-skeleton/run-competition.md`; product hackathons compose that control plane with the development skeleton.
 
 ## Hard boundaries
 

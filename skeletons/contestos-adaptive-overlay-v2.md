@@ -1,4 +1,4 @@
-# ContestOS 自适应兼容 overlay v2.1
+# ContestOS 自适应兼容 overlay v2.2
 
 > **状态**: active compatibility overlay。适用于选中的任一 `contestos-*-v1.md`。
 > **来源边界**: v1 原件 provenance-locked；本文件只把其历史运行时措辞翻译到 `autonomous-supervisor` 的当前语义，不回写、不伪装成 v1 原文，也不形成第二套 runtime authority。
@@ -45,6 +45,19 @@ v1 的“zero fallback”只表示：禁止**静默语义降级、fabricated suc
 - “spec gate”约束的是目标、non-goals、范围与验收在语义上足够明确，不是指定文件必须存在。public contract 只在新增或改变 public API/协议/兼容承诺时适用；ADR 只记录影响未来工作的持久决策。
 - drift-check 在可信 scope-creep 风险、integration、handoff 或 delivery 边界执行，可并入 diff review；不要求每 commit 生成需求映射表。额外防御只有在具体失败路径、比例化成本和无新增语义同时成立时放行，“以后也许有用”的抽象、gate、测试或文档应删除。
 - acceptance、full suite、dependency/security/performance scanner 与 independent review 均由实际 claim、影响面和风险触发，不因 v1 表格出现而自动启用。能在当前 session 完成或由 Git/issue/PR 恢复的任务不创建 durable state；真实跨 session/交接风险才复用一个轻量载体。
+
+## 竞赛 v1 的 canonical mapping
+
+当前通用竞赛控制面是 `sop/tier1-skeleton/run-competition.md`。v1 的性能赛主轴、四类赛制、完整 `contests/` 目录与 local-proxy-first 是历史 recipe，不再定义适用范围或固定行动顺序；下列 mapping 在不改动 provenance-locked 原件的前提下解释其 canonical semantics。
+
+- **适用范围按机制组合，不按四类互斥标签截断。** 先冻结判定（binary/scalar/Pareto/rank/rubric/hybrid）、反馈（local/hidden/public-private/interactive/review-demo/limited）、工件（source/patch/binary/notebook/CSV/model/output/agent/API/repo/app/video/deck）、环境、事件和外部授权六个轴。算法/交互、output-only、数据榜、Kernel/系统优化、隐藏 agent/runtime、论文到 notebook 与产品型黑客松都可由这些轴组合。
+- **产品型黑客松是组合路径。** development 骨架负责选型、实现、部署和产品成品；`run-competition` 同时负责 eligibility、rubric、必用 partner technology、deadline、demo/video/deck/form、外部提交与反馈。评委 rubric 不是“无客观分所以不算竞赛”，也不能被伪装成二值自动测试。
+- **赛制卡是 compact contract，不是固定文档。** 只保留会改变合法性、实现、评测或提交的规则及权威来源/日期；官方规则易变、不可恢复或存在争议时才保存 snapshot。`CONTEST.md`、`RULES_SNAPSHOT.md`、`code_form.yaml` 和完整目录树均为可选载体。
+- **选择最佳可用 evaluator，不强制 local first。** 官方 checker/harness 能本地运行时直接使用；核心 correctness 不确定时先做最小 oracle；pipeline/格式才是主要未知且一次廉价官方 smoke 已获授权时可以早交 baseline；反馈稀缺、昂贵或隐藏时才建 local surrogate/holdout，并诚实记录它不能支持的 claim 与有决策价值的 local↔official gap。
+- **产物与生命周期成比例。** 单次算法提交不创建 submissions 树、IDEA、profiling、strategy、manifest 和 ledger。多提交/稀缺反馈/跨 session/组合材料/错配风险才维护轻量记录；holdout 只为经验性过拟合风险，profile 只为性能 claim 中未关闭的测量/瓶颈问题，patch series 只为官方 patch 格式或真实 upstream isolation，byte-identical rebuild 只为规则或字节敏感工件。
+- **打包不等于外部提交。** `package-submission` 只冻结并验证 submission-ready bundle；注册、规则接受、上传、部署、公开、final selection 与消耗提交/付费预算由 `run-competition` 的外部动作包络控制。一次明确授权可覆盖平台、次数、费用、数据/公开范围和 final reserve 内的后续动作，不逐次重复 HUMAN 仪式；越界时只停止越界动作。
+- **correctness-first 约束 claim，不规定单一 gate 形状。** binary judge/性能赛的 correctness failure 会使对应分数无效；数据/多目标/rubric 比赛按官方 tradeoff 与证据评价。官方规则允许且实际评分会测量的兼容/慢路径不是因含 `fallback` 就作弊；禁止的是隐藏语义降级、绕过目标路径、让本地测量与提交路径不同源或改变 acceptance。
+- **停止条件包含 deadline 与信息价值。** 当前最佳合法工件达到验收、预算/final reserve 到界、重复 probe 不再降低不确定性、预计收益低于可靠验证/提交成本或下一步越权时停止本轮策略并交付，不为“还能刷”无限循环。
 
 ## Gates 与环境参数
 

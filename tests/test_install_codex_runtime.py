@@ -128,7 +128,7 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertTrue(Path(old_target).is_dir())
             self.assertEqual(current.resolve(), second.snapshot_path.resolve())
 
-    def test_source_checkout_removal_leaves_roles_skills_hooks_and_overlay_available(self) -> None:
+    def test_source_checkout_removal_leaves_roles_skills_overlay_and_competition_sop_available(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             source = base / "source"
@@ -144,9 +144,13 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             overlay = home / INSTALL.RUNTIME_CURRENT / "skeletons/contestos-adaptive-overlay-v2.md"
             self.assertIn("active compatibility overlay", overlay.read_text(encoding="utf-8"))
             installed_reference = "~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md"
+            competition_reference = "~/.codex/runtime-current/sop/tier1-skeleton/run-competition.md"
+            competition = home / INSTALL.RUNTIME_CURRENT / "sop/tier1-skeleton/run-competition.md"
+            self.assertIn("执行通用竞赛与黑客松", competition.read_text(encoding="utf-8"))
             for context in (codex_home / "AGENTS.md", workspace / "AGENTS.md"):
                 context_text = context.read_text(encoding="utf-8")
                 self.assertIn(installed_reference, context_text)
+                self.assertIn(competition_reference, context_text)
                 installed_overlay = Path(installed_reference.replace("~", str(home), 1))
                 self.assertIn("active compatibility overlay", installed_overlay.read_text(encoding="utf-8"))
 

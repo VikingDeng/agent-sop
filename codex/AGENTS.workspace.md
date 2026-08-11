@@ -5,7 +5,7 @@
 - `/Users/viking/code/agent-sop` is the source of truth for reusable workflow, project skeletons, Codex agent recipes, and the Research Execution Grill.
 - `/Users/viking/ops` is workstation automation only. Old Claude and retired Research OS material are not active workflow authority.
 - `~/.codex` is installed runtime output; edit the corresponding source in `agent-sop` first when one exists.
-- `agent-sop/sop/tier0-core/autonomous-supervisor.md` is the reusable workflow's single runtime decision source. When a ContestOS v1 skeleton is selected, `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md` translates its provenance-locked wording to that policy; it is not a parallel authority.
+- `agent-sop/sop/tier0-core/autonomous-supervisor.md` is the reusable workflow's single runtime decision source. When a ContestOS v1 skeleton is selected, `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md` translates its provenance-locked wording to that policy; it is not a parallel authority. Deadline-bound judged competitions and hackathons load `~/.codex/runtime-current/sop/tier1-skeleton/run-competition.md`; product hackathons compose it with development.
 
 ## Local operating preferences
 

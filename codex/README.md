@@ -31,7 +31,7 @@ python3 scripts/install_codex_runtime.py --profile terra-supervisor
 The installer:
 
 - preserves the repository as the source of truth by creating a content-addressed immutable generation under `~/.codex/runtime-snapshots/`, then atomically switching `~/.codex/runtime-current` and linking both AGENTS files, 9 role TOMLs, the Research Execution Grill, and the router Hook scripts through that stable path;
-- copies the adaptive SOP, its optional strict reference artifact, and validator/state-machine dependencies into each snapshot so relative Skill references remain readable after the checkout moves or is removed;
+- copies the adaptive research SOP, the universal competition control plane with its direct SOP dependencies, its optional strict reference artifact, and validator/state-machine dependencies into each snapshot so runtime references remain readable after the checkout moves or is removed;
 - builds and verifies the complete generation before preparing stable links and changing runtime files;
 - validates `config.toml` and `hooks.json`, creates collision-resistant timestamped backups, and replaces each file independently with an atomic temporary-file rename;
 - merges the router registrations into `~/.codex/hooks.json` instead of deleting unrelated Hooks;
