@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-loud Codex guardrails for weighted-cost subagent routing."""
+"""Cost-aware Codex routing with advisory defaults and explicit strict enforcement."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from weighted_routing_policy import (
     classify_spawn_result,
     command_text,
     executable_static_tool_calls,
+    is_git_relevant,
     is_sol_execution,
     normalize_tool_name,
     package_contract_error,
@@ -34,7 +35,7 @@ from weighted_routing_policy import (
 SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode unless CODEX_ROUTER_ENFORCEMENT=strict.
 Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
 Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
-Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. The runtime guard denies the executable resume primitive for a closed role-bound agent; it does not bind agent IDs to package/phase, requested role, actual model, or open state. Fresh typed correction/re-review spawns keep the existing package budget, and role/model changes never reset it. Already-open reuse and actual-model verification remain supervisor policy plus PostToolUse/session audit; once evidence exists, violations fail closed. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
+Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. resume_agent is allowed in advisory mode; because Hook telemetry cannot bind an agent ID to package/phase, requested role, actual model, or open state, use a fresh typed correction/re-review spawn when matching identity cannot be established. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
 Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
 Continue while new work reduces uncertainty. Re-plan when the same failure repeats without progress, the outcome contract changes, or expected cost becomes disproportionate. Preserve real evidence and never lower acceptance criteria silently.
 """
@@ -169,13 +170,22 @@ def _contains_resume_agent(raw: str) -> bool:
 
 def _resume_agent_reason() -> str:
     return (
-        "Weighted router: executable resume_agent is denied; this guarantees a closed role-bound "
+        "Weighted router strict: executable resume_agent is denied; this guarantees a closed role-bound "
         "resume primitive cannot run, but Hook telemetry does not bind agent IDs to package/phase, "
         "requested role, actual model, or open state. "
         "For correction/re-review or any role-bound package phase, spawn a fresh explicit typed role; "
         "fresh typed spawns keep the existing package budget and role/model changes never reset it. "
         "Already-open reuse and actual-model verification are supervisor policy plus PostToolUse/session audit; "
         "once evidence exists, violations fail closed; record a routing violation and WCU uncertain for a mismatch."
+    )
+
+
+def _resume_agent_advisory() -> str:
+    return (
+        "Weighted router advisory: resume_agent is allowed, but this Hook cannot prove the target's "
+        "package/phase, requested role, actual model, or open state. Reuse it only when task evidence "
+        "establishes a matching live agent; otherwise use a fresh explicit typed spawn for a model-bound "
+        "correction or re-review. Do not reset package budgets or claim verified routing without evidence."
     )
 
 
@@ -619,30 +629,17 @@ def _event_token_total(record: dict[str, Any], payload: dict[str, Any]) -> int |
     return None
 
 
-def _is_git_checkout(cwd: Any) -> bool:
-    if not isinstance(cwd, str) or not cwd:
-        return False
-    try:
-        path = Path(cwd).expanduser().resolve()
-    except (OSError, RuntimeError):
-        return False
-    if not path.is_dir():
-        return False
-    return any((candidate / ".git").exists() for candidate in (path, *path.parents))
-
-
-def _stop_evidence(data: dict[str, Any]) -> tuple[bool, str, list[str]]:
-    """Return (substantial, uncertainty, command snippets) from the current turn only."""
+def _stop_evidence(data: dict[str, Any]) -> tuple[bool, str]:
+    """Return (substantial, uncertainty) from the current turn only."""
     transcript = data.get("transcript_path")
     turn_id = data.get("turn_id")
     if not isinstance(transcript, str) or not transcript or not isinstance(turn_id, str) or not turn_id:
-        return False, "Stop transcript path or turn_id is missing", []
+        return False, "Stop transcript path or turn_id is missing"
     calls = 0
     outputs = 0
     tagged_max_tokens = 0
     task_max_tokens = 0
     saw_unattributed_token = False
-    commands: list[str] = []
     active_task_turn = ""
     task_boundary_ambiguous = False
     try:
@@ -651,7 +648,7 @@ def _stop_evidence(data: dict[str, Any]) -> tuple[bool, str, list[str]]:
                 try:
                     record = json.loads(line)
                 except (TypeError, ValueError, json.JSONDecodeError):
-                    return False, "Stop transcript contains malformed JSON", []
+                    return False, "Stop transcript contains malformed JSON"
                 if not isinstance(record, dict) or not isinstance(record.get("payload"), dict):
                     continue
                 payload = record["payload"]
@@ -679,13 +676,6 @@ def _stop_evidence(data: dict[str, Any]) -> tuple[bool, str, list[str]]:
                         outputs += 1
                     else:
                         calls += 1
-                    arguments = payload.get("arguments", payload.get("input", {}))
-                    if isinstance(arguments, dict):
-                        for key in ("cmd", "command"):
-                            if isinstance(arguments.get(key), str):
-                                commands.append(arguments[key][:120])
-                    elif isinstance(arguments, str) and arguments:
-                        commands.append(arguments[:120])
                 if record.get("type") == "event_msg" and item_type == "token_count":
                     if not (is_current_turn or untagged_current_task):
                         if not payload_turn_id:
@@ -698,19 +688,19 @@ def _stop_evidence(data: dict[str, Any]) -> tuple[bool, str, list[str]]:
                         else:
                             task_max_tokens = max(task_max_tokens, token_total)
     except OSError as exc:
-        return False, f"Stop transcript is unreadable: {type(exc).__name__}", []
+        return False, f"Stop transcript is unreadable: {type(exc).__name__}"
     if active_task_turn:
         task_boundary_ambiguous = True
     max_tokens = tagged_max_tokens if task_boundary_ambiguous else max(tagged_max_tokens, task_max_tokens)
-    if calls >= 3 or max_tokens >= STOP_TOKEN_THRESHOLD:
-        return True, "", commands
+    if max_tokens >= STOP_TOKEN_THRESHOLD:
+        return True, ""
     if not calls and not outputs:
-        return False, "Stop transcript has no current-turn tool activity", commands
+        return False, "Stop transcript has no current-turn tool activity"
     if max_tokens == 0:
         if saw_unattributed_token:
-            return False, "Stop transcript has an untagged token_count without unambiguous current-task boundaries", commands
-        return False, "Stop transcript has no per-turn token usage; call-count evidence is below threshold", commands
-    return False, "Stop transcript has fewer than three current-turn tool calls and token usage is below threshold", commands
+            return False, "Stop transcript has an untagged token_count without unambiguous current-task boundaries"
+        return False, "Stop transcript has no per-turn token usage; tool count alone does not trigger delivery enforcement"
+    return False, "Stop transcript token usage is below the strict delivery threshold"
 
 
 def _stop_marker(data: dict[str, Any]) -> Path | None:
@@ -774,7 +764,7 @@ def _stop_missing_categories(data: dict[str, Any]) -> list[str]:
     ):
         if not _report_has(final, category):
             missing.append(category)
-    repo_relevant = _is_git_checkout(data.get("cwd"))
+    repo_relevant = is_git_relevant(data.get("cwd"))
     if repo_relevant and not _report_has(final, "Git/delivery state"):
         missing.append("Git/delivery state")
     return missing
@@ -787,7 +777,7 @@ def _stop_guard(data: dict[str, Any]) -> dict[str, Any] | None:
     if marker is None:
         _record_error("Stop guard fail-open uncertainty: session_id or turn_id is missing")
         return None
-    substantial, uncertainty, _commands = _stop_evidence(data)
+    substantial, uncertainty = _stop_evidence(data)
     if uncertainty:
         _record_error(f"Stop guard fail-open uncertainty: {uncertainty}")
     if not substantial:
@@ -829,7 +819,7 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
         return _context(event, message) if message else None
 
     if event == "Stop":
-        return _stop_guard(data)
+        return _stop_guard(data) if strict else None
 
     if event == "PostToolUse":
         if not isinstance(data.get("tool_name"), str):
@@ -960,6 +950,8 @@ def handle(data: dict[str, Any]) -> dict[str, Any] | None:
     if tool_leaf in {"resume_agent", "resume"} or (
         tool_leaf == "exec" and _contains_resume_agent(command_text(tool_input))
     ):
+        if not strict:
+            return _context("PreToolUse", _resume_agent_advisory())
         reason = _resume_agent_reason()
         _record_error(reason)
         return _deny(reason)

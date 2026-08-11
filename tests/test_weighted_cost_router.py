@@ -155,6 +155,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIn("adaptive advisory", context)
         self.assertIn("These are preferences, not permission gates", context)
         self.assertIn("transparently use the lowest-cost available capable role, normally Terra", context)
+        self.assertIn("resume_agent is allowed in advisory mode", context)
         self.assertIn("25*Sol", context)
         for strict_term in (
             "Sol non-read-only direct execution is denied",
@@ -210,13 +211,14 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("Sol family", denied["hookSpecificOutput"]["permissionDecisionReason"])
 
-    def test_model_bound_resume_is_denied_in_both_routing_profiles(self) -> None:
+    def test_resume_is_advisory_by_default_and_denied_in_strict(self) -> None:
         with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
             advisory = ROUTER.handle(pretool(
                 "gpt-5.6-terra", "resume_agent", {"target": "closed-reviewer"}
             ))
-        self.assertEqual(advisory["hookSpecificOutput"]["permissionDecision"], "deny")
-        self.assertIn("fresh explicit typed role", advisory["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertNotIn("permissionDecision", advisory["hookSpecificOutput"])
+        self.assertIn("resume_agent is allowed", advisory["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("fresh explicit typed spawn", advisory["hookSpecificOutput"]["additionalContext"])
 
         denied = ROUTER.handle(pretool(
             "gpt-5.6-terra", "resume_agent", {"target": "closed-reviewer"}
@@ -224,7 +226,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertEqual(denied["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIn("routing violation", denied["hookSpecificOutput"]["permissionDecisionReason"])
 
-    def test_nested_resume_static_dot_and_bracket_calls_are_denied_in_both_profiles(self) -> None:
+    def test_nested_resume_static_dot_and_bracket_calls_follow_profile(self) -> None:
         sources = (
             'await tools.resume_agent({"target":"closed-reviewer"});',
             'await tools["resume_agent"]({"target":"closed-reviewer"});',
@@ -238,9 +240,16 @@ class WeightedCostRouterTests(unittest.TestCase):
                         result = ROUTER.handle(pretool(
                             "gpt-5.6-terra", "functions.exec", source
                         ))
-                        self.assertEqual(
-                            result["hookSpecificOutput"]["permissionDecision"], "deny"
-                        )
+                        if enforcement == "strict":
+                            self.assertEqual(
+                                result["hookSpecificOutput"]["permissionDecision"], "deny"
+                            )
+                        else:
+                            self.assertNotIn("permissionDecision", result["hookSpecificOutput"])
+                            self.assertIn(
+                                "resume_agent is allowed",
+                                result["hookSpecificOutput"]["additionalContext"],
+                            )
 
     def test_resume_text_in_literals_comments_and_dynamic_access_is_not_a_resume_call(self) -> None:
         sources = (
@@ -332,7 +341,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         return str(path)
 
     def test_stop_guard_continues_substantial_incomplete_final_once(self) -> None:
-        transcript = self._stop_transcript(self._state.name)
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
         event = {
             "hook_event_name": "Stop",
             "session_id": "stop-session",
@@ -360,6 +369,30 @@ class WeightedCostRouterTests(unittest.TestCase):
             "stop_hook_active": False,
         }
         self.assertIsNone(ROUTER.handle(event))
+
+    def test_stop_guard_does_not_treat_three_tool_calls_as_substantial(self) -> None:
+        transcript = self._stop_transcript(self._state.name, calls=3, outputs=3)
+        self.assertIsNone(ROUTER.handle({
+            "hook_event_name": "Stop",
+            "session_id": "three-call-session",
+            "turn_id": "turn-stop",
+            "transcript_path": transcript,
+            "last_assistant_message": "Done.",
+            "stop_hook_active": False,
+        }))
+
+    def test_advisory_stop_never_blocks_even_at_high_token_usage(self) -> None:
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
+        with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
+            result = ROUTER.handle({
+                "hook_event_name": "Stop",
+                "session_id": "advisory-stop-session",
+                "turn_id": "turn-stop",
+                "transcript_path": transcript,
+                "last_assistant_message": "Done.",
+                "stop_hook_active": False,
+            })
+        self.assertIsNone(result)
 
     def test_stop_guard_ignores_prior_turns_for_one_tool_success(self) -> None:
         records = []
@@ -543,7 +576,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIsNone(ROUTER.handle(event))
 
     def test_stop_guard_fails_open_without_session_key(self) -> None:
-        transcript = self._stop_transcript(self._state.name)
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
         event = {
             "hook_event_name": "Stop",
             "turn_id": "turn-stop",
@@ -554,7 +587,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIsNone(ROUTER.handle(event))
 
     def test_stop_guard_retry_without_stop_hook_active_cannot_loop(self) -> None:
-        transcript = self._stop_transcript(self._state.name)
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
         event = {
             "hook_event_name": "Stop",
             "session_id": "retry-session",
@@ -567,7 +600,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIsNone(ROUTER.handle(event))
 
     def test_stop_guard_accepts_complete_chinese_report(self) -> None:
-        transcript = self._stop_transcript(self._state.name)
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
         event = {
             "hook_event_name": "Stop",
             "session_id": "chinese-session",
@@ -580,7 +613,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIsNone(ROUTER.handle(event))
 
     def test_stop_guard_accepts_complete_english_report(self) -> None:
-        transcript = self._stop_transcript(self._state.name)
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
         event = {
             "hook_event_name": "Stop",
             "session_id": "english-session",
@@ -593,7 +626,7 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertIsNone(ROUTER.handle(event))
 
     def test_stop_guard_accepts_complete_non_git_english_report_with_code_words(self) -> None:
-        transcript = self._stop_transcript(self._state.name)
+        transcript = self._stop_transcript(self._state.name, token_total=100_000)
         self.assertIsNone(ROUTER.handle({
             "hook_event_name": "Stop",
             "session_id": "non-git-english-session",
@@ -603,6 +636,25 @@ class WeightedCostRouterTests(unittest.TestCase):
             "last_assistant_message": "Outcome: completed code change. Evidence: tests and commands passed. Review: not run. Routing/WCU: Luna. Risks: none.",
             "stop_hook_active": False,
         }))
+
+    def test_git_relevance_ignores_untracked_descendant_but_accepts_tracked_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested = root / "project"
+            nested.mkdir()
+            subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
+
+            self.assertTrue(ROUTER.is_git_relevant(str(root)))
+            self.assertFalse(ROUTER.is_git_relevant(str(nested)))
+
+            tracked = nested / "tracked.txt"
+            tracked.write_text("tracked\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "project/tracked.txt"],
+                check=True,
+                capture_output=True,
+            )
+            self.assertTrue(ROUTER.is_git_relevant(str(nested)))
 
     def test_stop_guard_leaves_malformed_transcript_alone(self) -> None:
         malformed = Path(self._state.name) / "malformed.jsonl"

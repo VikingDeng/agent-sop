@@ -4,7 +4,7 @@
 - **落实纪律**: P1(结果契约) P2(真实验收) P3(边界显式) P4(关键证据可追溯)
 - **绑定骨架**: 无
 - **通用性档位**: U1
-- **版本**: v10
+- **版本**: v11
 
 ## 目标
 
@@ -45,8 +45,7 @@
 - 不为了通过验收而静默降低用户要求；
 - 不覆盖无关用户改动，不泄露秘密，不越过授权 workspace；
 - 不把内部 GPT/Codex blind review 称为外部 review；
-- model-bound package work 不得用 `resume_agent` 恢复已关闭的 role-bound agent；runtime denial 保证该 closed role-bound resume primitive 无法运行。correction/re-review 必须 fresh-spawn 显式 typed role，package ID/phase 与 one initial/one correction/one re-review budgets 不变，role/model 改变不会重置 budget；
-- Hook telemetry 不会把 agent ID 绑定到 package/phase、requested role、actual model 或 open state。仍打开的 matching agent 复用与 actual model 核验属于 supervisor policy 加 PostToolUse/session audit；一旦 evidence 显示 role/model mismatch，立即停止该 phase，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
+- model-bound correction/re-review 只有在任务证据能确认 matching live package、role 与 actual model 时才复用 agent；否则 fresh-spawn 显式 typed role。advisory routing 可提示不可核验的 `resume_agent`，但不硬阻断；显式 strict profile 可拒绝。复用或 role/model 改变均不重置适用 budget；一旦 evidence 显示 mismatch，记为 routing violation，WCU 标为 `[UNCERTAIN]`，不得以错配角色验收；
 - 未获授权不发布、部署、merge、force-push、删除持久数据或执行不可逆迁移。
 
 ## 步骤
@@ -113,7 +112,7 @@ Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 
 
 ### 5. 验收与审查
 
-验收直接针对用户要的结果，而不是检查 artifact 是否存在。根据任务选择最强且实际可用的证据：真实测试、端到端运行、独立实现对照、性质/不变量、统计检验、复现、人工审阅或外部系统状态。
+验收直接针对用户要的结果，而不是检查 artifact 是否存在。先选择能把 claim 与可信失败区分开的最小直接证据，例如 focused test、复现、性质/不变量、独立实现对照、统计检验、人工审阅或外部系统状态；只有具体风险、失败信号或弱/共享 oracle 才升级证据强度。
 
 当行为变化、高风险边界、弱或被复用的 oracle、实质研究/竞赛 deliverable 或剩余不确定性使第二视角能发现可信失败时，使用有用的独立只读第二视角（reviewer、独立实现、独立 oracle 或等价检查）。Reviewer 数量和轮次由风险决定，不因“标准任务”自动触发；trivial/no-op 工作不安排 review ceremony。实现者可以运行测试，但不能仅凭自述为自己提供独立性。
 
@@ -144,7 +143,7 @@ Review 可显式标记 `REVIEW_PROFILE=ordinary|api|security|architecture/data` 
 - 关键验证命令及结果可查；
 - Git/发布状态与实际一致；
 - WCU/模型使用在可获得时被记录，未知项标为 `[UNCERTAIN]`。
-- 对 substantial behavior、research 或 competition deliverable，最终报告还要明确列出证据/命令、review disposition（包括明确的未运行/不可用/无）、routing/model/WCU、remaining risks/blockers，以及 repo-relevant 的 Git/外部交付状态。
+- 最终报告优先给出结果与决定性证据；review、routing/model/WCU、remaining risks/blockers、Git/外部交付只在实际发生或影响交接时报告，不为满足模板逐项添加空的 `N/A` 字段。
 
 ## 失败处理
 

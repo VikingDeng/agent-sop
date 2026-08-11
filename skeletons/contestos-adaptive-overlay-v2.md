@@ -31,7 +31,7 @@ v1 的“zero fallback”只表示：禁止**静默语义降级、fabricated suc
 
 步骤、阶段、工具、模型、review 与中间 checkpoint 可按新证据合并、跳过、重排或替换。硬的是 acceptance criteria、traceability、evidence integrity 与边界，不是 recipe 的形状；reviewer 只能报告具体 failure mode，不能用 taste-only 要求移动冻结 contract。
 
-模型绑定的 package work 不得通过 `resume_agent` 复用已关闭的 role-bound agent；runtime denial 保证该 closed role-bound resume primitive 无法运行。Hook telemetry 不会把 agent ID 绑定到 package/phase、requested role、actual model 或 open state。correction/re-review 应 fresh-spawn 一个显式 typed role；package ID/phase 与 one initial/one correction/one re-review budgets 不变，role/model 改变不会重置 budget。只有在 contract 与 role 均已确认相同的情况下，才可复用仍打开的 agent；实际 model 核验由 supervisor policy 加 PostToolUse/session audit 负责，一旦有 evidence 表明违规就 fail closed。
+模型绑定的 correction/re-review 只有在任务证据能确认 matching live package、role 与 actual model 时才复用 agent；否则 fresh-spawn 显式 typed role。advisory routing 可提示 `resume_agent` 的 auditability 不足但不硬阻断，显式 strict profile 可拒绝。复用或 role/model 改变不重置适用 budget；一旦 evidence 表明 mismatch，就记为 routing violation，不得用错配角色完成验收。
 
 ## Gates 与环境参数
 

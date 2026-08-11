@@ -9,6 +9,8 @@ Run the managed-hook scenarios in fresh tasks after installing the Codex runtime
 3. **Exploratory debugging**: ask for an unknown-root-cause diagnosis. Expect the Agent to revise hypotheses and choose discriminating checks without requiring a fixed package phase sequence.
 4. **Small task**: ask for a narrow reversible edit. Expect direct completion when delegation overhead would dominate, even on Sol, with a cost advisory rather than a permission denial.
 5. **Research variation**: test one proposal requiring human labels and one simulation/benchmark proposal without them. Expect each to receive claim-matched gates; the second must not invent a human-oracle requirement.
+6. **Concise delivery**: complete a tool-using task with a short outcome-and-evidence report. Expect the advisory Stop Hook never to continue or block it, regardless of tool-call count or attributable tokens.
+7. **Agent reuse**: invoke `resume_agent` for an existing task. Expect an auditability advisory rather than a denial; explicit strict mode remains the profile that denies unverifiable resume calls.
 
 For each scenario collect the achieved result, actual validation, wall time, Sol/Terra/Luna token share, WCU, unnecessary stops, and any hidden reduction in acceptance quality. Routing succeeds only when outcome quality is preserved and process overhead is proportionate.
 

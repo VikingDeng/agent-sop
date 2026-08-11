@@ -271,6 +271,26 @@ class AuditCodexSessionTests(unittest.TestCase):
             report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
             self.assertEqual(report["delivery_report_findings"], [])
 
+    def test_advisory_accepts_concise_outcome_and_evidence_but_strict_requires_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-luna",
+                [100],
+                last_message="Completed the requested change. Tests passed.",
+                cwd=str(ROOT),
+            )
+            advisory = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+            strict = AUDIT.audit_session_tree(str(path), root, enforcement_mode="strict")
+            self.assertEqual(advisory["delivery_report_findings"], [])
+            self.assertTrue(any(
+                "review disposition" in finding and "routing/WCU" in finding
+                for finding in strict["delivery_report_findings"]
+            ))
+
     def test_single_model_observation_stays_quiet_below_one_million_tokens(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

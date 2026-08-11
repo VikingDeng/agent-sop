@@ -7,8 +7,10 @@ from dataclasses import dataclass
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import shlex
+import subprocess
 from typing import Any
 
 
@@ -49,6 +51,50 @@ NESTED_AGENT_FACTORIES = frozenset({
 })
 NESTED_AGENT_FIELDS = frozenset({"agent_type", "role", "model", "fork_context", "message"})
 MAX_FUNCTIONS_EXEC_SOURCE = 16_384
+
+
+def is_git_relevant(cwd: Any) -> bool:
+    """Treat a directory as repo-relevant only when it is a root or contains tracked paths."""
+    if not isinstance(cwd, str) or not cwd:
+        return False
+    try:
+        path = Path(cwd).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    if not path.is_dir():
+        return False
+    if (path / ".git").exists():
+        return True
+    try:
+        top_level = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if top_level.returncode != 0 or not top_level.stdout.strip():
+        return False
+    try:
+        root = Path(top_level.stdout.strip()).resolve()
+        relative = path.relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    if root == path:
+        return True
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", f":(literal){relative.as_posix()}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return tracked.returncode == 0 and bool(tracked.stdout.strip())
 
 
 @dataclass(frozen=True)
