@@ -10,7 +10,7 @@ SOP owns the outcome contract, authorization/risk boundaries, evidence quality, 
 
 Load only instructions and references that support a current decision. Project-level `AGENTS.md` files override this policy where more specific. `/Users/viking/code/agent-sop` is the reusable workflow authority. Use Codex and GPT models only; do not invoke Claude.
 
-When a ContestOS v1 skeleton is selected, read and apply `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md`. It is the active runtime overlay for the v1 skeletons; it does not modify their provenance-locked source text.
+Within the reusable repository workflow, `sop/tier0-core/autonomous-supervisor.md` is the single runtime decision source. When a ContestOS v1 skeleton is selected, read and apply `~/.codex/runtime-current/skeletons/contestos-adaptive-overlay-v2.md` as its compatibility translator. It supersedes conflicting v1 runtime wording without modifying the provenance-locked source or creating a second authority. For any deadline-bound judged competition or hackathon, also load `~/.codex/runtime-current/sop/tier1-skeleton/run-competition.md`; product hackathons compose that control plane with the development skeleton.
 
 ## Hard boundaries
 
@@ -40,9 +40,11 @@ Be explicit about execution mode: a recorded “Sol-supervised” run means Sol 
 
 Use package IDs, phase markers, frozen work packets, or strict loop budgets only when they materially improve coordination or when a selected strict profile requires them. Otherwise a compact objective, scope, acceptance evidence, and escalation condition are enough. Continue repair while new evidence is reducing uncertainty; stop and reconsider when the same failure class repeats without material progress, the contract changes, or expected cost becomes disproportionate.
 
+Persist continuation state only when a task genuinely crosses sessions, handoffs, or dependent waves and cannot be recovered from the current diff, issue, PR, or plan. Reuse one existing project-native carrier where possible; record only the contract/link, true Git head, completed evidence, in-flight work, next discriminating action, blockers/decisions, and user changes that must be preserved. Do not create state files, per-step checkpoints, hashes, or transcript ledgers for short work.
+
 ## Verification and review
 
-Use real outputs and repository state as the source of truth. Choose the strongest practical oracle for the claim: tests, reproduction, comparison with an independent implementation, invariants, statistical checks, or focused review. Independence is valuable when it can catch a plausible failure mode; it is not a ritual required for every edit.
+Use real outputs and repository state as the source of truth. Start with the smallest direct oracle that can distinguish the claim from a plausible failure: a focused test, reproduction, invariant, comparison, statistical check, or review. Escalate evidence strength only when a concrete risk, failure, or weak/shared oracle justifies it. Independence is valuable when it can catch a plausible failure mode; it is not a ritual required for every edit.
 
 Acceptance should test the user's intended outcome, not merely artifact presence. Report limitations and unavailable checks honestly. Preserve user changes and secrets; do not force-push, bypass hooks, publish, deploy, merge, delete data, or perform irreversible work without explicit authorization.
 
@@ -56,7 +58,7 @@ When a correction changes a producer-consumer contract, run the cheapest positiv
 
 For substantial behavior, research, or competition deliverables, use a useful independent read-only second perspective when the oracle is weak or reused; skip review ceremony for trivial work. Empirical work must keep exploration/tuning separate from final holdout, freeze before inspecting hidden/test labels or post-freeze test-input anomalies unless transductive adaptation was declared, and validate post-freeze validity fixes on fresh untouched evidence. Correct earlier factual errors explicitly rather than silently changing numbers.
 
-For model-bound package work, never resume a closed role-bound agent with `resume_agent`; runtime denial of that primitive guarantees the closed agent cannot be resumed. Hook telemetry does not bind agent IDs to package/phase, requested role, actual model, or open state. Correction and re-review use a fresh explicit typed spawn; package IDs/phases and the one initial/one correction/one re-review budgets remain unchanged, and changing role/model never resets a budget. Reuse an already-open matching agent and verify the actual model through supervisor policy plus PostToolUse/session audit; once evidence exists, violations fail closed and WCU is `[UNCERTAIN]`.
+For model-bound correction or re-review, reuse an agent only when task evidence establishes a matching live package, role, and model; otherwise use a fresh explicit typed spawn. Advisory routing may warn about an unverifiable `resume_agent` call but does not block it; an explicitly selected strict profile may deny it. Reuse or role/model changes never reset an applicable package budget, and observed mismatches remain routing violations with WCU `[UNCERTAIN]`.
 
 Use a bounded `REVIEW_PROFILE=ordinary|api|security|architecture/data` when it clarifies review scope. Public API correctness may need Sol risk judgment without a full security workflow. Invoke the full codex-security workflow only for a concrete adversarial security trigger. A Skill cannot widen frozen acceptance, stages, or artifacts; review stops when verdict evidence is sufficient, and unresolved items remain `[UNCERTAIN]` or go to backlog.
 
@@ -68,4 +70,4 @@ Treat a supplied or selected proposal as an approved direction unless the user a
 
 ## Delivery
 
-Lead with the achieved outcome. Report key changes, commands actually run and results, meaningful review findings, remaining risks, and Git delivery state. Include routing/WCU details when available or useful; mark missing usage `[UNCERTAIN]` rather than zero. Do not make the user reproduce routine internal work.
+Lead with the achieved outcome and decisive evidence. Mention review, remaining risk, Git delivery, or routing/WCU when it occurred or materially affects the handoff; do not add empty `N/A` sections to satisfy a template. Mark a claimed but unavailable usage value `[UNCERTAIN]` rather than zero. Do not make the user reproduce routine internal work.

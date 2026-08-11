@@ -23,14 +23,14 @@ agent-sop/
 ├── PRINCIPLES.md          # 四条核心纪律 + 收纳判据(全仓地基)
 ├── PROSE_STANDARD.md      # 文字产出规范 v2(横切:产人读文字时遵守)
 ├── SKILL-ADAPTERS.md      # 官方/维护者 Skill 与 SOP 的适配矩阵(不改变 SOP 权威)
-├── skeletons/             # 项目骨架(3 份 v1 原件 + 运行时 v2 overlay)
-│   ├── README.md          # 骨架索引与 active overlay 入口
+├── skeletons/             # 项目骨架(3 份 v1 原件 + v2.2 兼容 overlay)
+│   ├── README.md          # 骨架索引与 compatibility overlay 入口
 │   └── contestos-adaptive-overlay-v2.md
 ├── sop/                   # 可组合规程库(三层)
 │   ├── README.md          # 三层 INDEX + 依赖图 + 纪律映射
 │   ├── _TEMPLATE.md       # 单条 SOP 统一模板
 │   ├── tier0-core/        # 核心横切(全场景共用,9 条)
-│   ├── tier1-skeleton/    # 骨架绑定(10 条)
+│   ├── tier1-skeleton/    # 骨架绑定(11 条)
 │   └── tier2-activity/    # 非项目型工作:运维/写作/调研(8 条)
 ├── codex/                 # 个人模板与 custom-agent adapter
 └── scripts/               # 仓库独立验证器
@@ -47,7 +47,7 @@ agent-sop/
 5. **选 Skill 适配器时读 [SKILL-ADAPTERS.md](SKILL-ADAPTERS.md)**:Skill 是按需、可替换的能力层;不改变 SOP 的授权、路由、claim、HUMAN 边界、门禁或完成判定。
 6. **实施已批准科研 proposal 前走 [research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)**:不重新生成 idea；按 claim 选择真正需要的 oracle、pilot、风险边界和 scale 证据，不强迫所有 proposal 进入同一 gate 链。
 
-7. **选用任一 ContestOS v1 骨架时同时启用 [adaptive overlay v2](skeletons/contestos-adaptive-overlay-v2.md)**:v2 只覆盖运行时语义，明确解释 fallback、HUMAN checkpoint、环境参数与 claim/risk-triggered gates；v1 原件保持 provenance-locked。
+7. **选用任一 ContestOS v1 骨架时同时启用 [adaptive overlay v2.2](skeletons/contestos-adaptive-overlay-v2.md)**:它只覆盖运行时语义，明确解释 fallback、HUMAN checkpoint、环境参数与 claim/risk-triggered gates；v1 原件保持 provenance-locked。参加算法/交互、榜单、性能、hidden-runtime、研究工件或产品型黑客松时，再用 [run-competition](sop/tier1-skeleton/run-competition.md) 按真实赛制组合路径。
 
 ## 新增一个 SOP
 
