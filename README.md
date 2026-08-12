@@ -41,7 +41,7 @@
 
 ## Skill 选型
 
-[`skill-registry.yaml`](skill-registry.yaml) 是严格 JSON 语法的 YAML 1.2 文件，为 source、commit/subpath/hash、license、依赖、副作用、触发与评测状态提供可机读字段。当前候选仍处于 declared 阶段；未核验的 exact bytes/license 必须显式为 `null` 并附 blocker，只有进入 `audited` 前才要求补齐。任何候选要相对强 GPT‑5.6 比较三臂：
+[`skill-registry.yaml`](skill-registry.yaml) 是严格 JSON 语法的 YAML 1.2 文件，为 source、commit/subpath/hash、license、依赖、副作用、触发与评测状态提供可机读字段。候选可以分别处于 declared、audited 或 evaluated，但当前仍没有 promoted 能力；未核验的 exact bytes/license 必须显式为 `null` 并附 blocker，只有进入 `audited` 前才要求补齐。任何候选要相对强 GPT‑5.6 比较三臂：
 
 ```text
 strong no-Skill baseline
@@ -50,6 +50,8 @@ vs full pinned Skill
 ```
 
 只有 Full Skill 在固定模型、effort、工具、checkpoint 和预算下，经重复盲评证明净提升且没有 authority/acceptance 回归，才能 `promoted`。运行时禁止用 `find-skills` 自动搜索、安装和组合未知 Skill。
+
+首轮外部源码审计与 Trail of Bits property-based testing 的 3×3 负向 pilot 见 [round 1 evidence](skill-evaluations/round1-2026-08-12.md)：三臂均命中 8/8 初始隐藏检查，完整 Skill 在该轴没有优势且盲评低于两句提醒；由于评测协议和兼容性证据仍有缺口，该候选保持 audited 而非 evaluated，更没有进入稳定集。
 
 ## 目录
 
@@ -60,6 +62,7 @@ agent-sop/
 ├── PROSE_STANDARD.md
 ├── SKILL-ADAPTERS.md
 ├── skill-registry.yaml
+├── skill-evaluations/     # external Skill source audits and controlled net-lift results
 ├── sop/
 │   ├── tier0-core/        # 9 条通用/横切 SOP
 │   ├── tier1-skeleton/    # 12 条 Domain Profile / project SOP

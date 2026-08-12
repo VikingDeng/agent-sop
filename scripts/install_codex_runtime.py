@@ -58,6 +58,7 @@ SNAPSHOT_FILES = (
     "PROSE_STANDARD.md",
     "SKILL-ADAPTERS.md",
     "skill-registry.yaml",
+    "skill-evaluations/round1-2026-08-12.md",
     "codex/AGENTS.global.md",
     "codex/AGENTS.workspace.md",
     "codex/CODEX-ADAPTER.md",

@@ -154,6 +154,18 @@ class InstallCodexRuntimeTests(unittest.TestCase):
                     missing.append(f"{relative} -> {resolved}")
         self.assertEqual(missing, [])
 
+    def test_snapshot_registry_evidence_dependencies_are_closed(self) -> None:
+        snapshot_files = set(INSTALL.SNAPSHOT_FILES)
+        registry = json.loads((ROOT / "skill-registry.yaml").read_text(encoding="utf-8"))
+        missing: list[str] = []
+        for entry in registry["entries"]:
+            evidence_paths = [entry["audit"].get("evidence"), entry["evaluation"].get("pilot_evidence")]
+            for evidence in filter(None, evidence_paths):
+                relative = evidence.split("#", 1)[0]
+                if relative not in snapshot_files:
+                    missing.append(f"{entry['id']} -> {relative}")
+        self.assertEqual(missing, [])
+
     def test_update_builds_new_generation_and_switches_one_current_link(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

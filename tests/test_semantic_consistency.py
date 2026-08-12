@@ -99,12 +99,44 @@ class StructuralConsistencyTests(unittest.TestCase):
         self.assertEqual(registry["schema_version"], 1)
         self.assertEqual(registry["format"], "strict-json-compatible-yaml-1.2")
         entries = registry["entries"]
+        evaluation_report = (ROOT / "skill-evaluations/round1-2026-08-12.md").read_text(encoding="utf-8")
         identifiers = [entry["id"] for entry in entries]
         self.assertEqual(len(identifiers), len(set(identifiers)))
         for entry in entries:
             lifecycle = entry["lifecycle"]
+            license_spdx = entry["source"].get("license_spdx")
+            if license_spdx is not None:
+                self.assertRegex(license_spdx, r"^[A-Za-z0-9][A-Za-z0-9.+-]*$", entry["id"])
+            selected_paths = entry["source"].get("selected_paths")
+            if selected_paths is not None:
+                self.assertEqual(selected_paths, sorted(set(selected_paths)), entry["id"])
             for state in ("declared", "audited", "installed", "enabled", "evaluated", "promoted"):
                 self.assertIsInstance(lifecycle[state], bool, (entry["id"], state))
+            self.assertTrue(lifecycle["declared"], entry["id"])
+            if lifecycle["audited"]:
+                source = entry["source"]
+                self.assertTrue(source["repository"], entry["id"])
+                self.assertRegex(source["commit"], r"^[0-9a-f]{40}$", entry["id"])
+                self.assertTrue(source["subpath"], entry["id"])
+                self.assertRegex(source["content_sha256"], r"^[0-9a-f]{64}$", entry["id"])
+                self.assertTrue(source["content_hash_scheme"], entry["id"])
+                self.assertTrue(source["selected_file_sha256"], entry["id"])
+                for label, digest in source["selected_file_sha256"].items():
+                    self.assertRegex(digest, r"^[0-9a-f]{64}$", (entry["id"], label))
+                self.assertTrue(source["license_spdx"], entry["id"])
+                self.assertTrue(source["license_evidence"], entry["id"])
+                evidence = entry["audit"].get("evidence")
+                if evidence == "skill-evaluations/round1-2026-08-12.md#visual-author-source-audit" or evidence == "skill-evaluations/round1-2026-08-12.md#ai-research-source-audit":
+                    self.assertIn(source["content_sha256"], evaluation_report, entry["id"])
+            if lifecycle["installed"]:
+                self.assertTrue(lifecycle["audited"], entry["id"])
+            if lifecycle["enabled"]:
+                self.assertTrue(lifecycle["installed"], entry["id"])
+            if lifecycle["evaluated"]:
+                self.assertTrue(lifecycle["audited"], entry["id"])
+                self.assertTrue(entry["evaluation"]["fixtures"], entry["id"])
+                self.assertIsNotNone(entry["evaluation"]["thresholds"], entry["id"])
+                self.assertIsNotNone(entry["evaluation"]["result"], entry["id"])
             if lifecycle["promoted"]:
                 self.assertTrue(lifecycle["audited"])
                 self.assertTrue(lifecycle["evaluated"])

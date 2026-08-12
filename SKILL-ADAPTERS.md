@@ -2,7 +2,7 @@
 
 > 本文件只定义能力层的边界、准入和证据要求，不分类任务、不选择模型/角色、不规定阶段顺序，也不改变任何 SOP 的验收与授权。候选、来源和状态的唯一登记表是 [`skill-registry.yaml`](skill-registry.yaml)。该文件采用严格 JSON 语法（JSON 是 YAML 1.2 子集），可直接用 Python 标准库 `json` 读取，不依赖 YAML parser。
 
-更新时间：2026-08-11
+更新时间：2026-08-12
 
 ## 1. 正交边界
 
@@ -106,10 +106,11 @@ MCP adapter 也使用同一来源、依赖、副作用、trigger 和 evaluation 
 
 ## 7. 当前候选结论
 
-具体候选与缺失审计项见 [`skill-registry.yaml`](skill-registry.yaml)。当前没有任何外部候选达到 `promoted`：
+具体候选、exact source 与缺失审计项见 [`skill-registry.yaml`](skill-registry.yaml)，首轮审计/对照证据记录在 `skill-evaluations/round1-2026-08-12.md`。当前没有任何外部候选达到 `promoted`：
 
-- Product UI / taste、React、accessibility、property testing、workflow hardening、k6、EvalScope 和 NVIDIA profiling 均保留为待审计或待对照候选；
-- `define-goal`、K-Dense 泛化文本子集与内部 Grill wrapper 不默认启用；
+- 三个 Visual Author 已完成 exact-source 静态审计，但尚未完成运行态盲评；React、accessibility、workflow hardening、k6、EvalScope 和 NVIDIA profiling 仍处于不同程度的待审计/待对照状态；
+- Trail of Bits property-based testing 已完成 3×3 非正式 pilot，完整 Skill 在初始 hidden-check 轴没有优势，盲评高于 baseline 但低于两句提醒；因随机化、持久 raw artifacts 和成本指标不完整，它仍是 audited 而非 evaluated，并保持 disabled/unpromoted；
+- `define-goal`、K-Dense 泛化文本子集与内部 Grill wrapper 不默认启用；K-Dense 的四个科研候选经审计不匹配“已批准 AI proposal 的忠实实现”，仅保留一个 text-only DOE sentinel 的实验可能；
 - method-fidelity、AI experiment design、AI statistics 与具体 HF/TRL/verl/Ray/NeMo 栈仍是待选型能力槽，不用未经验证的通用科研 Skill 填空。
 
 这一结论只说明 Skill 层尚未证明净增益，不降低 development、research 或 competition 的原验收，也不阻止 Agent 使用项目原生工具完成任务。
