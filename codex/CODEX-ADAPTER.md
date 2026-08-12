@@ -1,7 +1,7 @@
 # Codex 平台适配层
 
 - **Adapter ID**: `codex-runtime`
-- **版本**: v2
+- **版本**: v3
 - **性质**: platform adapter，不是 SOP、Domain Profile 或 Skill
 
 ## 责任边界
@@ -66,8 +66,8 @@ WCU = 25 * T_sol + 10 * T_terra + 1 * T_luna
 - 优先根 Agent 扁平路由；不把 child 再委派 child、固定并发数或某个 role 存在当作成功条件。
 - 不按单条命令拆包，不传入与结果无关的完整历史。优先仓库 artifact 和最小自包含 packet，仅在具体依赖无法压缩时继承最少必要 context。
 - 核心不变式未确定且阻断 critical path 时，先由根 Agent、判别 oracle 或紧凑 architect package 关闭；不预先让多个 implementer/reviewer 在同一未知量上竞争。
-- 有真实不重叠工作时才并行。下一步依赖 child 结果时使用一次与 package 相称的 bounded wait；timeout 只表示未完成，不是负面 verdict。
-- 每个 open child 必须有当前用途或近期 dependent input；实现者可在一次明确即将到来的 review/correction 期间短暂保留。结果已消费且没有具体下一输入时显式 close；不再需要的 child 明确取消并记录未完成范围。已有无用途的 completed child 时先处理生命周期再创建 successor；平台无法确认时记为 `OPEN/UNKNOWN`，不声称已关闭。
+- 有真实不重叠工作时才并行。下一步依赖 child 结果时使用一次与 package 相称的 bounded wait；预计需要数分钟的实现/review 不用连续 20–60 秒轮询。timeout 只表示未完成，不是负面 verdict：先做真实不重叠工作，若没有则用一个更符合剩余工作的 wait；同一 child 连续短轮询是成本 finding，不是进度策略。
+- 每个 open child 必须有当前用途或近期 dependent input；实现者可在一次明确即将到来的 review/correction 期间短暂保留。结果已消费且没有具体下一输入时立即显式 close，再创建下一 child；completed 但未 close 仍占 open capacity。达到并发上限前先消费并关闭已完成 child，而不是等 thread-limit 后再清理。不再需要的 child 明确取消并记录未完成范围；平台无法确认时记为 `OPEN/UNKNOWN`，不声称已关闭。
 - “独立 review”只在实际发生了具有足够独立输入或错误路径的第二视角时成立；role 名和 spawn 记录本身不证明 review 质量。
 
 ## Hooks 的边界
@@ -85,7 +85,8 @@ Session auditor 回放已发生的 trace，用于验证 actual model、token/WCU
 
 - 默认审计为 process-advisory；它应分开报告 `outcome evidence`、`process observations` 与 `cost/provenance confidence`。
 - CLI 默认按 advisory 规则回放；`--strict` 选择更严格的审计 policy，但不把历史 `recorded_routing_profile` 改写为 strict。两者不一致时并列报告；不可信 marker 也不能把已选择的 strict policy 降为 advisory。
-- 损坏、截断、缺失 descendant 或无法归因的 trace 使相应路由/成本 claim 变为 `[UNCERTAIN/PARTIAL]`；不把未知值当作零。
+- App v2 child rollout 可能在自己的 `task_started` 之前携带父线程继承历史和累计 token snapshots；审计器必须以当前 task boundary 去重，只归因该 child 的新增 usage。当前任务在首个 `turn_context` 前已经产生的 token，可以在该任务只有一个可确认模型时回填给该模型；仍有多个可能模型时保持 `unknown`。若 `task_started` 前没有合法累计基线，首个 task 内累计 snapshot 无法拆分父/child usage：从该点开始测量后续 delta，并把总量标为 `[UNCERTAIN/PARTIAL]`，不能把完整首个 snapshot 计给 child。
+- 损坏、截断、缺失 descendant 或无法归因的 trace 使相应路由/成本 claim 变为 `[UNCERTAIN/PARTIAL]`；不把未知值当作零。最终报告中的明确模型/路由断言必须与 root/child trace 一致；prompt 要求、role 名与 agent 自述不能覆盖实际 `turn_context`。
 - 产品结果由项目 Oracle 决定。只有当审计发现伪造证据、丢失唯一决定性证据、越权或静默改变 acceptance 时，过程 finding 才直接否定对应 outcome claim。
 
 ## 执行失败与交付

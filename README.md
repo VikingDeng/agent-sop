@@ -26,6 +26,8 @@
 4. Skill 由可观察能力缺口触发。稳定运行只允许 registry 中未过期的 `promoted` 能力隐式启用；其他候选只能用于显式选型实验。
 5. 验收始终回到项目真实 Oracle。Skill、模型、角色、文件存在、build、smoke 或自述不能替代 claim 所需证据。
 
+Codex App 的日常开发、竞赛与已批准 proposal 工程建议安装 `terra-supervisor`：Terra/high 负责前台语义与裁决，Luna 承担有直接 Oracle 的大块执行，Sol 只在持续高判断密度或具体高风险处窄调用。`preserve` 仍是安装器的安全默认，不会静默改现有模型；显式切换与运行时审计命令见 [Codex adapter](codex/README.md)。
+
 ## AI proposal → 实验
 
 科研 Profile 的职责是把用户已批准 proposal 忠实、高效地实现，而不是重新生成一个更容易的 idea：

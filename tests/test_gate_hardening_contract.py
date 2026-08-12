@@ -72,8 +72,17 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("不机械要求 CRUD", profile)
         self.assertIn("固定技术栈", profile)
         self.assertIn("speculative runtime fallback", profile)
+        self.assertIn("调用方可观察行为", profile)
+        self.assertIn("默认值、显式 opt-in、错误/清理与资源状态保持", profile)
         for hardcoded in ("filter/sort/pagination", "desktop 与 mobile", "create/read/update"):
             self.assertNotIn(hardcoded, profile)
+
+    def test_public_api_contract_oracle_challenges_semantics_without_universal_matrix(self) -> None:
+        oracle = self.read("sop/tier0-core/build-oracle.md")
+        self.assertIn("public API/兼容 contract", oracle)
+        self.assertIn("默认行为与显式 opt-in", oracle)
+        self.assertIn("资源状态保持", oracle)
+        self.assertIn("没有这种歧义或失败路径时不制造行为矩阵", oracle)
 
     def test_research_profile_preserves_method_and_uses_ai_statistics(self) -> None:
         grill = self.read("sop/tier1-skeleton/research-execution-grill.md")

@@ -264,6 +264,78 @@ def _delivery_report_findings(
     return findings
 
 
+def _delivery_routing_claim_findings(
+    message: str,
+    *,
+    actual_root_families: set[str],
+    actual_tree_families: set[str],
+    tree_attribution_complete: bool,
+) -> list[str]:
+    """Find only explicit routing claims contradicted by root-session evidence."""
+
+    lowered = message.lower()
+    findings: list[str] = []
+
+    for family in MODEL_WEIGHTS:
+        unused_patterns = (
+            rf"\b(?:no|zero)\s+(?:use(?:d)?\s+of\s+)?{family}\b",
+            rf"\b{family}\s+(?:was\s+)?not\s+used\b",
+            rf"未使用\s*{family}\b",
+            rf"没有使用\s*{family}\b",
+            rf"{family}\s*(?:未使用|没有使用)",
+        )
+        unused_matches = [
+            match
+            for pattern in unused_patterns
+            for match in re.finditer(pattern, lowered)
+            if not re.search(
+                r"(?:top[- ]level|foreground|root|顶层|前台|主线程|根线程)\s*$",
+                lowered[max(0, match.start() - 16):match.start()],
+            )
+            and not re.match(
+                r"\s*(?:(?:at|as|by|for|in)\s+(?:the\s+)?(?:top[- ]level|foreground|root)|"
+                r"作为(?:顶层|前台|主线程|根线程))",
+                lowered[match.end():match.end() + 40],
+            )
+        ]
+        if unused_matches:
+            if family in actual_tree_families:
+                findings.append(
+                    f"final report says {family.title()} was not used, but task-tree tokens used {family}"
+                )
+            elif not tree_attribution_complete:
+                findings.append(
+                    f"final report says {family.title()} was not used, but incomplete task-tree model attribution "
+                    "cannot establish that claim"
+                )
+
+    claimed_top_families: set[str] = set()
+    top_patterns = (
+        r"\b(?:top[- ]level|foreground|root(?:\s+(?:thread|agent|session))?)"
+        r"[^.;\n]{0,48}?\b(sol|terra|luna)\b",
+        r"\b(sol|terra|luna)(?:/[a-z0-9_-]+)?\s+(?:top[- ]level\s+)?supervisor\b",
+        r"(?:顶层|前台|主线程|根线程)[^。；\n]{0,48}?(sol|terra|luna)\b",
+    )
+    for pattern in top_patterns:
+        for match in re.finditer(pattern, lowered):
+            prefix = lowered[max(0, match.start() - 8):match.start()]
+            before_family = match.group(0)[: match.start(1) - match.start()]
+            if (
+                re.search(r"(?:not|isn't|wasn't|不是|并非)\s*$", prefix)
+                or re.search(r"\b(?:not|isn't|wasn't)\b|不是|并非", before_family)
+            ):
+                continue
+            claimed_top_families.add(match.group(1))
+
+    if len(actual_root_families) == 1:
+        actual = next(iter(actual_root_families))
+        for claimed in sorted(claimed_top_families - {actual}):
+            findings.append(
+                f"final report claims top-level {claimed.title()}, but root-session tokens used {actual}"
+            )
+    return findings
+
+
 def _identifier_values(value: Any) -> dict[str, str]:
     payload = value if isinstance(value, dict) else _spawn_result_object(value)
     if not isinstance(payload, dict):
@@ -383,6 +455,7 @@ def _extract_runtime_provenance(record: dict[str, Any]) -> tuple[list[dict[str, 
 def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, Any]:
     active_model = "unknown"
     previous_usage = {field: 0 for field in TOKEN_FIELDS}
+    pending_unattributed_usage: Counter[str] = Counter()
     usage_by_model: dict[str, Counter[str]] = defaultdict(Counter)
     calls_by_model: dict[str, Counter[str]] = defaultdict(Counter)
     call_index: dict[str, tuple[str, str]] = {}
@@ -401,6 +474,13 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     parse_errors = 0
     usage_schema_errors: list[str] = []
     token_snapshot_count = 0
+    inherited_token_snapshot_count = 0
+    inherited_usage_baseline_available = False
+    inherited_usage_baseline_missing = False
+    explicit_child_task_boundary = False
+    current_task_started = True
+    pre_task_token_snapshots: list[tuple[dict[str, int], bool]] = []
+    turn_context_models: list[str] = []
     task_complete = False
     task_complete_count = 0
     task_epoch = 0
@@ -415,6 +495,7 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
     luna_unavailable_turns: set[str] = set()
     last_agent_message = ""
     cwd = ""
+    session_cwd = ""
     runtime_provenance: list[dict[str, Any]] = []
     runtime_provenance_errors: list[str] = []
 
@@ -447,6 +528,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             "parse_errors": 1,
             "usage_schema_errors": [f"cannot open log: {exc}"],
             "token_snapshot_count": 0,
+            "inherited_token_snapshot_count": 0,
+            "inherited_usage_baseline_missing": False,
+            "turn_context_models": [],
             "task_complete": False,
             "last_agent_message": "",
             "cwd": "",
@@ -468,6 +552,58 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             if not isinstance(record, dict) or not isinstance(record.get("payload", {}), dict):
                 parse_errors += 1
                 continue
+            payload = record.get("payload", {})
+            is_task_started = record.get("type") == "event_msg" and payload.get("type") == "task_started"
+            if record.get("type") == "session_meta" and isinstance(payload.get("cwd"), str):
+                cwd = payload["cwd"]
+                session_cwd = payload["cwd"]
+            if meta.parent_thread_id and is_task_started and task_epoch == 0:
+                explicit_child_task_boundary = True
+                current_task_started = False
+                # App v2 child rollouts can copy arbitrary parent history, not
+                # only cumulative token snapshots. Discard every observation
+                # made before the child's own task boundary while retaining a
+                # valid final cumulative snapshot solely as the delta baseline.
+                usage_by_model.clear()
+                pending_unattributed_usage.clear()
+                calls_by_model.clear()
+                call_index.clear()
+                pending_spawns.clear()
+                pending_closes.clear()
+                pending_lifecycle_controls.clear()
+                activity_by_path.clear()
+                lifecycle_events.clear()
+                thread_limit_failures.clear()
+                successful_spawns.clear()
+                successful_spawn_roles.clear()
+                failed_spawns.clear()
+                large_outputs.clear()
+                sol_execution_calls.clear()
+                sol_lifecycle_calls.clear()
+                parse_errors = 0
+                usage_schema_errors.clear()
+                token_snapshot_count = 0
+                turn_context_models.clear()
+                task_complete = False
+                task_complete_count = 0
+                final_epoch_task_complete_count = 0
+                interrupted = False
+                last_token_line = 0
+                last_substantive_line = 0
+                nested_policy_violations.clear()
+                nested_policy_uncertainties.clear()
+                package_contract_uncertainties.clear()
+                luna_routing_violations.clear()
+                luna_unavailable_turns.clear()
+                last_agent_message = ""
+                cwd = session_cwd
+                runtime_provenance.clear()
+                runtime_provenance_errors.clear()
+                active_model = "unknown"
+                if pre_task_token_snapshots:
+                    inherited_token_snapshot_count = len(pre_task_token_snapshots)
+                    previous_usage, inherited_usage_baseline_available = pre_task_token_snapshots[-1]
+
             provenance, provenance_errors = _extract_runtime_provenance(record)
             for item in provenance:
                 if item not in runtime_provenance:
@@ -475,7 +611,6 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             runtime_provenance_errors.extend(
                 f"line {line_number}: {message}" for message in provenance_errors
             )
-            payload = record.get("payload", {})
             metadata_record = (
                 record.get("type") in {"session_meta", "turn_context"}
                 or payload.get("type") in {"task_started", "task_complete"}
@@ -483,18 +618,19 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             if metadata_record and isinstance(payload.get("cwd"), str):
                 cwd = payload["cwd"]
             observed_turn_id = _turn_id(payload)
-            is_task_started = record.get("type") == "event_msg" and payload.get("type") == "task_started"
             is_task_complete = record.get("type") == "event_msg" and payload.get("type") == "task_complete"
             substantive_after_completion = (
                 record.get("type") in {"turn_context", "response_item"}
                 or (record.get("type") == "event_msg" and payload.get("type") in {"task_started", "token_count", "user_message"})
             )
             if is_task_started:
+                current_task_started = True
                 task_epoch += 1
                 task_complete = False
                 final_epoch_task_complete_count = 0
                 interrupted = False
                 last_agent_message = ""
+                active_model = "unknown"
                 lifecycle_events.append({"kind": "task_started", "line": line_number, "epoch": task_epoch})
             elif task_complete and substantive_after_completion:
                 task_complete = False
@@ -505,6 +641,11 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
             if record.get("type") == "turn_context":
                 if isinstance(payload.get("model"), str):
                     active_model = payload["model"]
+                    if active_model not in turn_context_models:
+                        turn_context_models.append(active_model)
+                    if pending_unattributed_usage:
+                        usage_by_model[active_model].update(pending_unattributed_usage)
+                        pending_unattributed_usage.clear()
                 else:
                     usage_schema_errors.append(f"line {line_number}: turn_context model missing")
                 continue
@@ -548,9 +689,29 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                 current, errors = _normalize_usage(usage_payload, line_number)
                 usage_schema_errors.extend(errors)
                 if current is not None:
+                    if meta.parent_thread_id and task_epoch == 0:
+                        pre_task_token_snapshots.append((current, not errors))
                     token_snapshot_count += 1
                     last_token_line = line_number
-                    usage_by_model[active_model].update(_usage_delta(current, previous_usage))
+                    if (
+                        explicit_child_task_boundary
+                        and not inherited_usage_baseline_available
+                        and token_snapshot_count == 1
+                    ):
+                        inherited_usage_baseline_missing = True
+                        # This cumulative snapshot can contain inherited parent
+                        # usage plus current-child usage. There is no defensible
+                        # numeric split without a pre-task baseline, so retain
+                        # it only as an uncertainty marker and begin measuring
+                        # known deltas from this snapshot forward.
+                        previous_usage = current
+                        continue
+                    else:
+                        delta = _usage_delta(current, previous_usage)
+                    if active_model == "unknown":
+                        pending_unattributed_usage.update(delta)
+                    else:
+                        usage_by_model[active_model].update(delta)
                     previous_usage = current
                 continue
             if record.get("type") != "response_item":
@@ -580,6 +741,10 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                         "call_id": call_id,
                         "line": line_number,
                     }
+                    if leaf == "wait_agent":
+                        timeout = arguments.get("timeout_ms", arguments.get("timeoutMs"))
+                        if isinstance(timeout, int) and not isinstance(timeout, bool) and timeout >= 0:
+                            control_event["timeout_ms"] = timeout
                     if leaf == "followup_task":
                         message = arguments.get("message") or arguments.get("prompt") or arguments.get("task")
                         package_id, package_phase, package_error = parse_package_markers(message)
@@ -808,6 +973,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
                                 luna_routing_violations.append(
                                     f"line {line_number}: unavailable gpt-5.6-luna result lacks turn_id; routing is uncertain"
                                 )
+    if pending_unattributed_usage:
+        usage_by_model["unknown"].update(pending_unattributed_usage)
+
     return {
         "thread_id": meta.thread_id,
         "session_id": meta.session_id,
@@ -833,6 +1001,9 @@ def audit_log(meta: SessionMeta, large_output_chars: int = 20_000) -> dict[str, 
         "parse_errors": parse_errors,
         "usage_schema_errors": usage_schema_errors,
         "token_snapshot_count": token_snapshot_count,
+        "inherited_token_snapshot_count": inherited_token_snapshot_count,
+        "inherited_usage_baseline_missing": inherited_usage_baseline_missing,
+        "turn_context_models": turn_context_models,
         "task_complete": task_complete,
         "task_complete_count": task_complete_count,
         "task_epoch": task_epoch,
@@ -915,6 +1086,7 @@ def audit_session_tree(
     completeness_violations: list[str] = []
     routing_policy_findings: list[str] = []
     delivery_report_findings: list[str] = []
+    delivery_truth_violations: list[str] = []
     child_lifecycle_statuses: list[dict[str, Any]] = []
 
     def lifecycle_violations(session: dict[str, Any], children: list[dict[str, Any]]) -> list[str]:
@@ -1222,7 +1394,6 @@ def audit_session_tree(
             if missing:
                 finding = f"thread {thread_id}: completed root final report missing " + ", ".join(missing)
                 delivery_report_findings.append(finding)
-
         for child in children:
             child_id = str(child["thread_id"])
             role = child["agent_role"]
@@ -1256,6 +1427,55 @@ def audit_session_tree(
     total_tokens = sum(counter["total_tokens"] for counter in model_totals.values())
     lower_cost_tokens = sum(family_totals[family]["total_tokens"] for family in ("terra", "luna"))
 
+    missing_child_usage_baselines = sorted(
+        str(session["thread_id"])
+        for session in sessions
+        if session.get("inherited_usage_baseline_missing", False)
+    )
+    if missing_child_usage_baselines:
+        completeness_violations.append(
+            "child rollout(s) have no pre-task cumulative token baseline; first current-task snapshot "
+            "cannot be split from inherited usage: " + ", ".join(missing_child_usage_baselines)
+        )
+
+    observed_tree_models = {
+        model
+        for session in sessions
+        for model in session.get("turn_context_models", [])
+    }
+    actual_tree_families = {
+        family
+        for model in observed_tree_models | set(model_totals)
+        if (family := model_family(model)) != "unknown"
+    }
+    unknown_observed_models = {
+        model for model in observed_tree_models if model_family(model) == "unknown"
+    }
+    tree_attribution_complete = not (
+        unknown_models
+        or unknown_observed_models
+        or missing_child_usage_baselines
+        or completeness_violations
+    )
+    for session in (
+        item for item in sessions
+        if item["task_complete"] and not item["parent_thread_id"]
+    ):
+        actual_root_families = {
+            family
+            for model in set(session["usage_by_model"]) | set(session.get("turn_context_models", []))
+            if (family := model_family(model)) != "unknown"
+        }
+        for item in _delivery_routing_claim_findings(
+            session["last_agent_message"],
+            actual_root_families=actual_root_families,
+            actual_tree_families=actual_tree_families,
+            tree_attribution_complete=tree_attribution_complete,
+        ):
+            finding = f"thread {session['thread_id']}: {item}"
+            delivery_report_findings.append(finding)
+            delivery_truth_violations.append(finding)
+
     system_model_totals: dict[str, Counter[str]] = defaultdict(Counter)
     system_overhead_findings: list[str] = []
     for session in system_sessions:
@@ -1278,17 +1498,38 @@ def audit_session_tree(
         system_overhead_findings.append("unknown system model family: " + ", ".join(system_unknown_models))
     system_overhead_tokens = sum(usage["total_tokens"] for usage in system_model_totals.values())
 
-    integrity_failures = list(completeness_violations)
+    integrity_failures = [*completeness_violations, *delivery_truth_violations]
     if sol_execution_calls:
         routing_policy_findings.append(f"{len(sol_execution_calls)} non-read-only tool call(s) were made by Sol")
     if unknown_models:
         integrity_failures.append("unknown model family: " + ", ".join(unknown_models))
     observations = list(provenance_observations)
+    inherited_token_snapshots = sum(
+        int(session.get("inherited_token_snapshot_count", 0)) for session in sessions
+    )
+    if inherited_token_snapshots:
+        observations.append(
+            f"excluded {inherited_token_snapshots} inherited pre-task cumulative token snapshot(s) "
+            "from App child usage to avoid double counting"
+        )
     for session in sessions:
         observations.extend(
             f"thread {session['thread_id']}: {item}"
             for item in session.get("runtime_provenance_errors", [])
         )
+        waits = [
+            event for event in session.get("lifecycle_events", [])
+            if event.get("kind") == "lifecycle_request" and event.get("leaf") == "wait_agent"
+        ]
+        short_waits = [
+            event for event in waits
+            if isinstance(event.get("timeout_ms"), int) and int(event["timeout_ms"]) <= 60_000
+        ]
+        if len(waits) >= 3 and len(short_waits) >= 3:
+            observations.append(
+                f"efficiency: thread {session['thread_id']} issued {len(waits)} wait_agent calls, "
+                f"including {len(short_waits)} at <=60 seconds; inspect interval-polling WCU"
+            )
     if total_tokens and not lower_cost_tokens:
         observations.append("no Terra or Luna tokens were observed; confirm that all work was judgment-only")
 
@@ -1313,6 +1554,11 @@ def audit_session_tree(
         violations = list(integrity_failures)
         observations.extend(f"advisory only: {item}" for item in routing_policy_findings)
 
+    cost_evidence_uncertain = bool(
+        unknown_models
+        or completeness_violations
+        or (enforcement_mode == "strict" and routing_policy_findings)
+    )
     report = {
         "root": target,
         "enforcement_mode": enforcement_mode,
@@ -1322,9 +1568,7 @@ def audit_session_tree(
         "runtime_provenance": root_provenance,
         "session_count": len(sessions),
         "system_session_count": len(system_sessions),
-        "cost_status": "partial_uncertain" if (
-            integrity_failures or (enforcement_mode == "strict" and routing_policy_findings)
-        ) else "complete",
+        "cost_status": "partial_uncertain" if cost_evidence_uncertain else "complete",
         "weighted_cost_units": weighted_cost,
         "total_tokens": total_tokens,
         "model_totals": {model: dict(counter) for model, counter in sorted(model_totals.items())},
@@ -1345,6 +1589,8 @@ def audit_session_tree(
         "routing_violations": violations,
         "routing_observations": observations,
         "delivery_report_findings": delivery_report_findings,
+        "delivery_truth_violations": delivery_truth_violations,
+        "inherited_token_snapshot_count": inherited_token_snapshots,
         "sessions": sessions,
         "system_sessions": system_sessions,
     }

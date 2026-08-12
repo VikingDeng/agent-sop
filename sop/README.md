@@ -14,6 +14,9 @@
 > 不设 universal clean-tree、`ENV_LOCK`、clean-rebuild 或多 seed 门禁。
 > 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
 > 的派生视图契约；它不要求新建 dashboard 或独立台账。
+> `tier0-core/autonomous-supervisor.md` 当前为 **v17**，`build-oracle.md` 为 **v3**，
+> `tier1-skeleton/run-development.md` 为 **v2**：public API/兼容任务先比较可信 caller-visible
+> contract，再用默认/opt-in/cleanup/资源保持等 claim-matched Oracle 验收；没有真实歧义时不制造矩阵或新门禁。
 
 ## Tier 0 — 核心横切(所有场景共用)
 

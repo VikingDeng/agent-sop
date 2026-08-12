@@ -32,6 +32,7 @@ The installer:
 - snapshots the Kernel, three current Domain Profiles, their direct runtime references, the Skill registry, Codex Adapter, role files, Hooks, and optional legacy compatibility material;
 - records component version and content identity in `snapshot-manifest.json`;
 - links the global/workspace AGENTS files, role TOMLs, and Hook scripts through `runtime-current`;
+- installs the session auditor at `~/.codex/bin/audit-codex-session` through the same verified generation;
 - merges only its own Hook registrations into existing `~/.codex/hooks.json`;
 - resolves and verifies the base Python interpreter running the installer, then writes that executable's absolute path into managed Hook commands instead of assuming `/usr/bin/python3`;
 - preserves the foreground model by default; explicit profiles set Terra/high or Sol/high;
@@ -77,9 +78,9 @@ Role and model telemetry cannot prove independent review or product correctness.
 Audit a completed root session by thread ID or rollout path:
 
 ```sh
-python3 scripts/audit_codex_session.py <thread-id>
-python3 scripts/audit_codex_session.py <rollout.jsonl> --json
-python3 scripts/audit_codex_session.py <thread-id> --strict
+~/.codex/bin/audit-codex-session <thread-id>
+~/.codex/bin/audit-codex-session <rollout.jsonl> --json
+~/.codex/bin/audit-codex-session <thread-id> --strict
 ```
 
 The auditor reports separately:
@@ -89,7 +90,7 @@ The auditor reports separately:
 - model/token/WCU and provenance confidence;
 - child lifecycle and system/guardian overhead.
 
-Corrupt logs, missing descendants, invalid token schemas, or unknown attribution keep affected cost/process claims `[UNCERTAIN/PARTIAL]`. Regex matches, role names, package markers and report fields do not prove user outcomes.
+App v2 child rollouts can include inherited parent history before the child's own `task_started`; the auditor excludes those cumulative snapshots to prevent duplicate tokens and attributes current-task pre-`turn_context` deltas only after the actual model is known. If no valid pre-task cumulative baseline exists, the first current-task snapshot is not assigned wholesale to the child: later deltas remain measurable while total cost stays `[UNCERTAIN/PARTIAL]`. Corrupt logs, missing descendants, invalid token schemas, or unknown attribution keep affected cost/process claims `[UNCERTAIN/PARTIAL]`. Explicit final-report routing claims are checked against actual root trace and full-tree observed models; regex matches, role names, package markers and report fields still do not prove user outcomes.
 
 Personal rollout logs are not stored in this repository; unit tests use synthetic session trees. Behavioral confidence still requires fresh-task execution because unit tests cannot prove service-side model availability or App Hook behavior.
 
@@ -100,6 +101,7 @@ Personal rollout logs are not stored in this repository; unit tests use syntheti
 <workspace-root>/AGENTS.md
 ~/.codex/agents/{explorer,focused_worker,luna_executor,sol_architect,terra_debugger,worker,verifier,reviewer,risk_reviewer}.toml
 ~/.codex/hooks/{weighted_cost_router.py,weighted_routing_policy.py}
+~/.codex/bin/audit-codex-session
 ```
 
 To uninstall, remove only links and Hook registrations owned by this adapter and restore a chosen backup if needed. Do not delete an entire shared `hooks.json`.

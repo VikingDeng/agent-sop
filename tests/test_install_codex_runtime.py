@@ -62,6 +62,10 @@ class InstallCodexRuntimeTests(unittest.TestCase):
                 os.readlink(workspace / "AGENTS.md"),
                 str(stable_root / "codex/AGENTS.workspace.md"),
             )
+            self.assertEqual(
+                os.readlink(codex_home / "bin/audit-codex-session"),
+                str(stable_root / "scripts/audit_codex_session.py"),
+            )
             generation = installer.snapshot_path
             assert generation is not None
             self.assertTrue((generation / INSTALL.SNAPSHOT_MANIFEST).is_file())
@@ -344,6 +348,17 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertRegex(marker["generation"], r"^sha256-[0-9a-f]{64}$")
 
             self.assertIn("Weighted-cost routing", (codex_home / "hooks/weighted_cost_router.py").read_text())
+            audit_command = codex_home / "bin/audit-codex-session"
+            self.assertTrue(audit_command.is_symlink())
+            self.assertTrue(os.access(audit_command, os.X_OK))
+            audit_help = subprocess.run(
+                [audit_command, "--help"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(audit_help.returncode, 0, audit_help.stderr)
+            self.assertIn("Audit a complete Codex task tree", audit_help.stdout)
             self.assertTrue((codex_home / "agents/luna_executor.toml").read_text())
             runtime = home / INSTALL.RUNTIME_CURRENT
             self.assertIn("唯一通用运行时决策源", (runtime / "sop/tier0-core/autonomous-supervisor.md").read_text())
@@ -370,8 +385,8 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             for context_text in (global_context, workspace_context):
                 self.assertNotIn("runtime-current/skeletons/contestos-adaptive-overlay", context_text)
             manifest = json.loads((runtime / INSTALL.SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
-            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v2")
-            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v1")
+            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v3")
+            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v2")
             self.assertRegex(manifest["runtime_components"]["kernel"]["sha256"], r"^[0-9a-f]{64}$")
 
     def test_failure_before_current_switch_preserves_old_active_generation(self) -> None:

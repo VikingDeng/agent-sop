@@ -35,6 +35,9 @@ ROLES = (
     "risk_reviewer",
 )
 HOOK_FILES = ("weighted_cost_router.py", "weighted_routing_policy.py")
+UTILITY_LINKS = (
+    (Path(".codex/bin/audit-codex-session"), Path("scripts/audit_codex_session.py")),
+)
 ROUTING_PROFILES = ("advisory", "strict")
 DEFAULT_ROUTING_PROFILE = "advisory"
 AGENT_SETTINGS = {
@@ -94,6 +97,7 @@ SNAPSHOT_FILES = (
     "sop/tier1-skeleton/statistics-oracle.md",
     "sop/tier1-skeleton/write-contract.md",
     "sop/tier2-activity/ops-remote-compute.md",
+    "scripts/audit_codex_session.py",
     "scripts/validate_research_execution_grill.py",
     "scripts/research_grill_state_machine.py",
     "skeletons/contestos-adaptive-overlay-v2.md",
@@ -401,7 +405,10 @@ class Installer:
     def _lock_snapshot(path: Path, sources: tuple[Path, ...]) -> None:
         for relative, source in zip(SNAPSHOT_FILES, sources):
             destination = path / relative
-            os.chmod(destination, 0o444 | (source.stat().st_mode & 0o111))
+            mode = source.stat().st_mode & 0o111
+            if relative == "scripts/audit_codex_session.py":
+                mode |= 0o111
+            os.chmod(destination, 0o444 | mode)
         for directory in sorted((candidate for candidate in path.rglob("*") if candidate.is_dir()), reverse=True):
             os.chmod(directory, 0o555)
         os.chmod(path, 0o555)
@@ -809,6 +816,10 @@ class Installer:
             *(
                 (codex_home / "hooks" / hook_file, current / "codex/hooks" / hook_file)
                 for hook_file in HOOK_FILES
+            ),
+            *(
+                (self.home / destination, current / target)
+                for destination, target in UTILITY_LINKS
             ),
         ]
         # The argument keeps the call site explicit: every target must be in the
