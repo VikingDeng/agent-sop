@@ -23,7 +23,7 @@
    - 已批准 AI 顶会 proposal 的正确实现与实验：[research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)
    - 竞赛、benchmark、leaderboard、hackathon：[run-competition](sop/tier1-skeleton/run-competition.md)
 3. 只有任务确实跨域时组合 Profile，例如产品黑客松或研究工件赛。
-4. Skill 由可观察能力缺口触发。稳定运行只允许 registry 中未过期的 `promoted` 能力隐式启用；其他候选只能用于显式选型实验。
+4. Skill 由可观察能力缺口触发。稳定运行只允许 registry 中未过期的 `promoted` 能力隐式启用；受测候选与完整评测证据只保留在 source repository，未晋级候选不进入 runtime snapshot 或 `~/.codex/skills/`。
 5. 验收始终回到项目真实 Oracle。Skill、模型、角色、文件存在、build、smoke 或自述不能替代 claim 所需证据。
 
 ## AI proposal → 实验
@@ -41,7 +41,7 @@
 
 ## Skill 选型
 
-[`skill-registry.yaml`](skill-registry.yaml) 是严格 JSON 语法的 YAML 1.2 文件，为 source、commit/subpath/hash、license、依赖、副作用、触发与评测状态提供可机读字段。当前候选仍处于 declared 阶段；未核验的 exact bytes/license 必须显式为 `null` 并附 blocker，只有进入 `audited` 前才要求补齐。任何候选要相对强 GPT‑5.6 比较三臂：
+[`skill-registry.yaml`](skill-registry.yaml) 是严格 JSON 语法的 YAML 1.2 文件，为 source、commit/subpath/hash、license、依赖、副作用、触发与评测状态提供可机读字段。未核验的 exact bytes/license 必须显式为 `null` 并附 blocker，只有进入 `audited` 前才要求补齐。任何候选要相对强 GPT‑5.6 比较三臂：
 
 ```text
 strong no-Skill baseline
@@ -50,6 +50,10 @@ vs full pinned Skill
 ```
 
 只有 Full Skill 在固定模型、effort、工具、checkpoint 和预算下，经重复盲评证明净提升且没有 authority/acceptance 回归，才能 `promoted`。运行时禁止用 `find-skills` 自动搜索、安装和组合未知 Skill。
+
+首个完成的 Product UI 对照结果是一个 no-go：固定 Anthropic `frontend-design` Full Skill 低于 strong baseline 和一句精准 reminder，因此没有被默认安装。对照显示有效增益来自“从具体领域推导视觉身份并拒绝可互换的通用模板”这条结果约束；它已进入 [Development Profile v2](sop/tier1-skeleton/run-development.md)，而不是被伪装成一个已验证 Skill。完整评分和可复核产物见 [evaluation result](evaluations/frontend-design-v1/results/2026-08-12/blind-review.md)。
+
+Development Profile v2 另完成了一次全新 `complete product` E2E：真实浏览器贯通 HTTP API、合法/非法状态转换、SQLite、审计时间线与进程重启，且保留本地单用户 non-goals，没有追加 auth、CI、容器或外部集成。可运行产品与局限见 [Development v2 E2E](evaluations/development-v2-e2e/2026-08-12/README.md)；这是一个正向实例，不是跨任务因果证明。
 
 ## 目录
 

@@ -70,6 +70,10 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("真实 render oracle", profile)
         self.assertIn("partial/ENV-BLOCKED", profile)
         self.assertIn("不机械要求 CRUD", profile)
+        self.assertIn("不能静默降级成 MVP", profile)
+        self.assertIn("请求时临时 seed 的内存数据", profile)
+        self.assertIn("通用 dashboard/card 模板", profile)
+        self.assertIn("未主导该视觉实现的观察者", profile)
         self.assertIn("固定技术栈", profile)
         self.assertIn("speculative runtime fallback", profile)
         for hardcoded in ("filter/sort/pagination", "desktop 与 mobile", "create/read/update"):
@@ -100,6 +104,8 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("last-known-good", competition)
         self.assertIn("随机 tournament", competition)
         self.assertIn("一次授权可以覆盖包络内的后续提交", competition)
+        self.assertIn("黑客松”本身不自动等于低保真 MVP", competition)
+        self.assertIn("真实 UI→API→持久状态/集成结果", competition)
         self.assertIn("只完成本地打包与核验，不执行", package)
         self.assertNotIn("根 Agent 或 Luna", competition)
 

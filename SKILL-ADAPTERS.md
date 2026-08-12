@@ -2,7 +2,7 @@
 
 > 本文件只定义能力层的边界、准入和证据要求，不分类任务、不选择模型/角色、不规定阶段顺序，也不改变任何 SOP 的验收与授权。候选、来源和状态的唯一登记表是 [`skill-registry.yaml`](skill-registry.yaml)。该文件采用严格 JSON 语法（JSON 是 YAML 1.2 子集），可直接用 Python 标准库 `json` 读取，不依赖 YAML parser。
 
-更新时间：2026-08-11
+更新时间：2026-08-12
 
 ## 1. 正交边界
 
@@ -44,7 +44,7 @@ Registry 明确不保存：任务类型到 Skill 的自动映射、Sol/Terra/Lun
 |---|---|---|
 | `declared` | 已记录候选及预期增益 | 源码可信、可安装或有质量提升 |
 | `audited` | exact bytes、license、依赖、副作用和权限排除已静态核验 | 相对强模型有净提升 |
-| `installed` | 审计过的 digest 确实存在于目标环境 | 自动启用或稳定质量 |
+| `installed` | 审计 digest 已进入平台可发现的 Skill 安装位置 | 自动启用或稳定质量 |
 | `enabled` | 在明确 activation policy 下允许被调用 | 每个匹配任务都应调用 |
 | `evaluated` | 已完成登记的对照实验并保存原始证据 | 已达到 promotion 阈值 |
 | `promoted` | 在当前模型、版本、fixture 与期限内证明净提升 | 永久有效或可以改变 SOP |
@@ -52,6 +52,8 @@ Registry 明确不保存：任务类型到 Skill 的自动映射、Sol/Terra/Lun
 这些是候选状态事实，不是项目阶段。正常新增候选必须按上表前向推进；若导入历史安装，必须明确记录例外，且不得越级成为 `audited` 或 `promoted`。任何 source bytes、依赖边界、主要模型/Codex 能力或 fixture 分布发生 material change，均把 `promoted` 降回 `evaluated=false`，重新对照。
 
 只有 `promoted=true` 且未过期的窄能力可以进入默认候选集；`evaluated` 但未晋级的能力仅供显式实验；其余候选不得在稳定运行路径自动安装或启用。
+
+为固定受测来源，source repository 可以保存经过 license/source 审计的候选 bytes 与评测产物；**存在于仓库不等于 `installed`**。当前 no-go 候选不进入 runtime snapshot 或 `~/.codex/skills/` discovery。只有候选真正晋级且当前平台需要它时，才按当时的安装语义实现最小部署变更，不为未来可能的晋级预建通用 installer。
 
 ## 3. 相对于 GPT-5.6 的净增益测试
 
@@ -108,7 +110,9 @@ MCP adapter 也使用同一来源、依赖、副作用、trigger 和 evaluation 
 
 具体候选与缺失审计项见 [`skill-registry.yaml`](skill-registry.yaml)。当前没有任何外部候选达到 `promoted`：
 
-- Product UI / taste、React、accessibility、property testing、workflow hardening、k6、EvalScope 和 NVIDIA profiling 均保留为待审计或待对照候选；
+- Anthropic `frontend-design` 已按固定提交完成 source/license 审计和三臂对照，但 Full Skill 的盲评均分为 `8.3542`，低于 strong no-Skill 的 `8.8667` 与 minimal reminder 的 `9.3792`，因此判为 `evaluated_no_go`，不安装、不启用；原始产物和截图保存在 `evaluations/frontend-design-v1/results/2026-08-12/`；
+- 该实验中 minimal reminder 相对 strong baseline 提升 `0.5125/10` 且无验收回归，其有效约束已经作为 Development Profile v2 的产品特定视觉方向与“拒绝可互换通用模板”结果语义，而不是包装成新的本地 Skill；
+- 其他 Product UI / taste、React、accessibility、property testing、workflow hardening、k6、EvalScope 和 NVIDIA profiling 仍保留为待审计或待对照候选；
 - `define-goal`、K-Dense 泛化文本子集与内部 Grill wrapper 不默认启用；
 - method-fidelity、AI experiment design、AI statistics 与具体 HF/TRL/verl/Ray/NeMo 栈仍是待选型能力槽，不用未经验证的通用科研 Skill 填空。
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "format": "strict-json-compatible-yaml-1.2",
   "scope": "Capability provenance and evaluation registry; never a task, model, role, or stage router.",
-  "updated_at": "2026-08-11",
+  "updated_at": "2026-08-12",
   "lifecycle_fields": [
     "declared",
     "audited",
@@ -293,16 +293,78 @@
       "kind": "external_visual_author_skill",
       "capability_slot": "frontend visual authorship",
       "value_claim": "May generate a distinctive frontend visual direction from a product brief.",
-      "decision": "isolated_comparison_only",
-      "lifecycle": {"declared": true, "audited": false, "installed": false, "enabled": false, "evaluated": false, "promoted": false, "current": "declared", "exception": null},
-      "source": {"repository": "https://github.com/anthropics/skills", "commit": "f17010c9bb483898c1d9c9f42dde2b3a98889434", "subpath": null, "content_sha256": null, "selected_file_sha256": {}, "license_spdx": null, "license_evidence": null},
-      "dependencies": {"runtime": ["Frontend implementation environment"], "services": [], "credentials": []},
+      "decision": "reject_stable_default_full_skill_lost_to_both_controls",
+      "lifecycle": {"declared": true, "audited": true, "installed": false, "enabled": false, "evaluated": true, "promoted": false, "current": "evaluated_no_go", "exception": null},
+      "source": {
+        "repository": "https://github.com/anthropics/skills",
+        "commit": "f17010c9bb483898c1d9c9f42dde2b3a98889434",
+        "subpath": "skills/frontend-design",
+        "content_sha256": "ad1abb39b48c25c7c59c0294dd2d674cc32b60ca8c3c9650ef666a1e54ef5e9f",
+        "digest_algorithm": "sha256(path_length_be32 || relative_path_utf8 || content_length_be64 || content), lexicographic relative paths",
+        "selected_file_sha256": {
+          "SKILL.md": "1608ea77fbb6fc30d13a97d12cfa8ebf31358d40f0dd97beed24829d6b3f45dd",
+          "LICENSE.txt": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        "license_spdx": "Apache-2.0",
+        "license_evidence": "codex/external-skills/anthropic-frontend-design/LICENSE.txt"
+      },
+      "dependencies": {"runtime": ["Frontend implementation environment; rendered screenshot oracle for a visual-quality claim"], "services": [], "credentials": []},
       "side_effects": ["May introduce dependencies/assets", "May prioritize surface novelty over product states", "Large generated diff"],
-      "activation": {"mode": "experiment_only", "positive_triggers": ["Isolated visual-author comparison on a frozen brief"], "negative_triggers": ["Sequential use after another visual Author", "Approved design exists", "Backend-only task"]},
+      "activation": {"mode": "experiment_only", "positive_triggers": ["Isolated visual-author comparison on a frozen brief"], "negative_triggers": ["Sequential use after another visual Author", "Approved design exists", "Backend-only task", "Small local UI correction", "No visual-quality claim"]},
       "non_goals": ["Requirement definition", "Functional verification", "Product truth"],
       "authority_exclusions": ["Cannot expand features", "Cannot self-select over another Author without blind review"] ,
-      "audit": {"inspected_at": null, "blockers": ["Exact subpath unresolved", "Content hash unresolved", "License evidence unresolved", "No blind comparison against GPT-5.6 baseline"]},
-      "evaluation": {"protocol": "gpt56-net-lift-v1", "fixtures": [], "primary_metric": "blind_visual_quality_without_function_or_scope_regression", "thresholds": null, "result": null, "valid_until": null}
+      "audit": {
+        "inspected_at": "2026-08-12",
+        "blockers": [],
+        "observations": ["Vendored files are byte-identical to the pinned subpath", "No scripts, network calls, services, credentials, or nested references", "Apache-2.0 license retained beside the Skill"]
+      },
+      "evaluation": {
+        "protocol": "gpt56-net-lift-v1",
+        "fixtures": ["evaluations/frontend-design-v1/briefs.md#cold-chain", "evaluations/frontend-design-v1/briefs.md#cinema", "evaluations/frontend-design-v1/briefs.md#roastery"],
+        "primary_metric": "blind_visual_quality_without_function_or_scope_regression",
+        "thresholds": {
+          "minimum_mean_blind_visual_quality_delta_vs_strong_no_skill_on_10_point_scale": 0.5,
+          "minimum_mean_blind_visual_quality_delta_vs_minimal_reminder_on_10_point_scale": 0.3,
+          "maximum_functional_acceptance_regressions": 0,
+          "maximum_unapproved_side_effects": 0,
+          "maximum_mean_input_token_overhead_vs_minimal_reminder": 3500
+        },
+        "result": {
+          "evaluation_id": "frontend-design-v1-2026-08-12",
+          "completed_at": "2026-08-12",
+          "repetitions_per_arm": 3,
+          "distinct_fixtures_per_arm": 3,
+          "repetitions_per_fixture": 1,
+          "generation_sessions_per_arm": 1,
+          "blind_reviewers": 1,
+          "evidence_scope": "source_repository_only; runtime snapshots carry neither the candidate bytes nor this evaluation archive",
+          "raw_artifacts": "evaluations/frontend-design-v1/results/2026-08-12/raw-artifacts.tar.gz",
+          "review": "evaluations/frontend-design-v1/results/2026-08-12/blind-review.md",
+          "browser": {
+            "engine": "HeadlessChrome/149.0.7827.0",
+            "pages_checked": 9,
+            "named_interactions_passed": 9,
+            "console_or_page_error_failures": 0,
+            "horizontal_overflow_failures": {"strong_no_skill": 1, "minimal_reminder": 0, "full_pinned_skill": 0}
+          },
+          "independent_quality_score_10": {"strong_no_skill": 8.8667, "minimal_reminder": 9.3792, "full_pinned_skill": 8.3542},
+          "quality_delta": {"full_minus_strong_no_skill": -0.5125, "full_minus_minimal_reminder": -1.025, "minimal_reminder_minus_strong_no_skill": 0.5125},
+          "task_success": {"strong_no_skill": "8/9; cold-chain failed the 390px overflow acceptance", "minimal_reminder": "9/9", "full_pinned_skill": "9/9"},
+          "gold_defect_recall": "not_applicable_to_visual_authorship",
+          "gold_defect_precision": "not_applicable_to_visual_authorship",
+          "trigger_precision": "not_measured_outside_explicit_frozen_fixtures",
+          "input_tokens": "platform counter unavailable; pinned SKILL.md is 8260 UTF-8 bytes and 1336 whitespace-delimited words",
+          "context_tokens": "platform counter unavailable",
+          "wcu_if_available": "unavailable",
+          "wall_time_seconds": {"strong_no_skill": 257, "minimal_reminder": 293, "full_pinned_skill": 277},
+          "external_cost": 0,
+          "unapproved_side_effects": 0,
+          "limitations": ["Three fixtures but one generation session per arm and one blind reviewer; sufficient for this no-go because the Full Skill missed both frozen quality thresholds, not sufficient for a universal claim about every future Skill revision"],
+          "promotion_thresholds_met": false,
+          "decision_reason": "The full Skill failed both pre-frozen quality deltas. Cost uncertainty cannot reverse that no-go result. Keep inert vendored bytes only to pin source identity and support a future retest; do not install or enable."
+        },
+        "valid_until": "2027-02-12"
+      }
     },
     {
       "id": "trailofbits-property-and-fuzz-testing",
