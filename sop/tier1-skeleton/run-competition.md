@@ -4,7 +4,7 @@
 - **落实纪律**: P1 P2 P3 P4
 - **绑定骨架**: competition；development（产品型黑客松的成品开发）
 - **通用性档位**: U1(竞赛机制通用；平台命令与阈值由项目注入)
-- **版本**: v4
+- **版本**: v5
 
 ## 触发条件
 
@@ -31,7 +31,7 @@
 
 → tier1-skeleton/package-submission.md(冻结并核验将要提交的准确工件；不执行外部提交)
 
-→ tier1-skeleton/run-development.md(产品型黑客松需要交付完整产品时)
+→ tier1-skeleton/run-development.md(产品型黑客松的交付等级、可运行产品语义与端到端验收)
 
 ## 步骤
 
@@ -47,7 +47,7 @@
    - **数据/榜单**：固定 metric、split、允许数据与模型、泄漏边界、public/private 关系及 submission budget；探索集与 final holdout 分离，Kaggle 等 CLI 只执行平台动作；
    - **Kernel/系统优化**：先有正确基线和同口径 measurement，再优化；只有瓶颈或因果解释仍不确定时加载 nsys/ncu、rocprof、Ascend profiler 等平台工具，不把 profiler、roofline 或 patch series 当固定阶段；
    - **agent/隐藏运行时评测**：复用官方 `init → run → eval`、容器或 verifier，冻结 API/token/开发/测试时间与网络边界；长运行保留有效 checkpoint/partial output，避免在 timeout 时丢掉全部结果；
-   - **产品型黑客松**：用 Development Profile 交付可运行产品，本 SOP 额外控制 eligibility、rubric、必用 SDK/MCP/partner tech、deploy/demo/video/deck/repo/form 和外部提交。评委分不是可伪装成二值测试的“客观分”；用 rubric-to-evidence 覆盖与真实演示证据降低不确定性；
+   - **产品型黑客松**：用 Development Profile 交付可运行产品，并从 contest contract 与用户原话冻结 `bounded prototype` 或 `complete product` 交付等级；“黑客松”本身不自动等于低保真 MVP。rubric 若评价 design/UX、technical completeness、真实 partner integration 或 production readiness，就把相应结果面纳入产品契约与证据，而不是只做 deck、可点击 happy path 或外观 demo。本 SOP 额外控制 eligibility、必用 SDK/MCP/partner tech、deploy/demo/video/deck/repo/form 和外部提交；评委分不是可伪装成二值测试的“客观分”，用 rubric-to-evidence 覆盖与真实演示证据降低不确定性；
    - **论文到 notebook、研究工件与 output-only**：验证方法/论文 fidelity、可执行性、输出格式与官方 evaluator；只有比赛 claim 需要时追加复现或统计证据。
 3. 选择最早的高信息基线。官方 evaluator 能本地运行时直接使用，不重复造 proxy；核心正确性未知时先建最小 oracle；线上 pipeline/格式本身是主要未知、且授权包络允许一次廉价 smoke 时，可以早交 baseline；只有在线反馈慢、贵、噪声大或稀缺时才建 local surrogate/holdout。`local proxy first` 不是绝对顺序。
 4. 进入 `build → verify → evaluate → learn` 循环：每轮只冻结当前候选、准备验证的假设、决定性证据和下一动作。多候选并行时隔离工件；核心算法/架构不变量未定时先关闭 critical-path uncertainty，再委派稳定实现。在线反馈回来后区分实现问题、代理失真、平台噪声和规则误读，不把 rank 的自然波动当代码回归。一个实质路线在可信 public/official evaluation 中得到按 contest contract 的指标方向与语义代表失败的零分，或相对相关 baseline/目标明显不具竞争力时，把它判为 route-level no-go 并更换算法/架构或停止；只有会使该分数、合法性、提交工件或诚实报告无效的问题仍留在关键路径，不围绕已知 no-go 继续扩建 validator、provenance、receipt、freeze、hash 或 Review 系统。
@@ -70,6 +70,7 @@
 
 - 已交付比赛要求的完整工件，或在缺少外部授权时交付经核验、可直接提交的 bundle，并准确说明尚未执行的动作；
 - 工件满足适用规则、格式、资源与 partner-technology 要求，关键 claim 有匹配证据且无 overclaim；
+- 产品型比赛的实际成品达到冻结的交付等级；若声称完整 server-backed 产品，演示与验收贯通真实 UI→API→持久状态/集成结果，而非只证明前端点击或 mock 数据变化；
 - 若已提交，可查到 receipt/ID 与实际平台状态；若是动态榜，只报告带时间的观察值；
 - 提交次数、费用、final reserve、deadline 与凭据/数据/公开边界均未越权；
 - last-known-good 的身份、最后可安全提交时间和 final selection 状态可查，不把“已上传候选”误报为“已选为最终提交”；

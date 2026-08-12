@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
+from datetime import date, datetime
 from pathlib import Path
 import shutil
+import tarfile
 import tempfile
 import unittest
 
@@ -107,14 +110,61 @@ class StructuralConsistencyTests(unittest.TestCase):
                 self.assertIsInstance(lifecycle[state], bool, (entry["id"], state))
             if lifecycle["promoted"]:
                 self.assertTrue(lifecycle["audited"])
+                self.assertTrue(lifecycle["installed"])
                 self.assertTrue(lifecycle["evaluated"])
                 self.assertTrue(lifecycle["enabled"])
+                self.assertIs(entry["evaluation"]["result"]["promotion_thresholds_met"], True)
+                valid_until = datetime.strptime(entry["evaluation"]["valid_until"], "%Y-%m-%d").date()
+                self.assertGreaterEqual(valid_until, date.today())
         self.assertFalse(any(entry["lifecycle"]["promoted"] for entry in entries))
         shim = next(entry for entry in entries if entry["id"] == "local-research-execution-grill-shim")
         self.assertEqual(shim["lifecycle"]["current"], "retired")
         self.assertFalse(shim["lifecycle"]["installed"])
         self.assertFalse((ROOT / "codex/skills/research-execution-grill/SKILL.md").exists())
         self.assertFalse((ROOT / "codex/skills/research-execution-grill/agents/openai.yaml").exists())
+
+    def test_frontend_design_no_go_is_reproducible_and_remains_inert(self) -> None:
+        registry = json.loads((ROOT / "skill-registry.yaml").read_text(encoding="utf-8"))
+        entry = next(item for item in registry["entries"] if item["id"] == "anthropic-frontend-design")
+        lifecycle = entry["lifecycle"]
+        self.assertTrue(lifecycle["audited"])
+        self.assertTrue(lifecycle["evaluated"])
+        self.assertFalse(lifecycle["installed"])
+        self.assertFalse(lifecycle["enabled"])
+        self.assertFalse(lifecycle["promoted"])
+        self.assertEqual(lifecycle["current"], "evaluated_no_go")
+
+        source_root = ROOT / "codex/external-skills/anthropic-frontend-design"
+        digest = hashlib.sha256()
+        for source in sorted(path for path in source_root.rglob("*") if path.is_file()):
+            relative = source.relative_to(source_root).as_posix().encode("utf-8")
+            content = source.read_bytes()
+            digest.update(len(relative).to_bytes(4, "big"))
+            digest.update(relative)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
+            self.assertEqual(
+                hashlib.sha256(content).hexdigest(),
+                entry["source"]["selected_file_sha256"][source.relative_to(source_root).as_posix()],
+            )
+        self.assertEqual(digest.hexdigest(), entry["source"]["content_sha256"])
+
+        result = entry["evaluation"]["result"]
+        scores = result["independent_quality_score_10"]
+        self.assertLess(scores["full_pinned_skill"], scores["strong_no_skill"])
+        self.assertLess(scores["full_pinned_skill"], scores["minimal_reminder"])
+        artifact = ROOT / result["raw_artifacts"]
+        self.assertTrue(artifact.is_file())
+        with tarfile.open(artifact, "r:gz") as archive:
+            members = set(archive.getnames())
+        for required in (
+            "strong_no_skill/cold-chain/index.html",
+            "minimal_reminder/cinema/index.html",
+            "full_skill/roastery/index.html",
+            "evidence-v2/browser-results.json",
+            "blind/anonymization-map.json",
+        ):
+            self.assertIn(required, members)
 
 
 if __name__ == "__main__":

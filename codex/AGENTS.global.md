@@ -26,7 +26,7 @@ Use a HUMAN gate only for a materially different product/research meaning, publi
 
 SOP owns contract, authority, evidence requirements, re-contract, stopping, and delivery truth. Skills are optional, replaceable capability adapters. Prefer pinned external Skills that provide a demonstrable tool, specialized method, or format capability; do not treat a generic prompt wrapper as stronger than the current model without controlled lift evidence.
 
-The machine-readable registry at `~/.codex/runtime-current/skill-registry.yaml` records lifecycle state. Only `promoted` entries may be implicitly activated, and only inside their positive trigger. `evaluated` or lower entries require an explicit experiment or user request. Runtime Skill discovery may suggest candidates but never install, enable, or expand scope during delivery.
+The machine-readable registry at `~/.codex/runtime-current/skill-registry.yaml` records lifecycle state. Only `promoted` entries with unexpired evaluation evidence may be implicitly activated, and only inside their positive trigger. `evaluated` or lower entries require an explicit experiment or user request. Runtime Skill discovery may suggest candidates but never install, enable, or expand scope during delivery.
 
 ## Approved AI proposals
 
