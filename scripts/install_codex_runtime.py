@@ -16,6 +16,7 @@ import secrets
 import shlex
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -46,7 +47,10 @@ PROFILE_SETTINGS = {
     "sol-supervisor": {"model": '"gpt-5.6-sol"', "model_reasoning_effort": '"high"'},
     "terra-supervisor": {"model": '"gpt-5.6-terra"', "model_reasoning_effort": '"high"'},
 }
-MANAGED_PYTHON_LAUNCHER = "/usr/bin/python3"
+# The repository Hook source uses a PATH-resolved portable placeholder. A real
+# installation always rewrites it to the verified interpreter running the
+# installer; existing absolute Python registrations remain recognizable below.
+HOOK_TEMPLATE_PYTHON_LAUNCHER = "python3"
 MANAGED_ROUTER_RELATIVE_PATH = Path(".codex/hooks/weighted_cost_router.py")
 SNAPSHOT_ROOT = Path(".codex/runtime-snapshots")
 RUNTIME_CURRENT = Path(".codex/runtime-current")
@@ -107,6 +111,7 @@ class Installer:
         dry_run: bool = False,
         profile: str = "preserve",
         routing_profile: str = DEFAULT_ROUTING_PROFILE,
+        python_launcher: Path | None = None,
     ):
         self.repo_root = repo_root.resolve()
         self.home = home.resolve()
@@ -118,6 +123,9 @@ class Installer:
         self.dry_run = dry_run
         self.profile = profile
         self.routing_profile = routing_profile
+        default_launcher = getattr(sys, "_base_executable", None) or sys.executable
+        self.requested_python_launcher = Path(python_launcher) if python_launcher is not None else Path(default_launcher)
+        self.python_launcher: Path | None = None
         self.stamp = (
             f"{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}-"
             f"{os.getpid()}-{secrets.token_hex(8)}"
@@ -137,6 +145,61 @@ class Installer:
 
     def _record(self, message: str) -> None:
         self.actions.append(message)
+
+    def _resolve_python_launcher(self) -> Path:
+        """Return a stable executable outside the removable source checkout."""
+        requested = self.requested_python_launcher.expanduser()
+        if not requested.is_absolute():
+            located = shutil.which(str(requested))
+            if located is None:
+                raise ValueError(f"Python launcher is not available: {requested}")
+            requested = Path(located)
+        try:
+            resolved = requested.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError(f"Python launcher is not available: {requested}") from exc
+        try:
+            mode = resolved.stat().st_mode
+        except OSError as exc:
+            raise ValueError(f"Python launcher is not readable: {resolved}") from exc
+        if not stat.S_ISREG(mode) or not os.access(resolved, os.X_OK):
+            raise ValueError(f"Python launcher is not an executable file: {resolved}")
+        if resolved.is_relative_to(self.repo_root):
+            raise ValueError(
+                "Python launcher resolves inside the removable source checkout; "
+                "run the installer with a stable system Python"
+            )
+        try:
+            probe = subprocess.run(
+                [
+                    str(resolved),
+                    "-I",
+                    "-c",
+                    "import json, pathlib, sys; "
+                    "print(json.dumps([sys.version_info[0], sys.version_info[1]]))",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            version = json.loads(probe.stdout)
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"Python launcher failed the isolated Python 3 probe: {resolved}"
+            ) from exc
+        if (
+            probe.returncode != 0
+            or not isinstance(version, list)
+            or len(version) != 2
+            or not all(isinstance(part, int) for part in version)
+            or tuple(version) < (3, 10)
+        ):
+            raise ValueError(
+                f"Python launcher is not a supported Python >=3.10: {resolved}"
+            )
+        self.python_launcher = resolved
+        return resolved
 
     @staticmethod
     def _exists(path: Path) -> bool:
@@ -499,12 +562,11 @@ class Installer:
                 lines[existing] = rendered
         return "\n".join(lines) + "\n"
 
-    @staticmethod
-    def _hook_command(entry: Any, home: Path, routing_profile: str = DEFAULT_ROUTING_PROFILE) -> Any:
+    def _hook_command(self, entry: Any, home: Path, routing_profile: str = DEFAULT_ROUTING_PROFILE) -> Any:
         if isinstance(entry, dict):
-            return {key: Installer._hook_command(value, home, routing_profile) for key, value in entry.items()}
+            return {key: self._hook_command(value, home, routing_profile) for key, value in entry.items()}
         if isinstance(entry, list):
-            return [Installer._hook_command(value, home, routing_profile) for value in entry]
+            return [self._hook_command(value, home, routing_profile) for value in entry]
         if isinstance(entry, str):
             try:
                 words = shlex.split(entry)
@@ -512,16 +574,19 @@ class Installer:
                 return entry
             if len(words) not in {2, 3}:
                 return entry
-            if len(words) == 3 and words[1] == MANAGED_PYTHON_LAUNCHER and words[0].startswith("CODEX_ROUTER_ENFORCEMENT="):
+            if len(words) == 3 and words[1] == HOOK_TEMPLATE_PYTHON_LAUNCHER and words[0].startswith("CODEX_ROUTER_ENFORCEMENT="):
                 if words[0].split("=", 1)[1].lower() not in ROUTING_PROFILES:
                     return entry
                 words.pop(0)
-            if len(words) != 2 or words[0] != MANAGED_PYTHON_LAUNCHER:
+            if len(words) != 2 or words[0] != HOOK_TEMPLATE_PYTHON_LAUNCHER:
                 return entry
             if words[1] not in {"$HOME/.codex/hooks/weighted_cost_router.py", str(home / MANAGED_ROUTER_RELATIVE_PATH)}:
                 return entry
+            if self.python_launcher is None:
+                raise ValueError("Python launcher was not verified before Hook rendering")
+            launcher = shlex.quote(str(self.python_launcher))
             runtime_hook = shlex.quote(str(home / MANAGED_ROUTER_RELATIVE_PATH))
-            return f"CODEX_ROUTER_ENFORCEMENT={routing_profile} {MANAGED_PYTHON_LAUNCHER} {runtime_hook}"
+            return f"CODEX_ROUTER_ENFORCEMENT={routing_profile} {launcher} {runtime_hook}"
         return entry
 
     @staticmethod
@@ -534,7 +599,10 @@ class Installer:
             if words[0].split("=", 1)[1].lower() not in ROUTING_PROFILES:
                 return False
             words.pop(0)
-        if len(words) != 2 or words[0] != MANAGED_PYTHON_LAUNCHER:
+        if len(words) != 2:
+            return False
+        launcher = Path(words[0])
+        if not launcher.is_absolute():
             return False
         managed_paths = {"$HOME/.codex/hooks/weighted_cost_router.py"}
         if home is not None:
@@ -634,6 +702,7 @@ class Installer:
         return json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
 
     def preflight(self) -> None:
+        self._resolve_python_launcher()
         sources = self._snapshot_source_paths()
         missing = [str(path) for path in sources if not path.is_file() or path.is_symlink()]
         if missing:

@@ -199,6 +199,50 @@ class WeightedCostRouterTests(unittest.TestCase):
         self.assertEqual(provenance["generation"], "SOURCE_CHECKOUT_UNPINNED")
         self.assertIn("development", provenance["available_profiles"])
 
+    def test_session_start_contexts_fit_configured_limit_and_preserve_authority(self) -> None:
+        configured = json.loads((ROOT / "codex/hooks/hooks.json").read_text())
+        limit = configured["hooks"]["SessionStart"][0]["hooks"][0]["additionalContextLimit"]
+        self.assertEqual(limit, ROUTER.SESSION_CONTEXT_LIMIT)
+
+        oversized = "\u96ea" * 10_000
+        for enforcement in ("advisory", "strict"):
+            with self.subTest(enforcement=enforcement), patch.dict(
+                os.environ,
+                {
+                    "CODEX_ROUTER_ENFORCEMENT": enforcement,
+                    "SOP_DOMAIN_PROFILE": oversized,
+                },
+            ):
+                result = ROUTER.handle({
+                    "hook_event_name": "SessionStart",
+                    "model": oversized,
+                    "model_reasoning_effort": oversized,
+                    "session_id": oversized,
+                })
+                context = result["hookSpecificOutput"]["additionalContext"]
+                self.assertLessEqual(len(context), limit)
+                self.assertLessEqual(len(context.encode("utf-8")), limit)
+                self.assertIn(
+                    "Authority: user/closest project instructions > Kernel > selected Domain Profile > Adapter",
+                    context,
+                )
+                marker = context.splitlines()[0]
+                provenance = json.loads(marker.removeprefix("SOP_RUNTIME "))
+                for key in (
+                    "adapter",
+                    "generation",
+                    "kernel",
+                    "available_profiles",
+                    "selected_domain_profile",
+                    "routing_profile",
+                    "foreground_model",
+                    "foreground_effort",
+                    "session_id",
+                    "started_at",
+                ):
+                    self.assertIn(key, provenance)
+                self.assertRegex(provenance["foreground_model"], r"^sha256:[0-9a-f]{12}$")
+
     def test_advisory_typed_sol_architect_is_known_and_read_only(self) -> None:
         with patch.dict(os.environ, {"CODEX_ROUTER_ENFORCEMENT": "advisory"}):
             context = ROUTER.handle({
@@ -1055,7 +1099,7 @@ class WeightedCostRouterTests(unittest.TestCase):
     def test_source_hook_defaults_to_advisory_and_explicit_strict_remains_enforced(self) -> None:
         configured = json.loads((ROOT / "codex/hooks/hooks.json").read_text())
         command = configured["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-        self.assertTrue(command.startswith("/usr/bin/python3 "))
+        self.assertTrue(command.startswith("python3 "))
         command = command.replace(
             '\"$HOME/.codex/hooks/weighted_cost_router.py\"',
             shlex.quote(str(SCRIPT)),

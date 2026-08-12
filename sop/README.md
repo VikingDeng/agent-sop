@@ -7,8 +7,11 @@
 > `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v7**，默认按 proposal
 > claim 自适应选择证据、oracle 与 gate。`research-execution-grill-v3 / schema v3`
 > 是显式选择的 signed strict profile；历史 schema v1/v2 仅可匹配显式审计。
-> `tier1-skeleton/run-experiment.md` 当前版本为 **v7**，默认以真实运行和 claim-matched
+> `tier1-skeleton/run-experiment.md` 当前版本为 **v8**，默认以真实运行和 claim-matched
 > evidence 验收；只有项目选择 strict v3 时才要求 exact signed authorization。
+> `tier0-core/lock-env.md` 与 `reproduce-result.md` 当前为 **v2**：source/environment
+> identity、locking、rebuild 与 replay independence 均按 claim 和可信 failure path 比例化，
+> 不设 universal clean-tree、`ENV_LOCK`、clean-rebuild 或多 seed 门禁。
 > 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
 > 的派生视图契约；它不要求新建 dashboard 或独立台账。
 
@@ -17,13 +20,13 @@
 | SOP | 档位 | 落实纪律 | 被谁依赖 |
 |---|---|---|---|
 | tier0-core/autonomous-supervisor.md | U0 | P1 P2 P3 P4 | write-contract, run-competition, run-development |
-| tier0-core/lock-env.md | U1 | P4 | add-dependency, fetch-assets, reproduce-result, run-experiment, release-version, ops-remote-compute |
+| tier0-core/lock-env.md | U1 | P2 P3 P4 | add-dependency, fetch-assets, reproduce-result, run-experiment, release-version, ops-remote-compute |
 | tier0-core/add-dependency.md | U1 | P1 P4 | fetch-assets, drift-check, release-version |
 | tier0-core/build-oracle.md | U0 | P2 P3 | autonomous-supervisor, fetch-assets, profile-code, run-experiment, statistics-oracle, package-submission, build-local-proxy, research-execution-grill, run-competition, run-development, scientific-paper |
 | tier0-core/no-fallback-review.md | U0 | P3 | autonomous-supervisor, commit-and-pr, drift-check, statistics-oracle, research-execution-grill, run-competition, run-development, ops-remote-compute |
 | tier0-core/commit-and-pr.md | U1 | P4 | autonomous-supervisor, release-version, package-submission, ops-remote-compute |
 | tier0-core/profile-code.md | U2 | P2 P4 | research-execution-grill |
-| tier0-core/reproduce-result.md | U1 | P2 P4 | run-experiment, statistics-oracle, ops-deploy, scientific-paper |
+| tier0-core/reproduce-result.md | U1 | P1 P2 P3 P4 | run-experiment, statistics-oracle, ops-deploy, scientific-paper |
 | tier0-core/fetch-assets.md | U1 | P1 P3 P4 | — |
 
 ## Tier 1 — 骨架绑定

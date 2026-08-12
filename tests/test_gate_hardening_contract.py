@@ -46,7 +46,7 @@ class AdaptiveSopContractTests(unittest.TestCase):
             if hook.get("type") == "command"
         ]
         self.assertEqual(len(managed_commands), 5)
-        self.assertTrue(all(command.startswith("/usr/bin/python3 ") for command in managed_commands))
+        self.assertTrue(all(command.startswith("python3 ") for command in managed_commands))
         self.assertIn('"SessionStart"', self.read("codex/hooks/hooks.json"))
 
     def test_kernel_is_versioned_and_platform_independent(self) -> None:
@@ -88,6 +88,47 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("CI overlap", statistics)
         self.assertIn("不能强制每项结果", statistics)
         self.assertIn("paper_eligible=false", grill)
+
+    def test_environment_and_reproduction_evidence_are_claim_proportional(self) -> None:
+        lock_env = self.read("sop/tier0-core/lock-env.md")
+        reproduce = self.read("sop/tier0-core/reproduce-result.md")
+        experiment = self.read("sop/tier1-skeleton/run-experiment.md")
+        presentation = self.read(
+            "sop/tier1-skeleton/references/research-evidence-presentation.md"
+        )
+
+        self.assertIn("**版本**: v2", lock_env)
+        self.assertIn("二者不是默认产物", lock_env)
+        self.assertIn("claim 明确要求可重建", lock_env)
+        self.assertNotIn("发布、confirmatory evidence、跨机器复现", lock_env)
+        self.assertIn("`git_dirty=false` 不是环境正确性的替代证据", lock_env)
+        self.assertIn("**版本**: v2", reproduce)
+        self.assertIn("不是每个 diagnostic", reproduce)
+        self.assertIn("不规定通用 `{N_SEEDS}`", reproduce)
+        self.assertIn("dirty tree 本身不是失败", reproduce)
+        self.assertIn("`REPLAYED`", reproduce)
+        self.assertIn("只有达到预声明 independence level", reproduce)
+        self.assertIn("execution-relevant untracked", reproduce)
+        self.assertIn("content-tree hash", reproduce)
+        self.assertIn("不是每个实验的默认前置门禁", experiment)
+        self.assertIn("普通 `git diff` 单独不够", experiment)
+        self.assertIn("不可恢复/含糊的代码/环境身份", presentation)
+        self.assertIn("outcome-relevant environment identity", presentation)
+
+        methodology = self.read("sop/_METHODOLOGY.md")
+        paper_playbook = self.read(
+            "sop/tier2-activity/references/paper-module-playbook.md"
+        )
+        self.assertIn("**版本**: v5", methodology)
+        self.assertIn("resolved identity 是共同下界", methodology)
+        self.assertIn("不机械补齐清单", paper_playbook)
+
+        for legacy_gate in (
+            "要求 git 干净",
+            "复现跑在干净环境、`git_dirty=false`",
+            "多次(≥`{N_SEEDS}`)",
+        ):
+            self.assertNotIn(legacy_gate, reproduce)
 
     def test_competition_profile_covers_full_projects_and_deadline_reserve(self) -> None:
         competition = self.read("sop/tier1-skeleton/run-competition.md")

@@ -33,7 +33,7 @@
 1. **先总后分**:开头给方法全貌(overview 图/段),再拆模块。Present idea first, details later.
 2. **符号一次定义、全篇一致**(接 PROSE §5 术语一次定名)。
 3. **每个设计选择给理由**:写"为什么是 X 不是 Y",否则被当随意选择攻击。
-4. **可复现清单**(接 reproduce-result):数据来源与规模、预处理、超参、随机种子、硬件、评测协议。缺一即复现关扣。
+4. **可复现身份**（接 reproduce-result）：从实际 claim 和 artifact 反推 outcome-relevant 细节，例如数据来源/规模/预处理、模型与超参、随机性、硬件/backend、评测协议和实际 source/environment identity。缺少会改变目标 claim 或阻止复核的关键细节才阻断；确定性、硬件无关或不适用的字段明确记 `N/A`，不机械补齐清单。
 
 判据:一个独立研究者能否照方法段复现,无需联系作者。
 

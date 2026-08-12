@@ -2,7 +2,7 @@
 
 > 来源:《agent-sop_tier0细化与质量方法论_v1》(桌面施工单)。本文件回答三件事:一条 SOP 写到什么程度算合格、如何保证它合格、通用性与质量如何兼得。
 > 原则:**先定"合格的定义"和"通用性刻度",再动手写**。本文件自身就是方法的自证——可用 §1 验收清单逐条卡任何一条 SOP 成品。
-> **版本**: v4。相对 v3 明确本文件只约束 SOP 文档质量，不与 `tier0-core/autonomous-supervisor.md` 形成平行运行时；checkpoint 的载体与粒度改为按风险选择，取消长 SOP 的固定步骤链留痕。
+> **版本**: v5。相对 v4 进一步把参数化例子改为 claim-proportional：resolved identity 是共同下界，lockfile、CI rebuild 与独立复现只在相应结果契约或可信 failure path 触发。
 > **运行时边界**:本方法论的 8 字段用于让 SOP 本身可导航，不要求执行任务时制造八份 artifact、逐步台账或独立 checkpoint 文件。用户/项目契约之下，运行时适用性统一由 `tier0-core/autonomous-supervisor.md` 判断。
 
 ## §1 一条 SOP 的验收标准(A1-A7)
@@ -67,11 +67,11 @@
 **关键手法:一条 SOP 只写"不变式层",把"参数层"抽象成占位符,由项目在引用时注入。**
 
 例——`lock-env` 的步骤不该写死:
-- ❌(通用性塌):"锁定环境"
-- ❌(质量塌/绑死):"运行 `uv lock` 生成 uv.lock"
-- ✅(分层):"用项目声明的锁定器 `{LOCK_CMD}` 生成锁文件 `{LOCK_FILE}`;完成判定:`{LOCK_FILE}` 存在且 CI 能据此复现环境。`{LOCK_CMD}`/`{LOCK_FILE}` 由项目 PROJECT_TYPE 或项目级 `AGENTS.md` 提供(如 Python+uv → `uv lock`/`uv.lock`)。"
+- ❌(正确的废话):“环境要可复现”。
+- ❌(质量塌/绑死):“所有任务运行 `uv lock`，生成 uv.lock 并在干净 CI 从零重建”。
+- ✅(分层):“从当前 claim 反推 outcome-relevant 环境表面，保存本次 resolved identity；当 claim 要求未来/跨环境可重建，或有具体环境漂移 failure path 时，使用项目原生 `{LOCK_CMD}` / `{LOCK_FILE}` 并运行匹配的 rebuild Oracle。具体工具由项目级 `AGENTS.md` 注入（如 Python+uv → `uv lock` / `uv.lock`）。”
 
-第三种写法通用性和质量同时在线:不变式(必须有可复现的锁文件)通用且可判定;具体命令作为参数由项目注入,保证可跑通。
+第三种写法同时保留共同下界与比例化强度：每个 evidence-bearing run 都有可复核的实际 identity；lockfile、CI rebuild 或独立环境只在对应 claim/risk 下成为不变式。参数由项目注入，避免把一种生态配方升级成全仓门禁。
 
 ### 3.3 通用性档位
 

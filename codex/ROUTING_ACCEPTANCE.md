@@ -38,7 +38,7 @@ The installer holds one non-blocking per-home lock during a real install. It ver
 
 ## Fresh-task strict acceptance
 
-After installation, start a fresh task or restart Codex so the managed Hook is loaded. Verify that the installed command contains the exact `CODEX_ROUTER_ENFORCEMENT=strict /usr/bin/python3` prefix and that strict routing rejects missing package markers, exhausted loop budgets, unauthorized Sol mutation, and unqualified risk review. The App `/hooks` exact-hash trust step must still be completed manually because the installer cannot verify it.
+After installation, start a fresh task or restart Codex so the managed Hook is loaded. Verify that the installed command starts with `CODEX_ROUTER_ENFORCEMENT=strict`, uses the installer-resolved and verified absolute Python executable, and that strict routing rejects missing package markers, exhausted loop budgets, unauthorized Sol mutation, and unqualified risk review. The App `/hooks` exact-hash trust step must still be completed manually because the installer cannot verify it.
 
 When `gpt-5.6-luna` is unavailable in a strict managed Hook, fail closed: report the unavailable capability and do not silently reroute or execute the unchanged package under another role. Any fallback behavior belongs only to the explicitly direct-router or unmanaged advisory diagnostic above.
 
