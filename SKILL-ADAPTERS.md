@@ -81,6 +81,21 @@ Registry 明确不保存：任务类型到 Skill 的自动映射、Sol/Terra/Lun
 - 同一能力槽可以保留多个实验候选，但稳定调用一次只选一个。若要比较多个 Author，必须隔离生成并盲选，不能串联造成无法归因的“Skill soup”。
 - Skill/MCP 的事实、数字、引用、图表和外部 receipt 必须写回项目规定的证据载体；缺依赖、缺凭据或服务失败时诚实失败，不自动换来源、数据、模型或服务商。
 
+### Catalog、安装与激活不是一回事
+
+“local Skill”只表示它位于 Codex 会扫描的本机目录，不表示它是本地作者编写，也不构成质量结论。稳定治理必须区分：
+
+1. **离线 catalog**：来自官方、maintainer 或社区仓库的发现记录，不进入运行时 prompt；
+2. **audited candidate**：exact source、commit/subpath/hash、license、依赖、副作用和边界已经核验，但仍不代表有净增益；
+3. **installed / enabled**：固定字节存在于目标环境，且只在明确 activation policy 下可调用；
+4. **promoted**：相对当前强模型和 minimal reminder 已经用登记的 fixture 证明净提升，才可进入小型隐式激活集。
+
+优先使用 OpenAI bundled/curated plugin 或原维护者发布的开源 Skill；“官方”“开源”“star 多”和“已安装”都不能跳过 exact-source 审计与行为评测。技术栈、产品平台和高副作用 Skill 默认放在项目/插件层，不复制为用户级常驻副本。若同名 Skill 同时由用户目录和插件提供，只保留一个预期来源；Codex 不会合并同名 Skill，重复项会造成选择歧义和上下文浪费。
+
+备份、退役 shim 和历史快照不得留在 Skill discovery 目录中。Codex 会跟随 symlink；即使目录名带 `.backup-*`，其中的 `SKILL.md` 仍可能作为重复 Skill 被发现。恢复副本应放在不被扫描的专用备份目录。
+
+Registry 描述的是稳定 runtime 的准入，不声称能关闭平台随 App/插件暴露的全部能力。平台内置或已安装插件可能按更高层的产品策略出现在当前会话；它们仍服从原契约与权限边界，不能因此被计为本 registry 的 `promoted`。实际激活面必须用 Codex 的 prompt/diagnostic 输出复核，而不能只看磁盘目录或 registry 自述。
+
 ### Research Grill wrapper 的退役状态
 
 历史上的 `codex/skills/research-execution-grill` 只把本仓库科研 SOP 再包装给 Codex discovery。它没有独立工具、外部知识或相对于直接读取 SOP 的增益证据，因此：
@@ -111,6 +126,7 @@ MCP adapter 也使用同一来源、依赖、副作用、trigger 和 evaluation 
 - 三个 Visual Author 已完成 exact-source 静态审计，但尚未完成运行态盲评；React、accessibility、workflow hardening、k6、EvalScope 和 NVIDIA profiling 仍处于不同程度的待审计/待对照状态；
 - Trail of Bits property-based testing 已完成 3×3 非正式 pilot，完整 Skill 在初始 hidden-check 轴没有优势，盲评高于 baseline 但低于两句提醒；因随机化、持久 raw artifacts 和成本指标不完整，它仍是 audited 而非 evaluated，并保持 disabled/unpromoted；
 - `define-goal`、K-Dense 泛化文本子集与内部 Grill wrapper 不默认启用；K-Dense 的四个科研候选经审计不匹配“已批准 AI proposal 的忠实实现”，仅保留一个 text-only DOE sentinel 的实验可能；
-- method-fidelity、AI experiment design、AI statistics 与具体 HF/TRL/verl/Ray/NeMo 栈仍是待选型能力槽，不用未经验证的通用科研 Skill 填空。
+- `kdense-statistical-power` 已完成 exact-source 静态审计并进入 explicit-only pilot，但尚未完成相对 GPT-5.6 的三臂净增益评测，因此不能隐式触发或被称为“已验证增强”；
+- method-fidelity、AI experiment design、更广义的 AI statistics 与具体 HF/TRL/verl/Ray/NeMo 栈仍是待选型能力槽，不用未经验证的通用科研 Skill 填空。
 
 这一结论只说明 Skill 层尚未证明净增益，不降低 development、research 或 competition 的原验收，也不阻止 Agent 使用项目原生工具完成任务。

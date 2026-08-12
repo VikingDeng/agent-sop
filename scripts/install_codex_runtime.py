@@ -99,6 +99,24 @@ SNAPSHOT_FILES = (
     "skeletons/contestos-adaptive-overlay-v2.md",
 )
 RETIRED_MANAGED_LINKS = (Path(".codex/skills/research-execution-grill"),)
+RETIRED_SKILL_BACKUP_ROOT = Path(".codex/retired-skill-backups")
+RETIRED_SKILL_NAME = "research-execution-grill"
+RETIRED_SKILL_BACKUP_NAME = re.compile(
+    rf"^{re.escape(RETIRED_SKILL_NAME)}\.backup-"
+    r"\d{8}-\d{6}-\d{6}-\d+-[0-9a-fA-F]+(?:-\d+)?$"
+)
+RETIRED_SKILL_COPY_ENTRIES = frozenset({"SKILL.md", "agents", "agents/openai.yaml"})
+RETIRED_SKILL_FILE_HASHES = {
+    "SKILL.md": frozenset(
+        {
+            "d04ccc94b5c0be448fa82deb2696a03d3ebe830cf7961bcab34cfa128badb8de",
+            "ef41b837c12dca59a14f6e797dad3b8aeee375843cb4d42e28e6cefab301b9fb",
+        }
+    ),
+    "agents/openai.yaml": frozenset(
+        {"039654e0202d3ca1fcf1fe0b5091350f45254b66eec7faeaee947a1bc5c20be7"}
+    ),
+}
 SUPPORTED_MODEL_FAMILIES = ("sol", "terra", "luna")
 
 
@@ -800,27 +818,103 @@ class Installer:
         return tuple(links)
 
     def _retire_obsolete_links(self) -> None:
-        """Remove only legacy symlinks that this adapter can identify as its own."""
+        """Relocate recognized retired Skill artifacts outside discovery paths."""
+        backup_root = self.home / RETIRED_SKILL_BACKUP_ROOT / RETIRED_SKILL_NAME
+
+        def is_managed_retired_target(destination: Path, raw_target: str) -> bool:
+            target_path = Path(raw_target)
+            if not target_path.is_absolute():
+                target_path = destination.parent / target_path
+            target = target_path.resolve(strict=False)
+            retired_relative = Path("codex/skills") / RETIRED_SKILL_NAME
+            recognized_targets = {
+                (self.runtime_current / retired_relative).resolve(strict=False),
+                (self.repo_root / retired_relative).resolve(strict=False),
+            }
+            stable_literal = str(self.runtime_current / retired_relative)
+            if target in recognized_targets or raw_target == stable_literal:
+                return True
+
+            if is_managed_retired_copy(target):
+                return True
+
+            snapshot_root = self.home / SNAPSHOT_ROOT
+            if snapshot_root.is_dir() and not snapshot_root.is_symlink():
+                for snapshot in snapshot_root.iterdir():
+                    if snapshot.is_dir() and not snapshot.is_symlink():
+                        if target == (snapshot / retired_relative).resolve(strict=False):
+                            return True
+            return False
+
+        def relocate(artifact: Path) -> None:
+            candidate = backup_root / artifact.name
+            suffix = 1
+            while self._exists(candidate):
+                candidate = backup_root / f"{artifact.name}-{suffix}"
+                suffix += 1
+            self._record(f"relocate retired managed artifact {artifact} -> {candidate}")
+            if self.dry_run:
+                return
+            self._reject_symlink_parents(artifact)
+            self._reject_symlink_parents(candidate)
+            backup_root.mkdir(parents=True, exist_ok=True)
+            raw_target = os.readlink(artifact) if artifact.is_symlink() else None
+            if raw_target is not None and not Path(raw_target).is_absolute():
+                # Moving a relative symlink changes its meaning. Recreate it
+                # against the original absolute target, then remove the source.
+                original_target = (artifact.parent / raw_target).resolve(strict=False)
+                try:
+                    candidate.symlink_to(original_target, target_is_directory=original_target.is_dir())
+                    artifact.unlink()
+                except BaseException:
+                    if candidate.is_symlink():
+                        candidate.unlink()
+                    raise
+            else:
+                artifact.rename(candidate)
+            self.backups.append(candidate)
+
+        def is_managed_retired_copy(artifact: Path) -> bool:
+            if not artifact.is_dir() or artifact.is_symlink():
+                return False
+            entries = {path.relative_to(artifact).as_posix() for path in artifact.rglob("*")}
+            if entries != RETIRED_SKILL_COPY_ENTRIES or any(path.is_symlink() for path in artifact.rglob("*")):
+                return False
+            try:
+                return all(
+                    hashlib.sha256((artifact / relative).read_bytes()).hexdigest() in digests
+                    for relative, digests in RETIRED_SKILL_FILE_HASHES.items()
+                )
+            except OSError:
+                return False
+
         for relative in RETIRED_MANAGED_LINKS:
             destination = self.home / relative
-            if not destination.is_symlink():
+            if destination.is_symlink():
+                raw_target = os.readlink(destination)
+                if not is_managed_retired_target(destination, raw_target):
+                    self._record(f"preserve unrecognized retired-link target {destination} -> {raw_target}")
+                else:
+                    relocate(destination)
+            elif is_managed_retired_copy(destination):
+                relocate(destination)
+            elif self._exists(destination):
+                self._record(f"preserve unrecognized retired-copy content {destination}")
+
+        skills_directory = self.home / ".codex/skills"
+        if not skills_directory.is_dir() or skills_directory.is_symlink():
+            return
+        for artifact in sorted(skills_directory.iterdir()):
+            if not RETIRED_SKILL_BACKUP_NAME.fullmatch(artifact.name):
                 continue
-            raw_target = os.readlink(destination)
-            target = (destination.parent / raw_target).resolve() if not Path(raw_target).is_absolute() else Path(raw_target).resolve()
-            recognized_targets = {
-                (self.runtime_current / "codex/skills/research-execution-grill").resolve(strict=False),
-                (self.repo_root / "codex/skills/research-execution-grill").resolve(strict=False),
-            }
-            # A stable link through runtime-current resolves into the active
-            # generation, so compare its literal form as well as resolved paths.
-            stable_literal = str(self.runtime_current / "codex/skills/research-execution-grill")
-            if target not in recognized_targets and raw_target != stable_literal:
-                self._record(f"preserve unrecognized retired-link target {destination} -> {raw_target}")
-                continue
-            self._backup(destination)
-            self._record(f"retire obsolete managed link {destination}")
-            if not self.dry_run:
-                destination.unlink()
+            recognized = is_managed_retired_copy(artifact)
+            if artifact.is_symlink():
+                raw_target = os.readlink(artifact)
+                recognized = is_managed_retired_target(artifact, raw_target)
+            if recognized:
+                relocate(artifact)
+            else:
+                self._record(f"preserve unrecognized retired-backup lookalike {artifact}")
 
     def _current_generation_is_valid(self) -> bool:
         if not self.runtime_current.is_symlink():

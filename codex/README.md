@@ -36,7 +36,7 @@ The installer:
 - resolves and verifies the base Python interpreter running the installer, then writes that executable's absolute path into managed Hook commands instead of assuming `/usr/bin/python3`;
 - preserves the foreground model by default; explicit profiles set Terra/high or Sol/high;
 - installs advisory routing by default and keeps strict routing opt-in;
-- retires the old internal `research-execution-grill` Skill symlink when it can prove that symlink was adapter-managed. The Research Grill remains a Domain Profile, not a Skill.
+- relocates the old internal `research-execution-grill` Skill link and recognized historical backup copies outside Codex Skill discovery when exact path or content evidence proves they were adapter-managed. Unknown same-named user content is preserved. The Research Grill remains a Domain Profile, not a Skill.
 
 The default `--workspace` is the current home directory; pass the actual workspace root when it differs. The reusable repository and runtime snapshots never hard-code a server, IP, GPU, remote username, or project directory.
 

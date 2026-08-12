@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research Execution Grill"
+  short_description: "Stress-test approved proposals before execution"
+  default_prompt: "Use $research-execution-grill to stress-test this approved proposal and choose the minimum evidence and gates needed for high-quality execution."
