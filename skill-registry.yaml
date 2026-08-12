@@ -128,6 +128,67 @@
       "evaluation": {"protocol": "gpt56-net-lift-v1", "fixtures": [], "primary_metric": "contract_defect_recall_without_scope_expansion", "thresholds": null, "result": null, "valid_until": null}
     },
     {
+      "id": "kdense-statistical-power",
+      "kind": "external_method_and_tool_skill",
+      "capability_slot": "a-priori statistical power, minimum detectable effect, sensitivity analysis, and simulation-based sample-size planning",
+      "value_claim": "May improve defensible pre-data-collection sample-size planning by matching the planned analysis, requiring an explicit effect-size basis, exposing sensitivity to assumptions, and providing reproducible closed-form or simulation calculations.",
+      "decision": "audited_pilot; explicit_only_until_controlled_lift",
+      "lifecycle": {
+        "declared": true,
+        "audited": true,
+        "installed": false,
+        "enabled": false,
+        "evaluated": false,
+        "promoted": false,
+        "current": "audited",
+        "exception": "Static source/provenance audit and bundled smoke execution are complete. Installation state is environment-specific and must be recorded only after an exact-byte install; no implicit invocation before the registered three-arm evaluation."
+      },
+      "source": {
+        "repository": "https://github.com/K-Dense-AI/scientific-agent-skills",
+        "commit": "ddd2f7f2a5e1b21af8dfaa3dfa5ac1f107a35d74",
+        "subpath": "skills/statistical-power",
+        "content_sha256": "1c538e7c7e9a32e2127995b5b7d01ae8dcbcb8ca578ef08ede1da2ddc8c8961f",
+        "content_hash_scheme": "sha256 of sorted sha256sum lines with paths relative to the candidate subpath",
+        "selected_file_sha256": {
+          "SKILL.md": "40f9c8bd0cc940b775fa834b401f7244a3e4bf09ff1a9fe5f1c22d87b355a194",
+          "references/closed_form_recipes.md": "6194841e8477d027cae631c557a90826cd4d613d98e98749e6f40714a1da3b0b",
+          "references/effect_sizes.md": "19f243ac6aeacfbbb7a83a1e621dc5a8248b98278499c4efd34db412d2c964db",
+          "references/simulation_based_power.md": "5841de90e01a4e4617ce84c9ced9791f1ca3b3e0727c80f73f3ea5b9f339b469",
+          "scripts/power.py": "4bb073160c59469eed4398eee0fa3c6686c1df1c2ebf7bdddfe7853d7c94914c",
+          "scripts/simulate_power.py": "a3eb6fefe1af0aa9d67fe8762efab47df13a0ff57a35480a59c0fc4e18c404df"
+        },
+        "license_spdx": "MIT",
+        "license_evidence": "https://github.com/K-Dense-AI/scientific-agent-skills/blob/ddd2f7f2a5e1b21af8dfaa3dfa5ac1f107a35d74/LICENSE.md ; sha256=09b02a3c9df3053c55531d503357a9c7cde275970e6c3ceaa1ddf5f0e90b40c1"
+      },
+      "dependencies": {
+        "runtime": ["Python >=3.10", "statsmodels >=0.14.6", "scipy >=1.11", "numpy >=1.26", "matplotlib for power curves", "optional pandas/pingouin/lifelines for selected recipes"],
+        "services": [],
+        "credentials": []
+      },
+      "side_effects": ["May install scientific Python dependencies when the project authorizes them", "May write power-curve images or simulation artifacts", "Simulation can consume material CPU time", "A wrong effect-size or data-generating assumption can produce precise but misleading sample sizes"],
+      "activation": {
+        "mode": "explicit_experiment_only",
+        "positive_triggers": ["Before data collection: sample-size, power, MDE, sensitivity, or simulation-power planning for an already specified design and estimand"],
+        "negative_triggers": ["Post-hoc observed-power request", "Data have already been collected and the task is result analysis", "Design, replication unit, primary estimand, test/model, effect-size basis, or budget is unresolved", "Routine engineering benchmark sizing without a statistical estimand"]
+      },
+      "non_goals": ["Choosing or approving a research claim", "Inventing an expected effect", "Experimental design or randomization", "Analyzing collected outcomes", "Authorizing material-scale data collection or compute", "Proving a paper claim"],
+      "authority_exclusions": ["Cannot replace the research profile or statistics oracle", "Cannot turn conventional effect sizes into evidence", "Cannot authorize enrollment, data acquisition, paid compute, or scale", "Cannot silently switch the planned analysis to one with easier power"],
+      "audit": {
+        "inspected_at": "2026-08-12",
+        "blockers": [],
+        "evidence": "skill-evaluations/round1-2026-08-12.md#statistical-power-source-audit",
+        "limitations": ["Bundled scripts do not yet have an independent golden-value and edge-case suite", "One-sided directionality, extreme probabilities, small-n behavior, simulation convergence, and cross-implementation agreement remain evaluation fixtures rather than audited claims"]
+      },
+      "evaluation": {
+        "protocol": "gpt56-net-lift-v1",
+        "fixtures": ["known closed-form golden values", "one-sided and wrong-direction traps", "clustered/pseudoreplicated proposal", "multiple-comparison and attrition adjustment", "simulation-convergence case", "post-hoc observed-power refusal"],
+        "primary_metric": "gold_sample_size_and_method_decision_accuracy_minus_unsupported_assumption_rate",
+        "thresholds": null,
+        "result": null,
+        "valid_until": null
+      }
+    },
+    {
       "id": "vercel-web-design-guidelines",
       "kind": "external_review_skill",
       "capability_slot": "web interface review",

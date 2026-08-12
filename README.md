@@ -50,7 +50,7 @@ vs minimal reminder
 vs full pinned Skill
 ```
 
-只有 Full Skill 在固定模型、effort、工具、checkpoint 和预算下，经重复盲评证明净提升且没有 authority/acceptance 回归，才能 `promoted`。运行时禁止用 `find-skills` 自动搜索、安装和组合未知 Skill。
+只有 Full Skill 在固定模型、effort、工具、checkpoint 和预算下，经重复盲评证明净提升且没有 authority/acceptance 回归，才能 `promoted`。运行时禁止用 `find-skills` 自动搜索、安装和组合未知 Skill。“local”只描述文件位置，不描述来源或质量；catalog、audited、installed/enabled 与 promoted 是四种不同事实。备份和退役 Skill 必须放在 Codex 不扫描的位置，同名用户副本与插件副本只保留一个预期来源。
 
 首轮外部源码审计与 Trail of Bits property-based testing 的 3×3 负向 pilot 见 [round 1 evidence](skill-evaluations/round1-2026-08-12.md)：三臂均命中 8/8 初始隐藏检查，完整 Skill 在该轴没有优势且盲评低于两句提醒；由于评测协议和兼容性证据仍有缺口，该候选保持 audited 而非 evaluated，更没有进入稳定集。
 

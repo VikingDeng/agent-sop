@@ -36,6 +36,10 @@ class InstallCodexRuntimeTests(unittest.TestCase):
         installer.install()
         return installer
 
+    def historical_retired_file(self, relative: str, variant: str = "d04ccc94") -> bytes:
+        fixture = ROOT / "tests/fixtures/retired-research-execution-grill" / variant / f"{relative}.fixture"
+        return fixture.read_bytes()
+
     def test_first_install_creates_complete_generation_and_stable_links(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home, workspace, codex_home = self.make_environment(Path(directory))
@@ -108,10 +112,98 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertFalse((codex_home / "skills/research-execution-grill").is_symlink())
             backups = list(codex_home.glob("*.backup-*")) + list((codex_home / "agents").glob("*.backup-*")) + list((codex_home / "skills").glob("*.backup-*")) + list(workspace.glob("*.backup-*"))
             self.assertTrue(backups)
+            retired_backups = home / INSTALL.RETIRED_SKILL_BACKUP_ROOT / "research-execution-grill"
+            self.assertEqual(len(list(retired_backups.iterdir())), 1)
+            self.assertFalse(list((codex_home / "skills").glob("research-execution-grill.backup-*")))
 
             repeated = INSTALL.Installer(source, home, workspace)
             repeated.install()
             self.assertFalse(any(action.startswith("backup") for action in repeated.actions))
+            self.assertEqual(len(list(retired_backups.iterdir())), 1)
+
+    def test_retirement_migrates_legacy_backup_copy_and_managed_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source = base / "source"
+            shutil.copytree(ROOT, source)
+            home, workspace, codex_home = self.make_environment(base)
+            skills = codex_home / "skills"
+            skills.mkdir()
+            retired_source = source / "codex/skills/research-execution-grill"
+            retired_source.mkdir(parents=True)
+            (retired_source / "SKILL.md").write_bytes(self.historical_retired_file("SKILL.md"))
+            (retired_source / "agents").mkdir()
+            (retired_source / "agents/openai.yaml").write_bytes(self.historical_retired_file("agents/openai.yaml"))
+            legacy_backup = skills / "research-execution-grill.backup-20260812-120000-000000-1234-deadbeef"
+            shutil.copytree(retired_source, legacy_backup)
+            legacy_link = skills / "research-execution-grill.backup-20260812-120001-000000-1234-cafebabe"
+            legacy_link.symlink_to(retired_source, target_is_directory=True)
+            relative_link = skills / "research-execution-grill.backup-20260812-120002-000000-1234-feedface"
+            relative_link.symlink_to(
+                os.path.relpath(retired_source, start=relative_link.parent),
+                target_is_directory=True,
+            )
+
+            installer = INSTALL.Installer(source, home, workspace)
+            installer.install()
+
+            self.assertFalse(list(skills.glob("research-execution-grill*")))
+            retired_backups = home / INSTALL.RETIRED_SKILL_BACKUP_ROOT / "research-execution-grill"
+            self.assertEqual(
+                sorted(path.name for path in retired_backups.iterdir()),
+                sorted((legacy_backup.name, legacy_link.name, relative_link.name)),
+            )
+            self.assertEqual(
+                (retired_backups / legacy_backup.name / "SKILL.md").read_bytes(),
+                self.historical_retired_file("SKILL.md"),
+            )
+            self.assertTrue((retired_backups / legacy_link.name).is_symlink())
+            relocated_relative_link = retired_backups / relative_link.name
+            self.assertTrue(relocated_relative_link.is_symlink())
+            self.assertEqual(relocated_relative_link.resolve(), retired_source.resolve())
+
+    def test_retirement_migrates_managed_link_from_another_checkout_by_fingerprint(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            other_checkout = base / "other-checkout/codex/skills/research-execution-grill"
+            other_checkout.mkdir(parents=True)
+            historical_skill = other_checkout / "SKILL.md"
+            historical_skill.write_bytes(self.historical_retired_file("SKILL.md", variant="ef41b837"))
+            historical_agent = other_checkout / "agents/openai.yaml"
+            historical_agent.parent.mkdir()
+            historical_agent.write_bytes(self.historical_retired_file("agents/openai.yaml"))
+            home, workspace, codex_home = self.make_environment(base)
+            destination = codex_home / "skills/research-execution-grill"
+            destination.parent.mkdir()
+            destination.symlink_to(other_checkout, target_is_directory=True)
+
+            installer = self.install(home, workspace)
+
+            self.assertFalse(destination.exists())
+            backup = home / INSTALL.RETIRED_SKILL_BACKUP_ROOT / "research-execution-grill" / destination.name
+            self.assertTrue(backup.is_symlink())
+            self.assertEqual(os.readlink(backup), str(other_checkout))
+
+    def test_retirement_migrates_recognized_copy_at_canonical_skill_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home, workspace, codex_home = self.make_environment(base)
+            destination = codex_home / "skills/research-execution-grill"
+            (destination / "agents").mkdir(parents=True)
+            (destination / "SKILL.md").write_bytes(self.historical_retired_file("SKILL.md"))
+            (destination / "agents/openai.yaml").write_bytes(
+                self.historical_retired_file("agents/openai.yaml")
+            )
+
+            self.install(home, workspace)
+
+            self.assertFalse(destination.exists())
+            backup = home / INSTALL.RETIRED_SKILL_BACKUP_ROOT / "research-execution-grill" / destination.name
+            self.assertTrue(backup.is_dir())
+            self.assertEqual(
+                (backup / "SKILL.md").read_bytes(),
+                self.historical_retired_file("SKILL.md"),
+            )
 
     def test_retirement_preserves_unrecognized_same_named_skill_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -128,6 +220,19 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertTrue(destination.is_symlink())
             self.assertEqual(destination.resolve(), external.resolve())
             self.assertTrue(any("preserve unrecognized retired-link" in action for action in installer.actions))
+
+    def test_retirement_preserves_unrecognized_backup_lookalike(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home, workspace, codex_home = self.make_environment(base)
+            lookalike = codex_home / "skills/research-execution-grill.backup-user-content"
+            lookalike.mkdir(parents=True)
+            (lookalike / "SKILL.md").write_text("user content\n", encoding="utf-8")
+
+            self.install(home, workspace)
+
+            self.assertTrue(lookalike.is_dir())
+            self.assertEqual((lookalike / "SKILL.md").read_text(), "user content\n")
 
     def test_snapshot_markdown_dependencies_are_closed(self) -> None:
         snapshot_files = set(INSTALL.SNAPSHOT_FILES)

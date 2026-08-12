@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -126,7 +127,7 @@ class StructuralConsistencyTests(unittest.TestCase):
                 self.assertTrue(source["license_spdx"], entry["id"])
                 self.assertTrue(source["license_evidence"], entry["id"])
                 evidence = entry["audit"].get("evidence")
-                if evidence == "skill-evaluations/round1-2026-08-12.md#visual-author-source-audit" or evidence == "skill-evaluations/round1-2026-08-12.md#ai-research-source-audit":
+                if isinstance(evidence, str) and evidence.startswith("skill-evaluations/round1-2026-08-12.md#"):
                     self.assertIn(source["content_sha256"], evaluation_report, entry["id"])
             if lifecycle["installed"]:
                 self.assertTrue(lifecycle["audited"], entry["id"])
@@ -142,6 +143,25 @@ class StructuralConsistencyTests(unittest.TestCase):
                 self.assertTrue(lifecycle["evaluated"])
                 self.assertTrue(lifecycle["enabled"])
         self.assertFalse(any(entry["lifecycle"]["promoted"] for entry in entries))
+        power = next(entry for entry in entries if entry["id"] == "kdense-statistical-power")
+        self.assertTrue(power["lifecycle"]["audited"])
+        self.assertFalse(power["lifecycle"]["installed"])
+        self.assertFalse(power["lifecycle"]["enabled"])
+        self.assertFalse(power["lifecycle"]["promoted"])
+        self.assertEqual(power["activation"]["mode"], "explicit_experiment_only")
+        self.assertEqual(power["source"]["license_spdx"], "MIT")
+        self.assertRegex(power["source"]["content_sha256"], r"^[0-9a-f]{64}$")
+        selected_hashes = power["source"]["selected_file_sha256"]
+        self.assertEqual(len(selected_hashes), 6)
+        canonical_digest_input = b"".join(
+            digest.encode("ascii") + b"  " + relative_path.encode("utf-8") + b"\n"
+            for relative_path, digest in sorted(selected_hashes.items())
+        )
+        self.assertEqual(
+            hashlib.sha256(canonical_digest_input).hexdigest(),
+            power["source"]["content_sha256"],
+        )
+        self.assertFalse(power["audit"]["blockers"])
         shim = next(entry for entry in entries if entry["id"] == "local-research-execution-grill-shim")
         self.assertEqual(shim["lifecycle"]["current"], "retired")
         self.assertFalse(shim["lifecycle"]["installed"])
