@@ -32,20 +32,22 @@ from weighted_routing_policy import (
 )
 
 
+SESSION_CONTEXT_LIMIT = 2_200
+
 SESSION_CONTEXT = """Weighted-cost routing is active in adaptive advisory mode unless CODEX_ROUTER_ENFORCEMENT=strict.
-Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
-Prefer Luna for bounded labor-heavy execution, Terra for semantic/debugging pressure and ordinary review, and Sol for architecture, research design, ambiguity, and final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
-Let the agent choose exploration order, work decomposition, repair count, and review depth from current evidence. Package IDs, phase markers, and strict loop budgets are optional coordination aids in advisory mode. resume_agent is allowed in advisory mode; because Hook telemetry cannot bind an agent ID to package/phase, requested role, actual model, or open state, use a fresh typed correction/re-review spawn when matching identity cannot be established. Keep a child open only for a current purpose or imminent dependent correction; otherwise close it before spawning successors. Avoid full-history forks, tiny one-command delegations, repeated polling, and large raw returns.
-Choosing Sol as the top level does not make it the mechanical executor. Route repeated writing, full-suite, browser, packaging, and log work as coherent Luna/Terra outcomes when available.
-Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
-Continue assurance work only when it can improve the real outcome, change the next decision, invalidate the current conclusion, or prevent concrete material harm. Reliability or audit work remains on the critical path when it is itself a frozen deliverable or a concrete high-risk path requires it. A trustworthy route-level no-go means re-architect or stop rather than expanding proof machinery. Preserve real evidence and never lower acceptance criteria silently.
+Authority: user/closest project instructions > Kernel > selected Domain Profile > Adapter. Routing telemetry cannot alter frozen outcome, acceptance, claim, risk boundary, or verdict.
+Minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening evidence. Prefer Luna for bounded labor, Terra for semantics/debugging/review, and Sol for architecture/research/ambiguity/final judgment. These are preferences, not permission gates. If Luna is unavailable, transparently use the lowest-cost available capable role, normally Terra.
+Let evidence determine decomposition/review; package markers and loop budgets are optional. resume_agent is allowed in advisory mode; if identity/state is unknown, prefer a fresh typed correction/re-review spawn. Keep children only for current/imminent work. Avoid full-history forks, tiny delegations, repeated polling, and large returns.
+A Sol foreground is not the mechanical executor; route repetitive writing, full-suite, browser, packaging, and log work to coherent Luna/Terra outcomes. Preserve logs and return decisive evidence plus exit codes compactly.
+Continue assurance only if it can change the outcome/decision or prevent concrete harm. Reliability or audit work remains on the critical path when it is itself a frozen deliverable. After a trustworthy route-level no-go, stop or re-architect. Preserve real evidence and never lower acceptance criteria silently.
 """
 
 STRICT_SESSION_CONTEXT = """Weighted-cost routing is active in strict enforcement mode.
-Objective: minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening the requested outcome or its acceptance evidence.
-Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance. Model-bound package work must use a fresh explicit typed spawn for correction/re-review; resume_agent is denied. The denial guarantees the closed role-bound resume primitive cannot run, but Hook telemetry does not bind agent IDs to package/phase, requested role, actual model, or open state. Fresh typed spawns keep the existing package budget; role/model changes never reset it. Already-open reuse and actual-model verification are supervisor policy plus PostToolUse/session audit, with evidenced violations failing closed.
-Use Luna for fixed Luna-eligible implementation packages, Terra only for explicitly permitted semantic/debugging work or ordinary review, and Sol for read-only architecture, research design, ambiguity, and final judgment.
-Keep tool returns compact (target <=20k chars when practical); preserve full logs as artifacts and return summaries with decisive evidence and exit codes.
+Authority: user/closest project instructions > Kernel > selected Domain Profile > Adapter. Strict routing can block process operations but cannot alter frozen outcome, acceptance, claim, risk boundary, or verdict.
+Minimize WCU = 25*Sol tokens + 10*Terra tokens + 1*Luna tokens without weakening evidence.
+Strict enforcement: Sol non-read-only direct execution is denied. Fixed Luna-eligible packages must start with Luna. Luna unavailable/unknown fails closed for that package; no Terra/Sol substitution. Read-only planning/judgment remains allowed. Lifecycle/spawn coverage may still require supervisor compliance.
+Model-bound correction/re-review requires a fresh typed spawn; resume_agent is denied. Hook telemetry cannot bind agent IDs to package/phase, requested role, actual model, or open state. Fresh spawns retain package budgets; role/model changes never reset them. Reuse/model verification remain supervisor policy plus audit; evidenced violations fail closed.
+Use Luna for fixed eligible implementation, Terra only for permitted semantics/debugging/review, and Sol for read-only architecture/research/ambiguity/final judgment. Preserve logs and return decisive evidence plus exit codes compactly.
 Preserve real evidence and never lower acceptance criteria silently. If a strict invariant or required runtime capability is uncertain, stop the affected package and report the uncertainty.
 """
 
@@ -80,6 +82,16 @@ def _session_context() -> str:
     return STRICT_SESSION_CONTEXT if _strict_enforcement() else SESSION_CONTEXT
 
 
+def _bounded_identity(value: Any, limit: int) -> str:
+    text = str(value)
+    digest = hashlib.sha256(text.encode("utf-8", errors="surrogatepass")).hexdigest()[:12]
+    if re.fullmatch(r"[A-Za-z0-9._:/@+~-]*", text) is None:
+        return f"sha256:{digest}"
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 13]}~{digest}"
+
+
 def _runtime_provenance(data: dict[str, Any]) -> dict[str, Any]:
     resolved = Path(__file__).resolve()
     runtime_root = resolved.parents[2]
@@ -89,7 +101,7 @@ def _runtime_provenance(data: dict[str, Any]) -> dict[str, Any]:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if isinstance(manifest, dict):
-            generation = str(manifest.get("content_address") or "UNKNOWN")
+            generation = _bounded_identity(manifest.get("content_address") or "UNKNOWN", 72)
             raw_components = manifest.get("runtime_components")
             if isinstance(raw_components, dict):
                 components = raw_components
@@ -100,11 +112,13 @@ def _runtime_provenance(data: dict[str, Any]) -> dict[str, Any]:
         value = components.get(name)
         if not isinstance(value, dict):
             return "UNKNOWN"
-        version = str(value.get("version") or "UNKNOWN")
+        version = _bounded_identity(value.get("version") or "UNKNOWN", 16)
         digest = str(value.get("sha256") or "UNKNOWN")
         return f"{version}@{digest[:12]}" if digest != "UNKNOWN" else version
 
-    selected = os.environ.get("SOP_DOMAIN_PROFILE", "UNRESOLVED_BY_SESSIONSTART")
+    selected = _bounded_identity(
+        os.environ.get("SOP_DOMAIN_PROFILE", "UNRESOLVED_BY_SESSIONSTART"), 32
+    )
     return {
         "adapter": f"codex-runtime@{component('codex_adapter')}",
         "generation": generation,
@@ -116,16 +130,23 @@ def _runtime_provenance(data: dict[str, Any]) -> dict[str, Any]:
         },
         "selected_domain_profile": selected,
         "routing_profile": "strict" if _strict_enforcement() else "advisory",
-        "foreground_model": data.get("model") or data.get("model_name") or "UNKNOWN",
-        "foreground_effort": data.get("model_reasoning_effort") or data.get("reasoning_effort") or "UNKNOWN",
-        "session_id": data.get("session_id") or "UNKNOWN",
+        "foreground_model": _bounded_identity(
+            data.get("model") or data.get("model_name") or "UNKNOWN", 32
+        ),
+        "foreground_effort": _bounded_identity(
+            data.get("model_reasoning_effort") or data.get("reasoning_effort") or "UNKNOWN", 16
+        ),
+        "session_id": _bounded_identity(data.get("session_id") or "UNKNOWN", 48),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
 
 def _session_start_context(data: dict[str, Any]) -> str:
     marker = json.dumps(_runtime_provenance(data), ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-    return f"SOP_RUNTIME {marker}\n{_session_context()}"
+    context = f"SOP_RUNTIME {marker}\n{_session_context()}"
+    if len(context) > SESSION_CONTEXT_LIMIT:
+        raise ValueError("SessionStart context exceeds configured additionalContextLimit")
+    return context
 
 def _emit(payload: dict[str, Any]) -> None:
     json.dump(payload, sys.stdout, separators=(",", ":"))

@@ -36,6 +36,7 @@
 - evidence-bearing code fail fast，不写自动切 method/model/backend/device/data/metric/analysis 的 speculative runtime fallback；
 - diagnostic/smoke/synthetic/mock/code-readiness 均 `paper_eligible=false`；
 - raw runs 不可回写，过程视图和 final table 从 eligible evidence 确定性派生；
+- source/environment identity、locking、rebuild 与 replay independence 按 claim 风险和具体共享错误路径比例化，不设 universal clean-tree、`ENV_LOCK` 或 clean-rebuild gate；
 - inferential claim 按 [AI statistics oracle](sop/tier1-skeleton/statistics-oracle.md) 的数据生成过程、replication unit 与 estimand 验证；
 - 远程资源由 project/local adapter 发现，通用 SOP 不包含默认服务器或 IP。
 

@@ -195,8 +195,48 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             source = base / "source"
             shutil.copytree(ROOT, source)
             home, workspace, codex_home = self.make_environment(base)
-            INSTALL.Installer(source, home, workspace).install()
+            installer = INSTALL.Installer(source, home, workspace)
+            installer.install()
+            hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+            hook_command = shlex.split(hooks["hooks"]["SessionStart"][-1]["hooks"][0]["command"])
+            launcher = Path(hook_command[1])
+            self.assertEqual(launcher, installer.python_launcher)
+            self.assertTrue(launcher.is_file())
+            self.assertTrue(os.access(launcher, os.X_OK))
+            self.assertFalse(launcher.is_relative_to(source.resolve()))
             shutil.rmtree(source)
+
+            hook_environment = dict(os.environ)
+            hook_environment["HOME"] = str(home)
+            installed_command = hooks["hooks"]["SessionStart"][-1]["hooks"][0][
+                "command"
+            ]
+            session_start = subprocess.run(
+                ["/bin/sh", "-c", installed_command],
+                input=json.dumps(
+                    {
+                        "hook_event_name": "SessionStart",
+                        "model": "gpt-5.6-terra",
+                        "model_reasoning_effort": "high",
+                        "session_id": "source-removal-test",
+                    }
+                ),
+                capture_output=True,
+                text=True,
+                check=False,
+                env=hook_environment,
+            )
+            self.assertEqual(session_start.returncode, 0, session_start.stderr)
+            session_payload = json.loads(session_start.stdout)
+            context = session_payload["hookSpecificOutput"]["additionalContext"]
+            context_limit = hooks["hooks"]["SessionStart"][-1]["hooks"][0][
+                "additionalContextLimit"
+            ]
+            self.assertTrue(context.startswith("SOP_RUNTIME "))
+            self.assertLessEqual(len(context), context_limit)
+            self.assertLessEqual(len(context.encode("utf-8")), context_limit)
+            marker = json.loads(context.splitlines()[0].removeprefix("SOP_RUNTIME "))
+            self.assertRegex(marker["generation"], r"^sha256-[0-9a-f]{64}$")
 
             self.assertIn("Weighted-cost routing", (codex_home / "hooks/weighted_cost_router.py").read_text())
             self.assertTrue((codex_home / "agents/luna_executor.toml").read_text())
@@ -574,6 +614,75 @@ with installer._install_lock():
             self.assertEqual(hooks.read_text(), "not json")
             self.assertFalse((home / INSTALL.RUNTIME_CURRENT).exists())
 
+    def test_preflight_rejects_unavailable_python_without_runtime_mutation(self) -> None:
+        for case in ("missing", "not-executable", "not-python", "inside-source"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                source = base / "source"
+                shutil.copytree(ROOT, source)
+                home, workspace, codex_home = self.make_environment(base)
+                config = codex_home / "config.toml"
+                hooks = codex_home / "hooks.json"
+                config.write_text('model = "gpt-5.6-terra"\n', encoding="utf-8")
+                hooks.write_text(json.dumps({"description": "preserve", "hooks": {}}), encoding="utf-8")
+                original_config = config.read_text(encoding="utf-8")
+                original_hooks = hooks.read_text(encoding="utf-8")
+
+                if case == "missing":
+                    launcher = base / "missing-python3"
+                elif case == "not-executable":
+                    launcher = base / "python3"
+                    launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                    launcher.chmod(0o644)
+                elif case == "not-python":
+                    launcher = base / "python3"
+                    launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                    launcher.chmod(0o755)
+                else:
+                    launcher = source / "python3"
+                    launcher.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                    launcher.chmod(0o755)
+
+                with self.assertRaisesRegex(ValueError, "Python launcher"):
+                    INSTALL.Installer(source, home, workspace, python_launcher=launcher).install()
+
+                self.assertEqual(config.read_text(encoding="utf-8"), original_config)
+                self.assertEqual(hooks.read_text(encoding="utf-8"), original_hooks)
+                self.assertFalse((home / INSTALL.RUNTIME_CURRENT).exists())
+                self.assertFalse((codex_home / "AGENTS.md").exists())
+
+    def test_nonstandard_python_name_is_idempotently_managed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home, workspace, codex_home = self.make_environment(base)
+            launcher = base / "custom-runtime"
+            launcher.write_text(
+                "#!/bin/sh\nexec "
+                + shlex.quote(str(Path(sys.executable).resolve()))
+                + ' "$@"\n',
+                encoding="utf-8",
+            )
+            launcher.chmod(0o755)
+
+            for _ in range(2):
+                self.install(
+                    home,
+                    workspace,
+                    routing_profile="strict",
+                    python_launcher=launcher,
+                )
+
+            hooks = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+            for event, registrations in hooks["hooks"].items():
+                managed = [
+                    registration
+                    for registration in registrations
+                    if INSTALL.Installer._is_router_registration(registration, home)
+                ]
+                self.assertEqual(len(managed), 1, event)
+                command = managed[0]["hooks"][0]["command"]
+                self.assertEqual(shlex.split(command)[1], str(launcher.resolve()))
+
     def test_hook_command_detection_keeps_unrelated_commands_and_quotes_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -581,10 +690,17 @@ with installer._install_lock():
             workspace = base / "workspace"
             (home / ".codex").mkdir(parents=True)
             workspace.mkdir()
-            self.install(home, workspace)
+            installer = self.install(home, workspace)
             hooks = json.loads((home / ".codex/hooks.json").read_text())
             command = hooks["hooks"]["PreToolUse"][-1]["hooks"][0]["command"]
-            self.assertEqual(shlex.split(command), ["CODEX_ROUTER_ENFORCEMENT=advisory", "/usr/bin/python3", str(home.resolve() / ".codex/hooks/weighted_cost_router.py")])
+            self.assertEqual(
+                shlex.split(command),
+                [
+                    "CODEX_ROUTER_ENFORCEMENT=advisory",
+                    str(installer.python_launcher),
+                    str(home.resolve() / ".codex/hooks/weighted_cost_router.py"),
+                ],
+            )
             unrelated = {"hooks": [{"command": "python3 weighted_cost_router.py"}]}
             self.assertFalse(INSTALL.Installer._is_router_registration(unrelated))
 

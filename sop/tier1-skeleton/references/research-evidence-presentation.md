@@ -13,7 +13,7 @@
 | `exploratory` | 真实任务/数据上的预声明 pilot、failure-mode 判断、GO/NO-GO | `false`，除非项目协议明确允许作为探索性论文证据 | confirmatory claim、事后改 protocol |
 | `confirmatory` | 冻结 protocol 后的正式 claim 验证 | 仅全部 eligibility 条件满足时为 `true` | 用未披露变更、fallback 或失效 oracle 产出结论 |
 
-`paper_eligible=true` 至少要求：真实任务与数据；冻结的 claim、primary estimand、baseline、split、分析方法和预算；方法 fidelity/code readiness 已有匹配证据；本 run 无 mock/stub/synthetic input、自动 runtime fallback、未披露缓存或 dirty code；oracle 有效；原始产物可追溯。一个字段为 `true` 不是自证，checker/report 必须能从 run evidence 复核这些条件。
+`paper_eligible=true` 至少要求：真实任务与数据；冻结的 claim、primary estimand、baseline、split、分析方法和预算；方法 fidelity/code readiness 已有匹配证据；本 run 不含 mock/stub/synthetic input 或自动 runtime fallback；所有缓存均已披露；实际代码与 outcome-relevant environment identity 可恢复且无歧义；oracle 有效；原始产物可追溯。clean commit 是充分 source identity 的一种；dirty run 优先使用 content-addressed snapshot/archive。base SHA + delta 只有在覆盖 staged、unstaged、execution-relevant untracked、submodule/LFS 与仓库外代码身份，并对拍重建后的 content-tree hash 时才可 eligible；普通 `git diff` 单独不够。未披露缓存或不可恢复/含糊的代码/环境身份会使该 run 不 eligible。一个字段为 `true` 不是自证，checker/report 必须能从 run evidence 复核这些条件。
 
 ## 2. 中间实验视图
 

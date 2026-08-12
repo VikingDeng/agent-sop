@@ -4,7 +4,7 @@
 - **落实纪律**: P1(明确 claim) P2(可信 oracle) P3(预算与真实性边界) P4(可复现记录)
 - **绑定骨架**: research
 - **通用性档位**: U2
-- **版本**: v7
+- **版本**: v8
 
 ## 触发条件
 
@@ -15,7 +15,7 @@
 - 本轮 claim、支持/否定条件及不得声称的结论已写清；
 - 原 claim、primary estimand、method 语义、baseline、数据/split、分析方法和正式预算已冻结，或当前 run 明确仅为不产生科学 claim 的诊断；
 - 已按 `→ tier1-skeleton/research-execution-grill.md` 选择与 proposal 匹配的 oracle、主要 failure modes 和 scale criteria；
-- 环境、代码、数据和配置身份足以重现；
+- 环境、代码、数据和配置身份足以复核当前 evidence class；正式可重建或跨环境 claim 具备相应强度的重建身份；
 - 有有限预算或明确的低成本探索范围；
 - 涉及隐私、人类标签、凭据、生产资源、不可逆采集或显著扩容时，已经获得对应授权。
 
@@ -25,11 +25,11 @@
 
 ## 依赖 SOP
 
-→ tier0-core/lock-env.md
+→ tier0-core/lock-env.md（依赖或平台身份可能改变当前 claim，或需要可重建环境时）
 
 → tier0-core/build-oracle.md
 
-→ tier0-core/reproduce-result.md
+→ tier0-core/reproduce-result.md（重复性、跨环境/实现一致性、baseline 复现或具体共享错误路径会改变决定时）
 
 → tier1-skeleton/statistics-oracle.md（需要统计性 claim 时）
 
@@ -37,14 +37,16 @@
 
 → tier2-activity/ops-remote-compute.md（需要远程算力时）
 
+以上依赖按各自触发条件调用，不是每个实验的默认前置门禁；尤其 `{ENV_LOCK}`、`{VERIFY_ENV}`、clean rebuild 与 independent replay 都必须由当前 claim 或可信 failure path 触发。
+
 ## 步骤
 
-1. 记录本轮唯一问题、evidence class（`diagnostic|code_readiness|exploratory|confirmatory`）、`paper_eligible`、配置身份、代码版本、数据切分、seed、预算和 kill criteria。允许复用缓存做探索，但正式上报结果必须说明缓存与复现条件；当缓存可能改变结论时运行干净重跑。
+1. 记录本轮唯一问题、evidence class（`diagnostic|code_readiness|exploratory|confirmatory`）、`paper_eligible`、配置身份、代码版本、数据切分、seed、预算和 kill criteria。diagnostic/code-readiness 只需足以区分本次运行的 source/environment identity；confirmatory/paper-eligible run 必须能恢复实际 source、config、data 与 outcome-relevant environment identity，但不机械要求 clean tree。clean commit 或 content-addressed snapshot/archive 可形成精确 source identity；base SHA + delta 还必须覆盖 staged、unstaged、execution-relevant untracked、submodule/LFS 与仓库外代码身份，并对拍重建后的 content-tree hash，普通 `git diff` 单独不够。
 2. 先运行最便宜的 discriminating check。synthetic、mock/stub、plumbing smoke 和 code-readiness fixture 必须 `paper_eligible=false`，只验证 wiring、schema、provenance、异常路径、成本遥测、输出格式或实现 invariant；不得调参、选择数据、改变 hypothesis/estimand，也不得触发 scientific GO。
 3. 科学 producer/evaluator 代码 fail fast：NaN、维度错误、缺数据、parser/oracle 失败或 method component/model/backend/device 不可用时非零退出。禁止用默认值、旧结果、proxy metric、跳样本、自动 CPU/backend/model/dataset/method fallback 继续本 run；不要保留 speculative catch-and-continue 或“不可用就换一个”的 runtime fallback code，除非该 resilience 行为本身属于冻结方法并有独立验收。
 4. 失败后可自主修复同一 method 的实现或准备一个显式新配置，但必须使用新 run ID 重新执行原 acceptance；不得修改旧 raw run。若变更 claim、primary estimand、method 语义、success criterion、baseline、正式 split、分析方法或正式预算，进入 HUMAN re-contract，而不是在代码中兼容两套语义。
 5. 用与 claim 匹配的 oracle 判定输出。correctness/method fidelity 不通过时，该 run 不支持科学结论，但保留原始失败状态；后续单元测试或 checker 修复不能追认它。
-6. 根据随机性和 claim 选择 seed/repetition 数；不要机械要求所有诊断 run 多 seed，也不要用单点结果声称稳定优势。
+6. 根据随机性、数据生成过程和 claim 选择 seed/repetition 数；不要机械要求所有诊断 run 多 seed，也不要用单点结果声称稳定优势。缓存可以属于冻结方法或有身份的加速层；只有它可能掩盖 stale state、旧 binary、中间产物污染或其他会改变结论的 failure path 时，才做 cache-isolated/fresh rebuild。
 7. 记录 immutable raw result、配置、代码/数据身份、环境、执行日志、失败/timeout 和实际 compute。按 [research-evidence-presentation.md](references/research-evidence-presentation.md) 从 raw runs 生成中间 run/data view；失败、invalid 和负结果不得从视图消失。
 8. 只有冻结 protocol、真实任务/数据、有效 oracle、无 runtime fallback 且 eligibility 可复核的 run 才能 `paper_eligible=true`。authoritative final table 的指标与 effect estimate 只从 eligible run records 确定性生成；冻结 protocol 下 invalid/timeout 的正式尝试保留为状态/计数，不手填数值、不复制旧论文数、不纳入 smoke/code-readiness。
 9. 持续检查累计资源；触及已声明预算即停止后续 run。扩大预算、进入物质性 scale、换远程资源 profile 或改用生产资源需要新的明确依据与授权。
@@ -59,6 +61,7 @@
 - 结果、配置、身份、evidence class、`paper_eligible`、失败状态和限制已归档；
 - 中间视图完整呈现 eligible 与 failed/invalid runs，final table 只消费可追溯 eligible evidence；
 - 原 claim verdict 没有被更弱 claim、proxy metric 或简化方法替换；
+- 本 run 触发的环境锁定与 replay/reproduction obligation 已完成，或 `not_applicable` 理由与 claim/failure path 匹配；
 - strict v3 仅在项目显式选择时要求 validator exit `0`。
 
 ## 门禁

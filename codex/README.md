@@ -33,6 +33,7 @@ The installer:
 - records component version and content identity in `snapshot-manifest.json`;
 - links the global/workspace AGENTS files, role TOMLs, and Hook scripts through `runtime-current`;
 - merges only its own Hook registrations into existing `~/.codex/hooks.json`;
+- resolves and verifies the base Python interpreter running the installer, then writes that executable's absolute path into managed Hook commands instead of assuming `/usr/bin/python3`;
 - preserves the foreground model by default; explicit profiles set Terra/high or Sol/high;
 - installs advisory routing by default and keeps strict routing opt-in;
 - retires the old internal `research-execution-grill` Skill symlink when it can prove that symlink was adapter-managed. The Research Grill remains a Domain Profile, not a Skill.
@@ -40,6 +41,8 @@ The installer:
 The default `--workspace` is the current home directory; pass the actual workspace root when it differs. The reusable repository and runtime snapshots never hard-code a server, IP, GPU, remote username, or project directory.
 
 Each destination is backed up before replacement and written atomically. The installer does not claim a whole-install ACID transaction or power-loss durability; rerun it to converge after a reported partial failure. Existing immutable generations are retained for running sessions.
+
+The verified Python launcher is an external runtime dependency and must remain executable. The installer rejects a launcher that resolves inside the removable source checkout; rerun installation after moving or replacing the system Python.
 
 ## Runtime provenance
 

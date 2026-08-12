@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "command": "python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
             "additionalContextLimit": 2200,
             "timeout": 5
           }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "command": "python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
             "additionalContextLimit": 800,
             "timeout": 5
           }
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "command": "python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
             "timeout": 5
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "command": "python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
             "timeout": 5
           }
         ]
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/bin/python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
+            "command": "python3 \"$HOME/.codex/hooks/weighted_cost_router.py\"",
             "timeout": 5
           }
         ]
