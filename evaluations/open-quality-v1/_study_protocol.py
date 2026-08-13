@@ -614,6 +614,8 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
         if row.get("reported_wcu", 0) > budget["max_wcu"] or row.get("reported_elapsed_seconds", 0) > budget["max_elapsed_seconds"]:
             errors.append(f"{label}: fixture budget exceeded")
         ceiling = fixture["resource_ceiling"]
+        if row.get("reported_network_mode") not in {"disabled", ceiling["network"]}:
+            errors.append(f"{label}.reported_network_mode: exceeds fixture resource ceiling")
         if row.get("reported_agents_used", 0) > ceiling["max_agents"] or row.get("reported_gpu_count", 0) > ceiling["max_gpu_count"] or row.get("reported_external_cost_usd", 0) > ceiling["max_external_cost_usd"]:
             errors.append(f"{label}: fixture resource ceiling exceeded")
         valid_outcomes.append(row)
@@ -861,6 +863,20 @@ def run_self_test(routing: dict[str, dict[str, Any]], outcomes: dict[str, dict[s
             "promotion", manifest_path, root, route_path,
             assignment_mismatch_path, routing, outcomes,
         )
+        network_mismatch = [dict(row) for row in outcome_rows]
+        disabled_fixture = next(
+            fixture_id for fixture_id, fixture in outcomes.items()
+            if fixture["resource_ceiling"]["network"] == "disabled"
+        )
+        next(
+            row for row in network_mismatch if row["fixture_id"] == disabled_fixture
+        )["reported_network_mode"] = "fixture_only"
+        network_mismatch_path = root / "study/network-mismatch.jsonl"
+        dump(network_mismatch_path, network_mismatch)
+        network_mismatch_code, network_mismatch_report = run_package(
+            "promotion", manifest_path, root, route_path,
+            network_mismatch_path, routing, outcomes,
+        )
         return {
             "complete_synthetic_is_unverified": code == 0 and complete.get("decision") == "PACKAGE_COMPLETE_UNVERIFIED" and complete.get("promotion_eligible") is False,
             "missing_slot_rejected": missing_code == 1,
@@ -868,5 +884,12 @@ def run_self_test(routing: dict[str, dict[str, Any]], outcomes: dict[str, dict[s
             "duplicate_path_and_assignment_rejected": duplicate_code == 1,
             "changed_acceptance_rejected": changed_code == 1,
             "assignment_plan_mismatch_rejected": assignment_mismatch_code == 1,
+            "fixture_network_ceiling_rejected": (
+                network_mismatch_code == 1
+                and any(
+                    "reported_network_mode: exceeds fixture resource ceiling" in error
+                    for error in network_mismatch_report.get("errors", [])
+                )
+            ),
             "identical_final_bytes_across_arms_valid": code == 0,
         }

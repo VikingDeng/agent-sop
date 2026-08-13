@@ -67,8 +67,9 @@ cannot enter another arm.
 `study-manifest.schema.json` and `validate_and_score.py` check a closed package:
 treatment and static-contract digests, stage-specific exact slots,
 materialized-input digests, relative in-root paths, file hashes, unique
-run/evidence/assignment identities, budgets, resource ceilings, and unchanged
-acceptance/authority. They also derive clearly named `reported_*` summaries.
+run/evidence/assignment identities, budgets, study- and fixture-level reported
+resource ceilings (including network mode), and unchanged acceptance/authority.
+They also derive clearly named `reported_*` summaries.
 
 The result states are deliberately limited:
 
@@ -82,14 +83,17 @@ Hashes show that referenced bytes have not changed relative to the manifest.
 They do **not** prove who generated them, that A/B/C ran the reported treatment,
 that the Oracle executed independently, that a review was blind, that the
 assignment was random, or that reported token usage agrees with a real trace.
+They likewise do not prove that the reported network mode was enforced by the
+runner.
 For this reason the local CLI never emits `ADVANCE_TO_PROMOTION` or
 `PASS_PROMOTION`; `promotion_eligible` is always false.
 
 An independent collector/evaluator—or an explicit HUMAN decision using its raw
-evidence—must derive Git treatment identity, arm isolation, token/WCU from the
-platform trace, Oracle execution, and blind assignments. That authority must be
-outside the candidate repository/runner. Adding another self-signed receipt or
-an in-repository signature verifier does not close this boundary.
+evidence—must derive Git treatment identity, arm isolation and actual network
+enforcement, token/WCU from the platform trace, Oracle execution, and blind
+assignments. That authority must be outside the candidate repository/runner.
+Adding another self-signed receipt or an in-repository signature verifier does
+not close this boundary.
 
 ## Metrics and preregistered decision policy
 

@@ -158,6 +158,7 @@ class OpenQualityContractTests(unittest.TestCase):
             "duplicate_path_and_assignment_rejected",
             "changed_acceptance_rejected",
             "assignment_plan_mismatch_rejected",
+            "fixture_network_ceiling_rejected",
             "identical_final_bytes_across_arms_valid",
         ):
             self.assertTrue(self_test[check], check)
