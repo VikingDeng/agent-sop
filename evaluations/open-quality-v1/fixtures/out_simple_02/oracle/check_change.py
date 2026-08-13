@@ -57,6 +57,16 @@ def check(candidate: Path, baseline: Path) -> dict[str, object]:
     baseline_files = _visible_files(baseline)
     if baseline_files != expected_files:
         errors.append("external baseline does not match frozen file set")
+    baseline_hashes = {
+        name: _hash(baseline / name)
+        for name in expected_files & baseline_files
+    }
+    mismatched_baseline_hashes = sorted(
+        name for name, expected_hash in BASELINE_HASHES.items()
+        if baseline_hashes.get(name) != expected_hash
+    )
+    if mismatched_baseline_hashes:
+        errors.append(f"external baseline content does not match frozen hashes: {mismatched_baseline_hashes}")
     if candidate_files != expected_files:
         errors.append(f"file set changed: added={sorted(candidate_files - expected_files)}, removed={sorted(expected_files - candidate_files)}")
 
@@ -67,7 +77,7 @@ def check(candidate: Path, baseline: Path) -> dict[str, object]:
         if name in candidate_files and _hash(candidate / name) != BASELINE_HASHES[name]:
             errors.append(f"unrelated file changed: {name}")
 
-    if changed <= ALLOWED_CHANGED and baseline_files == expected_files:
+    if changed <= ALLOWED_CHANGED and baseline_files == expected_files and not mismatched_baseline_hashes:
         changed_lines = sum(_changed_line_count(baseline, candidate, name) for name in changed)
         if changed_lines > 32:
             errors.append(f"change is not minimal: {changed_lines} added/removed lines exceeds 32")
@@ -82,15 +92,19 @@ def check(candidate: Path, baseline: Path) -> dict[str, object]:
 from src.api_models import UserResponse, user_from_mapping
 from src.serializer import serialize_user
 
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
 old = UserResponse(id=7, name="Ada")
-assert serialize_user(old) == b'{"id":7,"name":"Ada"}'
+require(serialize_user(old) == b'{"id":7,"name":"Ada"}', "default response bytes changed")
 present = UserResponse(id=7, name="Ada", nickname="Countess")
-assert serialize_user(present) == b'{"id":7,"name":"Ada","nickname":"Countess"}'
+require(serialize_user(present) == b'{"id":7,"name":"Ada","nickname":"Countess"}', "present nickname serialized incorrectly")
 none_value = UserResponse(id=7, name="Ada", nickname=None)
-assert serialize_user(none_value) == b'{"id":7,"name":"Ada"}'
+require(serialize_user(none_value) == b'{"id":7,"name":"Ada"}', "None nickname must be omitted")
 mapped = user_from_mapping({"id": 8, "name": "Grace", "nickname": "Amazing", "ignored": 1})
-assert mapped.nickname == "Amazing"
-assert serialize_user(mapped) == b'{"id":8,"name":"Grace","nickname":"Amazing"}'
+require(mapped.nickname == "Amazing", "mapping did not preserve nickname")
+require(serialize_user(mapped) == b'{"id":8,"name":"Grace","nickname":"Amazing"}', "mapped nickname serialized incorrectly")
 """
     semantics = _run([sys.executable, "-c", probe], candidate)
     if semantics.returncode != 0:

@@ -15,10 +15,12 @@ import _study_protocol as study
 
 ROOT = Path(__file__).resolve().parent
 ROUTING_CASES_PATH = ROOT / "routing-cases.json"
+HIDDEN_ROUTING_CASES_PATH = ROOT / "routing-hidden-cases.json"
 ROUTING_SCHEMA_PATH = ROOT / "routing-output.schema.json"
 OUTCOME_FIXTURES_PATH = ROOT / "outcome-fixtures.json"
 STUDY_SCHEMA_PATH = ROOT / "study-manifest.schema.json"
 CASE_VERSION = "open-quality-routing-cases-v1"
+HIDDEN_CASE_VERSION = "open-quality-routing-hidden-cases-v1"
 ROUTING_KEYS = {
     "schema_version", "case_id", "primary_mode", "overlays", "user_decision",
     "decisive_facts", "next_action",
@@ -76,7 +78,11 @@ def validate_routing_cases(payload: Any) -> tuple[list[str], dict[str, dict[str,
         else:
             counts[task_class] += 1
             pilots[task_class] += int(row.get("pilot") is True)
-        pairs[row.get("boundary_pair")] += 1
+        boundary_pair = row.get("boundary_pair")
+        if not study.nonempty(boundary_pair):
+            errors.append(f"{label}.boundary_pair: invalid")
+        else:
+            pairs[boundary_pair] += 1
         expected = row.get("expected")
         if not isinstance(expected, dict) or set(expected) != expected_keys:
             errors.append(f"{label}.expected: fields drift")
@@ -84,7 +90,10 @@ def validate_routing_cases(payload: Any) -> tuple[list[str], dict[str, dict[str,
         if expected.get("primary_mode") not in study.PRIMARY_MODES:
             errors.append(f"{label}.expected.primary_mode: invalid")
         overlays = expected.get("overlays")
-        if not isinstance(overlays, list) or set(overlays) - set(study.OVERLAYS):
+        if (not isinstance(overlays, list)
+                or any(not isinstance(item, str) for item in overlays)
+                or len(overlays) != len(set(overlays))
+                or set(overlays) - set(study.OVERLAYS)):
             errors.append(f"{label}.expected.overlays: invalid")
         if expected.get("user_decision") not in study.USER_DECISIONS:
             errors.append(f"{label}.expected.user_decision: invalid")
@@ -96,10 +105,69 @@ def validate_routing_cases(payload: Any) -> tuple[list[str], dict[str, dict[str,
     pilot = study.active_fixtures("pilot", cases)
     if pilot.get("research_04", {}).get("expected") != {
         "primary_mode": "re_contract",
-        "overlays": ["durable_goal", "research_fidelity"],
+        "overlays": ["research_fidelity"],
         "user_decision": "required_now",
     }:
         errors.append("routing pilot: must include research_04 re_contract/HUMAN boundary")
+    return errors, cases
+
+
+def validate_hidden_routing_cases(payload: Any) -> tuple[list[str], dict[str, dict[str, Any]]]:
+    """Validate the small evaluator-held noisy suite without making it a promotion input."""
+    errors: list[str] = []
+    keys = {"version", "task_classes", "primary_modes", "overlays", "cases"}
+    if not isinstance(payload, dict) or set(payload) != keys:
+        return ["hidden routing cases: expected closed manifest"], {}
+    if payload.get("version") != HIDDEN_CASE_VERSION:
+        errors.append("hidden routing cases.version: drift")
+    if payload.get("task_classes") != list(study.TASK_CLASSES):
+        errors.append("hidden routing cases.task_classes: drift")
+    if payload.get("primary_modes") != list(study.PRIMARY_MODES):
+        errors.append("hidden routing cases.primary_modes: drift")
+    if payload.get("overlays") != list(study.OVERLAYS):
+        errors.append("hidden routing cases.overlays: drift")
+    rows = payload.get("cases")
+    if not isinstance(rows, list) or len(rows) != 8:
+        return errors + ["hidden routing cases: expected 8 rows"], {}
+    row_keys = {"id", "task_class", "prompt", "expected", "why"}
+    expected_keys = {"primary_mode", "overlays", "user_decision"}
+    cases: dict[str, dict[str, Any]] = {}
+    counts: Counter[str] = Counter()
+    for index, row in enumerate(rows):
+        label = f"hidden routing cases[{index}]"
+        if not isinstance(row, dict) or set(row) != row_keys:
+            errors.append(f"{label}: fields drift")
+            continue
+        case_id = row.get("id")
+        if (not study.nonempty(case_id) or not case_id.startswith("hidden_")
+                or case_id in cases):
+            errors.append(f"{label}.id: invalid/duplicate")
+            continue
+        cases[case_id] = row
+        task_class = row.get("task_class")
+        if task_class not in study.TASK_CLASSES:
+            errors.append(f"{label}.task_class: invalid")
+        else:
+            counts[task_class] += 1
+        if not study.nonempty(row.get("prompt")) or not study.nonempty(row.get("why")):
+            errors.append(f"{label}: prompt/why must be non-empty")
+        expected = row.get("expected")
+        if not isinstance(expected, dict) or set(expected) != expected_keys:
+            errors.append(f"{label}.expected: fields drift")
+            continue
+        if expected.get("primary_mode") not in study.PRIMARY_MODES:
+            errors.append(f"{label}.expected.primary_mode: invalid")
+        overlays = expected.get("overlays")
+        if (not isinstance(overlays, list)
+                or any(not isinstance(item, str) for item in overlays)
+                or len(overlays) != len(set(overlays))
+                or set(overlays) - set(study.OVERLAYS)):
+            errors.append(f"{label}.expected.overlays: invalid")
+        if expected.get("user_decision") not in study.USER_DECISIONS:
+            errors.append(f"{label}.expected.user_decision: invalid")
+    for task_class in study.TASK_CLASSES:
+        if counts[task_class] != 2:
+            errors.append(f"hidden routing cases: {task_class} must have 2 rows")
     return errors, cases
 
 
@@ -107,17 +175,22 @@ def load_static() -> tuple[list[str], dict[str, Any]]:
     try:
         routing_schema = study.load_json(ROUTING_SCHEMA_PATH)
         routing_payload = study.load_json(ROUTING_CASES_PATH)
+        hidden_routing_payload = study.load_json(HIDDEN_ROUTING_CASES_PATH)
         outcome_payload = study.load_json(OUTCOME_FIXTURES_PATH)
         study_schema = study.load_json(STUDY_SCHEMA_PATH)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return [str(exc)], {}
     errors = validate_routing_schema(routing_schema)
     route_errors, routes = validate_routing_cases(routing_payload)
+    hidden_route_errors, hidden_routes = validate_hidden_routing_cases(hidden_routing_payload)
     outcome_errors, outcomes = study.validate_outcome_fixtures(outcome_payload)
     errors.extend(route_errors)
+    errors.extend(hidden_route_errors)
+    if set(routes) & set(hidden_routes):
+        errors.append("hidden routing cases: IDs overlap public routing cases")
     errors.extend(outcome_errors)
     errors.extend(study.validate_study_schema(study_schema))
-    return errors, {"routing": routes, "outcomes": outcomes}
+    return errors, {"routing": routes, "routing_hidden": hidden_routes, "outcomes": outcomes}
 
 
 def diagnostic(path: Path, routes: dict[str, dict[str, Any]]) -> tuple[int, dict[str, Any]]:
@@ -131,16 +204,28 @@ def diagnostic(path: Path, routes: dict[str, dict[str, Any]]) -> tuple[int, dict
         if not isinstance(row, dict) or set(row) != DIAGNOSTIC_KEYS:
             errors.append(f"{label}: fields drift")
             continue
-        slot = (row.get("case_id"), row.get("arm"), row.get("replicate"))
+        case_id, arm, replicate = (
+            row.get("case_id"), row.get("arm"), row.get("replicate"),
+        )
+        if (not isinstance(case_id, str) or not isinstance(arm, str)
+                or not isinstance(replicate, int) or isinstance(replicate, bool)):
+            errors.append(f"{label}: case_id/arm/replicate types invalid")
+            continue
+        slot = (case_id, arm, replicate)
         if slot not in expected or slot in observed:
             errors.append(f"{label}: unexpected/duplicate slot")
             continue
         observed.add(slot)
-        errors.extend(study.validate_routing_output(row.get("routing"), row["case_id"], f"{label}.routing"))
+        routing = row.get("routing")
+        routing_errors = study.validate_routing_output(
+            routing, row["case_id"], f"{label}.routing",
+        )
+        errors.extend(routing_errors)
         gold = routes[row["case_id"]]["expected"]
-        if (row["routing"].get("primary_mode") == gold["primary_mode"]
-                and set(row["routing"].get("overlays", [])) == set(gold["overlays"])
-                and row["routing"].get("user_decision") == gold["user_decision"]):
+        if (not routing_errors and isinstance(routing, dict)
+                and routing.get("primary_mode") == gold["primary_mode"]
+                and set(routing.get("overlays", [])) == set(gold["overlays"])
+                and routing.get("user_decision") == gold["user_decision"]):
             exact[row["arm"]] += 1
         totals[row["arm"]] += 1
     if observed != expected:
@@ -159,7 +244,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--manifest-template", action="store_true")
     parser.add_argument("--self-test", action="store_true")
-    parser.add_argument("--stage", choices=("routing", "pilot", "promotion"))
+    parser.add_argument("--stage", choices=("routing", "routing-hidden", "pilot", "promotion"))
     parser.add_argument("--routing-results", type=Path)
     parser.add_argument("--outcome-results", type=Path)
     parser.add_argument("--study-manifest", type=Path)
@@ -170,9 +255,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         if standalone != 1 or any(value is not None for value in (args.stage, args.routing_results, args.outcome_results, args.study_manifest, args.evidence_root)):
             parser.error("choose one standalone action")
         return args
-    if args.stage == "routing":
+    if args.stage in {"routing", "routing-hidden"}:
         if args.routing_results is None or any(value is not None for value in (args.outcome_results, args.study_manifest, args.evidence_root)):
-            parser.error("routing requires only --routing-results")
+            parser.error(f"{args.stage} requires only --routing-results")
         return args
     if args.stage in {"pilot", "promotion"}:
         if any(value is None for value in (args.routing_results, args.outcome_results, args.study_manifest, args.evidence_root)):
@@ -187,13 +272,14 @@ def main(argv: list[str] | None = None) -> int:
     if errors:
         emit({"decision": "PACKAGE_INVALID", "promotion_eligible": False, "errors": errors})
         return 1
-    routes, outcomes = static["routing"], static["outcomes"]
+    routes, hidden_routes, outcomes = static["routing"], static["routing_hidden"], static["outcomes"]
     if args.validate_only:
         emit({
             "decision": "STATIC_CONTRACT_VALID",
             "promotion_eligible": False,
             "routing_cases": len(routes),
             "pilot_routing_cases": len(study.active_fixtures("pilot", routes)),
+            "hidden_routing_cases": len(hidden_routes),
             "outcome_fixture_contracts": len(outcomes),
             "pilot_outcome_fixture_contracts": len(study.active_fixtures("pilot", outcomes)),
             "all_outcome_inputs_materialized": False,
@@ -210,6 +296,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if all(value is True for key, value in report.items() if key != "evidence_status") else 1
     if args.stage == "routing":
         code, report = diagnostic(args.routing_results, routes)
+    elif args.stage == "routing-hidden":
+        code, report = diagnostic(args.routing_results, hidden_routes)
+        report["routing_suite"] = "evaluator_hidden_noisy"
     else:
         code, report = study.run_package(args.stage, args.study_manifest, args.evidence_root, args.routing_results, args.outcome_results, routes, outcomes)
     emit(report)

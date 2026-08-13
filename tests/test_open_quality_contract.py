@@ -109,6 +109,9 @@ class OpenQualityContractTests(unittest.TestCase):
         material_recontract = next(case for case in cases if case["id"] == "research_04")
         self.assertEqual(material_recontract["expected"]["primary_mode"], "re_contract")
         self.assertEqual(material_recontract["expected"]["user_decision"], "required_now")
+        for case_id in ("idea_01", "idea_03", "research_04"):
+            case = next(case for case in cases if case["id"] == case_id)
+            self.assertNotIn("durable_goal", case["expected"]["overlays"])
 
     def test_eval_contract_is_frozen_and_machine_checked(self) -> None:
         readme = (EVAL_ROOT / "README.md").read_text(encoding="utf-8")
@@ -116,6 +119,12 @@ class OpenQualityContractTests(unittest.TestCase):
         self.assertIn("497b5ba436a1a0392af01db3f2fecd3aa53e95e9", readme)
         for arm in ("A — raw", "B — main", "C — candidate"):
             self.assertIn(arm, readme)
+        for isolation_rule in (
+            "unique `HOME` and `CODEX_HOME`",
+            "current\n`main` checkout",
+            "parent/global `AGENTS.md`",
+        ):
+            self.assertIn(isolation_rule, readme)
         for metric in ("Blind quality", "WCU", "Rework", "Variance"):
             self.assertIn(metric, readme)
         self.assertIn("simple", readme)
@@ -159,6 +168,10 @@ class OpenQualityContractTests(unittest.TestCase):
             "changed_acceptance_rejected",
             "assignment_plan_mismatch_rejected",
             "fixture_network_ceiling_rejected",
+            "symlink_path_rejected",
+            "symlink_evidence_root_rejected",
+            "symlink_evidence_root_ancestor_rejected",
+            "manifest_and_results_paths_reserved",
             "identical_final_bytes_across_arms_valid",
         ):
             self.assertTrue(self_test[check], check)
@@ -246,6 +259,19 @@ class OpenQualityContractTests(unittest.TestCase):
 
     def test_ci_runs_repository_contract(self) -> None:
         workflow = self.read(".github/workflows/validate.yml")
+        self.assertIn("runs-on: ubuntu-24.04", workflow)
+        self.assertIn(
+            "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5",
+            workflow,
+        )
+        self.assertIn(
+            "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6",
+            workflow,
+        )
+        self.assertIn('python-version: "3.12.11"', workflow)
+        self.assertIn("requirements-ci.txt", workflow)
+        requirements = self.read("evaluations/open-quality-v1/requirements-ci.txt")
+        self.assertIn("jsonschema==4.25.1", requirements)
         self.assertIn("python3 scripts/validate_sop_repo.py", workflow)
         self.assertIn("validate_and_score.py --validate-only", workflow)
         self.assertIn("validate_and_score.py --self-test", workflow)

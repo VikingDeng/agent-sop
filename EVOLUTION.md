@@ -37,15 +37,20 @@ automatic product/research direction authority, or promotion by showcase.
 ## Current evidence state (2026-08-13)
 
 - Frozen control B: `main@497b5ba436a1a0392af01db3f2fecd3aa53e95e9`.
-- The baseline had 313 local tests but no repository validation workflow or
-  required GitHub check. Most tests covered routing/audit/control-plane code,
-  not product or research net lift.
+- PR #29 (open-quality candidate) and PR #30 (per-fixture network-ceiling
+  fix) are merged. GitHub `main` is `da5028746c97db8913e22fa026d40aaf75dc871d`.
+- The hosted `validate` workflow passed on that `main` commit (Actions run
+  `31688050043`). `main` is still unprotected, so the workflow is not a
+  required check. No Git tag or GitHub Release has been published; this is an
+  active-experimental merge, not a stable capability release.
+- The baseline had 313 local tests. Most covered routing/audit/control-plane
+  code, not product or research net lift.
 - The Skill registry has no promoted capability. A prior one-session frontend
   pilot in PR #24 scored full Skill `8.3542`, raw `8.8667`, and minimal reminder
   `9.3792`; this is a no-go for that pinned full Skill, not general proof for a
   reminder.
 - The candidate's repository structure, routing contract, installer/runtime
-  integration, and 325 local tests establish internal consistency only. Independent
+  integration, and 328 local tests establish internal consistency only. Independent
   review twice reproduced a false local `PASS_PROMOTION`: first from a single
   self-reported JSONL, then from a fully hash-consistent synthetic package. The
   promotion path was therefore deleted rather than hardened again. The smaller
@@ -85,8 +90,8 @@ the next decision.
 |---|---|---|
 | P0 | Freeze goal, non-goals, A/B/C arms, routing boundaries, blind quality, WCU, elapsed time, rework, variance, promotion and deletion gates | 24 routing cases, 12 outcome contracts, four pilot outcomes, package schema/validator, numeric policy, and independent promotion boundary are frozen; a complete synthetic package remains explicitly unverified — **done locally; no outcome evidence yet** |
 | P0 | Implement the smallest candidate treatment | Fast-path Kernel routing, Option Search v1, Development v4 golden slice/visual/browser evidence, Competition v5 delivery grade, Adapter v5 readiness/role split, and runtime snapshot integration — **done locally** |
-| P0 | Make repository checks externally reproducible | Validation workflow runs structure, full tests, and whitespace checks; make the check required after it exists on GitHub — **workflow done locally; protection pending** |
-| P0 | Materialize real pilot fixtures | The four pilot outcomes—one per stratum—have isolated starting artifacts, immutable prompt/contract identity, an executable or independent Oracle, blind rubric, and ceiling; deterministic tree/archive locks and starting-state negative controls pass — **done locally** |
+| P0 | Make repository checks externally reproducible | Validation workflow runs structure, full tests, and whitespace checks; hosted `validate` passed on `main@da502874`, but branch protection is off and no check is required — **CI pass; protection pending** |
+| P0 | Materialize real pilot fixtures | The four pilot outcomes—one per stratum—have isolated starting artifacts, immutable prompt/contract identity, an executable or independent Oracle, blind rubric, and ceiling; deterministic tree/archive locks and positive/negative controls pass — **revalidated locally after Oracle/gold fixes; freeze fresh manifests before any run** |
 | P0 | Run matched pilot | A/B/C run once per pilot case with frozen concealed assignments and no cross-arm leakage; package is complete and an independent authority finds all pilot decision gates satisfied — **pending** |
 | P1 | Run confirmatory promotion study | Frozen C runs three fresh repetitions of all 24 cases; every promotion gate passes. A failed/no-lift treatment stays disabled or is deleted — **blocked by pilot** |
 | P1 | Attribute the lift | If bundled C wins, preregister narrow ablations for Option Search, Development changes, and Adapter behavior; retain only mechanisms that explain net lift — **blocked by promotion** |
@@ -105,10 +110,12 @@ the next decision.
 
 The numeric acceptance gates are frozen in
 [`evaluations/open-quality-v1/README.md`](evaluations/open-quality-v1/README.md).
-The next most informative action is to run a routing-only fresh-task check,
-then the four-outcome matched pilot. Current blockers are the absence of real
-A/B/C results, an independent collector/evaluator, and—in this workspace—an
-unavailable `codex exec` binary. Decisions
-still requiring the owner are the pilot run budget, authorization to publish
-this candidate branch, and whether to require the hosted validation check on
-`main` after it runs.
+The required order is structure/unit tests → fixture positive/negative controls
+→ evaluator-held hidden routing-only fresh runs → four matched outcomes →
+independent collector/evaluator validation → decision on a three-repetition
+confirmatory study. The Oracle/gold repair invalidates any previously frozen
+Pilot manifest or input digest; refreeze after this change (idea bundle tree
+`092e81ef99f962c87d6eadb13d8887fda2eece230073d776d6a48c2dd74a3796`). No outcome Pilot may
+run before the hidden routing step and independent runner isolation are ready.
+Current blockers are the absence of fresh A/B/C evidence and an independently
+attested runner/collector; net lift remains `NOT_ESTABLISHED`.
