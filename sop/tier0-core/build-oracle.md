@@ -4,7 +4,7 @@
 - **落实纪律**: P2(匹配 claim 的独立证据) P3(证据不足时诚实限界)
 - **绑定骨架**: 无(被开发、科研、竞赛与写作 SOP 按需依赖)
 - **通用性档位**: U0(普适；具体 evaluator/checker/证据由项目注入)
-- **版本**: v2
+- **版本**: v3
 
 ## 触发条件
 
@@ -27,6 +27,7 @@
 4. 按输入合同与已识别 failure mode 选择边界、反例、异常路径和资源限制。空输入、极端 shape、数值稳定性、timeout、协议顺序等只在适用时启用，不复制通用边界清单制造虚假覆盖。
 5. 运行 oracle 并保留能支持结论的最小证据。输出可以是 `pass/fail`、score、区间/分布、rubric coverage 或 `[UNCERTAIN]`；必须说明它能支持到哪一层 claim，不能把 surrogate score 写成官方 verdict。
 6. 对高影响或弱 oracle 做一次 sanity/control：已知好样本应通过、已知坏样本应失败，或用第二种失败路径不同的证据交叉检查。简单可逆任务有一个直接可信 oracle 即可停止。
+7. 对 public API/兼容 contract，Oracle 要覆盖调用方可见语义而不只覆盖所选实现：至少区分默认行为与显式 opt-in，并按真实 failure path 检查 success/error cleanup、外部资源状态保持和平台限制。若存在另一个同样合理的 contract，先用 repository/user evidence 比较两者；独立 review 应能挑战 contract 选择，而不只是寻找当前实现里的 bug。没有这种歧义或失败路径时不制造行为矩阵。
 
 ## 门禁
 

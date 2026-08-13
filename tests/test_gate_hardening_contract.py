@@ -72,8 +72,46 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("不机械要求 CRUD", profile)
         self.assertIn("固定技术栈", profile)
         self.assertIn("speculative runtime fallback", profile)
+        self.assertIn("调用方可观察行为", profile)
+        self.assertIn("默认值、显式 opt-in、错误/清理与资源状态保持", profile)
+        self.assertIn("方向直接进入实现，不追加 discovery 仪式", profile)
+        self.assertIn("不因缺少价值证据而重新搜索或 pivot", profile)
+        self.assertIn("不能自行改题", profile)
+        self.assertIn("真实价值信号", profile)
+        self.assertIn("不因已有代码而扩展功能", profile)
+        self.assertIn("能力已交付", profile)
+        self.assertIn("价值仍未建立", profile)
         for hardcoded in ("filter/sort/pagination", "desktop 与 mobile", "create/read/update"):
             self.assertNotIn(hardcoded, profile)
+
+    def test_direction_search_is_bounded_and_does_not_reopen_frozen_work(self) -> None:
+        kernel = self.read("sop/tier0-core/autonomous-supervisor.md")
+        bootstrap = self.read("codex/AGENTS.global.md")
+        self.assertIn("方向是否已经冻结", kernel)
+        self.assertIn("已批准 proposal", kernel)
+        self.assertIn("而不是自动搜索替代方向", kernel)
+        self.assertIn("最能改变排序的 probe", kernel)
+        self.assertIn("不以先写出的实现或已投入成本代替选择依据", kernel)
+        self.assertIn("Do not reopen a direction already selected", bootstrap)
+        self.assertIn("otherwise proceed directly", bootstrap)
+
+    def test_long_running_scheduler_is_conditional_and_cannot_own_verdict(self) -> None:
+        adapter = self.read("codex/CODEX-ADAPTER.md")
+        self.assertIn("contract-ready + oracle-ready", adapter)
+        self.assertIn("用户明确要求长程/持续推进", adapter)
+        self.assertIn("不要求固定文件名", adapter)
+        self.assertIn("`replayable`、`resume_only` 还是 `externally_effectful`", adapter)
+        self.assertIn("不能选择产品/研究方向", adapter)
+        self.assertIn("`timeout` 是 `INCOMPLETE/UNKNOWN`", adapter)
+        self.assertIn("fresh agent + compact continuity record", adapter)
+        self.assertNotIn("必须创建 continuity", adapter)
+
+    def test_public_api_contract_oracle_challenges_semantics_without_universal_matrix(self) -> None:
+        oracle = self.read("sop/tier0-core/build-oracle.md")
+        self.assertIn("public API/兼容 contract", oracle)
+        self.assertIn("默认行为与显式 opt-in", oracle)
+        self.assertIn("资源状态保持", oracle)
+        self.assertIn("没有这种歧义或失败路径时不制造行为矩阵", oracle)
 
     def test_research_profile_preserves_method_and_uses_ai_statistics(self) -> None:
         grill = self.read("sop/tier1-skeleton/research-execution-grill.md")
@@ -119,8 +157,10 @@ class AdaptiveSopContractTests(unittest.TestCase):
         paper_playbook = self.read(
             "sop/tier2-activity/references/paper-module-playbook.md"
         )
-        self.assertIn("**版本**: v5", methodology)
-        self.assertIn("resolved identity 是共同下界", methodology)
+        self.assertIn("**版本**: v6", methodology)
+        self.assertIn("保存本次 resolved identity", methodology)
+        self.assertNotIn("Checkpoint 分三型", methodology)
+        self.assertIn("不是 checkpoint 状态机", methodology)
         self.assertIn("不机械补齐清单", paper_playbook)
 
         for legacy_gate in (

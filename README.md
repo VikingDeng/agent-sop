@@ -17,7 +17,7 @@
 
 ## 默认入口
 
-1. 所有实质任务使用 [执行 Kernel](sop/tier0-core/autonomous-supervisor.md)，冻结最小 outcome/non-goals/scope/evidence/authority contract。
+1. 所有实质任务使用 [执行 Kernel](sop/tier0-core/autonomous-supervisor.md)，冻结最小 outcome/non-goals/scope/evidence/authority contract。明确 request/issue/spec/proposal 已选择方向时直接执行；只有用户要求探索或方向真实开放且选错代价主导实现成本时，才做有界候选搜索和判别性 probe。
 2. 只加载一个与真实交付面匹配的 Profile：
    - 0→1 产品、服务、库、CLI、数据管线：[run-development](sop/tier1-skeleton/run-development.md)
    - 已批准 AI 顶会 proposal 的正确实现与实验：[research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)
@@ -25,6 +25,10 @@
 3. 只有任务确实跨域时组合 Profile，例如产品黑客松或研究工件赛。
 4. Skill 由可观察能力缺口触发。稳定运行只允许 registry 中未过期的 `promoted` 能力隐式启用；其他候选只能用于显式选型实验。
 5. 验收始终回到项目真实 Oracle。Skill、模型、角色、文件存在、build、smoke 或自述不能替代 claim 所需证据。
+
+Codex App 的日常开发、竞赛与已批准 proposal 工程建议安装 `terra-supervisor`：Terra/high 负责前台语义与裁决，Luna 承担有直接 Oracle 的大块执行，Sol 只在持续高判断密度或具体高风险处窄调用。`preserve` 仍是安装器的安全默认，不会静默改现有模型；显式切换与运行时审计命令见 [Codex adapter](codex/README.md)。
+
+显式长程任务可以使用 Codex 原生 goal 保存稳定目标；只有真实跨 task/session 或外部调度时才保存最小 continuity record。外部 scheduler 只接管已经 contract-ready、oracle-ready 的执行生命周期，不能替代方向选择、验收或授权。默认不安装完整 ideation/compound 工作流；外部 Skill 仍按可测净增益单独评估，SOP 只吸收有直接 failure path 的最小机制。
 
 ## AI proposal → 实验
 

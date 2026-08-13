@@ -360,6 +360,392 @@ class AuditCodexSessionTests(unittest.TestCase):
             self.assertEqual(report["model_totals"]["gpt-5.6-terra"]["total_tokens"], 50)
             self.assertEqual(report["weighted_cost_units"], 3_000)
 
+    def test_app_child_excludes_inherited_snapshots_and_backfills_pre_context_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+            )
+            child = root / "child.jsonl"
+            child.write_text("".join([
+                record("session_meta", {
+                    "id": "child",
+                    "session_id": "root",
+                    "parent_thread_id": "root",
+                    "agent_role": "luna_executor",
+                }),
+                # App v2 copies parent history into the child rollout. These
+                # cumulative snapshots are not child-model work.
+                record("event_msg", usage(40)),
+                record("event_msg", usage(100)),
+                record("event_msg", {"type": "task_started"}),
+                # Current-task usage can appear before turn_context. Attribute
+                # that delta after the actual model arrives.
+                record("event_msg", usage(130)),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(180)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "done"}),
+            ]))
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["total_tokens"], 180)
+            self.assertEqual(report["family_totals"]["terra"]["total_tokens"], 100)
+            self.assertEqual(report["family_totals"]["luna"]["total_tokens"], 80)
+            self.assertEqual(report["family_totals"]["unknown"].get("total_tokens", 0), 0)
+            self.assertEqual(report["weighted_cost_units"], 1_080)
+            self.assertEqual(report["inherited_token_snapshot_count"], 2)
+            self.assertEqual(report["cost_status"], "complete")
+            self.assertTrue(any("inherited pre-task" in item for item in report["routing_observations"]))
+
+    def test_child_without_meta_lookahead_still_detects_late_app_task_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+            )
+            inherited = "".join(
+                record("event_msg", usage(total)) for total in range(10, 31)
+            )
+            child = root / "child.jsonl"
+            child.write_text("".join([
+                record("session_meta", {
+                    "id": "child", "session_id": "root", "parent_thread_id": "root",
+                    "agent_role": "luna_executor",
+                }),
+                inherited,
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(60)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "done"}),
+            ]))
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["family_totals"]["luna"]["total_tokens"], 30)
+            self.assertEqual(report["inherited_token_snapshot_count"], 21)
+            self.assertEqual(report["cost_status"], "complete")
+
+    def test_app_child_discards_all_inherited_parent_observations_at_task_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+            )
+            inherited_provenance = {
+                "snapshot_id": "inherited-parent-snapshot",
+                "entrypoint": "parent",
+            }
+            child = root / "child.jsonl"
+            child.write_text("".join([
+                record("session_meta", {
+                    "id": "child", "session_id": "root", "parent_thread_id": "root",
+                    "agent_role": "luna_executor", "cwd": "/child-repository",
+                }),
+                record("turn_context", {"model": "gpt-5.6-sol", "cwd": "/parent-repository"}),
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "apply_patch",
+                    "call_id": "inherited-write",
+                    "arguments": "{}",
+                    "turn_id": "parent-turn",
+                }),
+                record("response_item", {
+                    "type": "function_call_output",
+                    "call_id": "inherited-write",
+                    "output": "x" * 21_000,
+                    "turn_id": "parent-turn",
+                }),
+                record("response_item", {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": "SOP_RUNTIME " + json.dumps(inherited_provenance),
+                }),
+                "{broken inherited json\n",
+                record("event_msg", usage(100)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "parent done"}),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(120)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "child done"}),
+            ]))
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+            session = next(item for item in report["sessions"] if item["thread_id"] == "child")
+
+            self.assertEqual(report["total_tokens"], 120)
+            self.assertEqual(report["family_totals"]["luna"]["total_tokens"], 20)
+            self.assertEqual(session["calls_by_model"], {})
+            self.assertEqual(session["large_outputs"], [])
+            self.assertEqual(session["sol_execution_calls"], [])
+            self.assertEqual(session["parse_errors"], 0)
+            self.assertEqual(session["turn_context_models"], ["gpt-5.6-luna"])
+            self.assertEqual(session["task_complete_count"], 1)
+            self.assertEqual(session["runtime_provenance"], [])
+            self.assertEqual(session["last_agent_message"], "child done")
+            self.assertEqual(session["cwd"], "/child-repository")
+            self.assertEqual(report["cost_status"], "complete")
+
+    def test_child_without_app_task_boundary_keeps_legacy_usage_behavior(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+            )
+            self.write_log(
+                root,
+                "child",
+                "child",
+                "gpt-5.6-luna",
+                [200],
+                "root",
+                "luna_executor",
+            )
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["total_tokens"], 300)
+            self.assertEqual(report["family_totals"]["luna"]["total_tokens"], 200)
+            self.assertEqual(report["inherited_token_snapshot_count"], 0)
+
+    def test_app_child_without_pre_task_baseline_does_not_double_count_first_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+            )
+            child = root / "child.jsonl"
+            child.write_text("".join([
+                record("session_meta", {
+                    "id": "child",
+                    "session_id": "root",
+                    "parent_thread_id": "root",
+                    "agent_role": "luna_executor",
+                }),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                # Could be parent 100 + child 50. Without a pre-task
+                # cumulative baseline, the split is unknowable.
+                record("event_msg", usage(150)),
+                record("event_msg", usage(180)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "done"}),
+            ]))
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["total_tokens"], 130)
+            self.assertEqual(report["family_totals"]["terra"]["total_tokens"], 100)
+            self.assertEqual(report["family_totals"]["luna"]["total_tokens"], 30)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+            self.assertTrue(any(
+                "no pre-task cumulative token baseline" in item
+                for item in report["routing_violations"]
+            ))
+
+    def test_unused_model_claim_is_checked_against_full_task_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+                last_message="Outcome completed. Evidence: tests passed. Luna was not used.",
+            )
+            self.write_log(
+                root,
+                "child",
+                "child",
+                "gpt-5.6-luna",
+                [50],
+                "root",
+                "luna_executor",
+            )
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            findings = "\n".join(report["delivery_truth_violations"])
+            self.assertIn("Luna was not used", findings)
+            self.assertIn("task-tree tokens used luna", findings)
+            self.assertEqual(report["cost_status"], "complete")
+
+    def test_unused_model_claim_is_uncertain_when_child_baseline_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+                last_message="Outcome completed. Evidence: tests passed. Sol was not used.",
+            )
+            child = root / "child.jsonl"
+            child.write_text("".join([
+                record("session_meta", {
+                    "id": "child", "session_id": "root", "parent_thread_id": "root",
+                    "agent_role": "luna_executor",
+                }),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(150)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "done"}),
+            ]))
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            findings = "\n".join(report["delivery_truth_violations"])
+            self.assertIn("incomplete task-tree model attribution", findings)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+
+    def test_scoped_top_level_non_use_claim_is_not_treated_as_global_non_use(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("sol_architect"),
+                last_message=(
+                    "Outcome completed. Evidence: tests passed. "
+                    "Sol was not used at top level; the root was Terra."
+                ),
+            )
+            self.write_log(
+                root,
+                "child",
+                "child",
+                "gpt-5.6-sol",
+                [50],
+                "root",
+                "sol_architect",
+            )
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["delivery_truth_violations"], [])
+
+    def test_malformed_inherited_snapshot_is_not_accepted_as_child_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                extra=successful_spawn("luna_executor"),
+            )
+            malformed = usage(100)
+            malformed["info"]["total_token_usage"]["total_tokens"] = "100"
+            child = root / "child.jsonl"
+            child.write_text("".join([
+                record("session_meta", {
+                    "id": "child", "session_id": "root", "parent_thread_id": "root",
+                    "agent_role": "luna_executor",
+                }),
+                record("event_msg", malformed),
+                record("event_msg", {"type": "task_started"}),
+                record("turn_context", {"model": "gpt-5.6-luna"}),
+                record("event_msg", usage(150)),
+                record("event_msg", usage(180)),
+                record("event_msg", {"type": "task_complete", "last_agent_message": "done"}),
+            ]))
+
+            report = AUDIT.audit_session_tree(str(parent), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["family_totals"]["luna"]["total_tokens"], 30)
+            self.assertEqual(report["cost_status"], "partial_uncertain")
+
+    def test_explicit_final_routing_claim_must_match_actual_root_model(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-sol",
+                [100],
+                last_message=(
+                    "结果：已完成。证据：测试通过。"
+                    "顶层按 Terra/high Supervisor 路由执行；未使用 Sol。"
+                ),
+            )
+
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+
+            findings = "\n".join(report["delivery_truth_violations"])
+            self.assertIn("says Sol was not used", findings)
+            self.assertIn("claims top-level Terra", findings)
+            self.assertTrue(any("final report" in item for item in report["routing_violations"]))
+            self.assertEqual(report["cost_status"], "complete")
+
+    def test_truthful_top_level_model_report_is_not_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_log(
+                root,
+                "parent",
+                "root",
+                "gpt-5.6-terra",
+                [100],
+                last_message="Outcome completed. Evidence: tests passed. Top-level Terra/high supervisor.",
+            )
+
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+
+            self.assertEqual(report["delivery_truth_violations"], [])
+
+    def test_repeated_short_waits_are_reported_as_efficiency_observation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            waits = "".join(
+                record("response_item", {
+                    "type": "function_call",
+                    "name": "wait_agent",
+                    "call_id": f"wait-{index}",
+                    "arguments": json.dumps({"timeout_ms": 60_000}),
+                    "turn_id": "turn-a",
+                })
+                for index in range(4)
+            )
+            path = self.write_log(root, "parent", "root", "gpt-5.6-terra", [100], extra=waits)
+
+            report = AUDIT.audit_session_tree(str(path), root, enforcement_mode="advisory")
+
+            self.assertTrue(any("issued 4 wait_agent calls" in item for item in report["routing_observations"]))
+            self.assertFalse(any("issued 4 wait_agent calls" in item for item in report["routing_violations"]))
+
     def test_detects_large_outputs_and_all_sol_route(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

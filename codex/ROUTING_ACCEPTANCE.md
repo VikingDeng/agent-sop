@@ -12,7 +12,7 @@ Run the managed-hook scenarios in fresh tasks after installing the Codex runtime
 6. **Concise delivery**: complete a tool-using task with a short outcome-and-evidence report. Expect the advisory Stop Hook never to continue or block it, regardless of tool-call count or attributable tokens.
 7. **Agent reuse**: invoke `resume_agent` for an existing task. Expect an auditability advisory rather than a denial; explicit strict mode remains the profile that denies unverifiable resume calls.
 
-For each scenario collect the achieved result, actual validation, wall time, Sol/Terra/Luna token share, WCU, unnecessary stops, and any hidden reduction in acceptance quality. Routing succeeds only when outcome quality is preserved and process overhead is proportionate.
+For each scenario collect the achieved result, actual validation, wall time, Sol/Terra/Luna token share, WCU, unnecessary stops, and any hidden reduction in acceptance quality. Use the installed `~/.codex/bin/audit-codex-session`; App child history before its own `task_started` must not be double counted. Routing succeeds only when outcome quality is preserved and process overhead is proportionate.
 
 ## Strict profile
 
@@ -52,7 +52,11 @@ After installing with `python3 scripts/install_codex_runtime.py --profile terra-
 
 ## Low-wait evidence
 
-Capture enough task evidence to show that the supervisor waited only when the next step depended on the result, used one reasonable bounded wait rather than interval polling, and counted actual monitoring/polling cost in WCU. The wait bound must be proportional to the package; a timeout is incomplete status, not evidence that the child has no result. A supervisor must receive, intentionally cancel, or explicitly preserve an incomplete required child before ending. After spawning, it should do useful non-overlapping work when such work exists; do not manufacture busywork merely to avoid waiting. Do not claim detached execution, zero waiting, or child-nested delegation when the trace does not show it.
+Capture enough task evidence to show that the supervisor waited only when the next step depended on the result, used one reasonable bounded wait rather than interval polling, and counted actual monitoring/polling cost in WCU. Several consecutive 20–60 second waits for a multi-minute implementation/review are an efficiency finding. The wait bound must be proportional to the package; a timeout is incomplete status, not evidence that the child has no result. A supervisor must receive, intentionally cancel, or explicitly preserve an incomplete required child before ending. After consuming a completed child, close it before spawning the next child unless a concrete follow-up is imminent; completed-but-open children still consume concurrency. After spawning, do useful non-overlapping work when such work exists; do not manufacture busywork merely to avoid waiting. Do not claim detached execution, zero waiting, or child-nested delegation when the trace does not show it.
+
+## Delivery-truth regression
+
+When the final report states a top-level model or says a family was not used, compare that statement with the root rollout's actual `turn_context` and attributed tokens. A requested prompt/profile is intent, not execution evidence. A mismatch is a delivery-truth violation even in advisory routing; it does not by itself make otherwise independent product tests fail, and it does not make already attributed WCU uncertain.
 
 For high-judgment tasks, also inspect whether delegation reduced uncertainty. Repeated Terra/Luna reasoning over the same unresolved invariant without a discriminating experiment or artifact is a routing failure even when the spawns were technically correct. The adaptive recovery is one compact `sol_architect` query with an explicit required output (construction, counterexample, tradeoff, or proof obligation), followed by a falsifiable path or an honest `[UNCERTAIN]` stop. Acceptance does not require Sol when Terra or an oracle is already converging.
 
