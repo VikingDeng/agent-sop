@@ -177,12 +177,16 @@ jobs:
           parent_pid = int(parent_pid_s)
           checks["sandbox_parent_pid_hidden"] = not os.path.exists(f"/proc/{parent_pid}")
 
-          probe = socket.socket()
-          probe.settimeout(1)
-          checks["host_loopback_blocked"] = probe.connect_ex(
-              ("127.0.0.1", int(host_port_s))
-          ) != 0
-          probe.close()
+          try:
+              probe = socket.socket()
+          except PermissionError:
+              checks["host_loopback_blocked"] = True
+          else:
+              probe.settimeout(1)
+              checks["host_loopback_blocked"] = probe.connect_ex(
+                  ("127.0.0.1", int(host_port_s))
+              ) != 0
+              probe.close()
 
           print(json.dumps({"checks": checks}, sort_keys=True))
           raise SystemExit(0 if all(checks.values()) else 1)
