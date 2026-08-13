@@ -4,7 +4,7 @@
 - **落实纪律**: P1(结果与 non-goals 先于实现)
 - **绑定骨架**: development
 - **通用性档位**: U1(契约语义通用,载体由项目规模与生命周期决定)
-- **版本**: v3
+- **版本**: v4
 
 ## 触发条件
 
@@ -20,15 +20,13 @@ development 项目或功能在首次语义性实现前，需要把用户目标�
 
 ## 步骤
 
-1. 优先读取已有项目事实，不重复造文档：确认目标行为、关键 non-goals、允许修改范围、不可接受结果和最便宜的决定性验收证据。
-2. 按任务规模选择**一个现有或最轻载体**：
+1. 从请求、行为、测试和已有文档提取开发特有事实：主要 consumer、使用情境、可观察能力、关键 non-goals、修改边界和最便宜的决定性验收。通用授权、方向搜索、re-contract 与 HUMAN 边界直接服从 Supervisor，不在这里重写。
+2. 按真实生命周期选择**一个现有或最轻载体**：
    - 小型、单 session、局部任务：用户请求本身，或活动计划/issue/PR 中的几句话即可；不创建 `spec/`、checkpoint 文件或状态台账。
-   - 中型、多模块或可能交接的任务：复用项目已有 `PROJECT.md`、issue、PR、TASK 或计划，写清稳定接口、vertical slice 与完成标准；只有跨 session 信息无法从 Git 与现有载体恢复时，才采用 Supervisor 的轻量 durable state。
+   - 中型、多模块或可能交接的任务：复用项目已有 `PROJECT.md`、issue、PR、TASK 或计划，写清稳定接口、vertical slice 与完成标准；只有真实跨 session 信息无法从 Git 与现有载体恢复时，才采用 Codex Adapter 的轻量 continuity record。
    - 新建、长期 product 或具有稳定外部消费者的项目：把长期稳定事实放入项目原生文档；可按需要使用 `spec/REQUIREMENTS.md`、`spec/NON_GOALS.md`、`spec/ARCHITECTURE.md`，但目录和文件名是推荐 recipe，不是通用 gate。
-3. 只有新增或改变 public API、协议、数据格式、兼容承诺时，才维护项目的 public contract（例如 `contracts/CONTRACT.md`）；未触及公开表面的内部修改不补造 SemVer/兼容文档。
-4. 只有会影响后续实现且无法由代码直观看出的持久决策才记 ADR/decision；临时探索、普通实现选择和可逆局部判断留在活动计划中。
-5. 对照 `→ tier0-core/autonomous-supervisor.md` 判断授权：方向已由请求和证据确定时，契约本身就是 autonomous freeze 的记录并立即施工；用户要求同步时可汇报但继续安全工作；只有真实语义分叉、public compatibility、凭据、发布、删除、不可逆状态、法律/隐私或无界成本才进入 HUMAN gate。
-6. 区分稳定契约与可变计划：实现顺序、分工、模型、工具和中间方案可随证据改变；不得静默改变目标语义、non-goals 或验收标准。
+3. 只有新增或改变 public API、协议、数据格式或兼容承诺时维护 public contract；只有会影响后续实现且无法从代码看出的持久决定才记 ADR。临时探索、普通实现选择和可逆局部判断留在活动计划中。
+4. 保持稳定契约与可变计划分离：实现顺序、分工、工具和内部方案可随证据改变；目标语义、non-goals 或验收标准变化时按 Supervisor re-contract。方向已经冻结就立即开始最小 slice，不为了“确认契约”重复询问用户。
 
 ## 门禁
 
@@ -40,9 +38,9 @@ development 项目或功能在首次语义性实现前，需要把用户目标�
 
 ## 完成判定
 
-- Agent 能指出当前契约的真实载体，并简洁复述结果、non-goals、范围、不可接受结果与验收证据；
+- Agent 能指出当前契约的真实载体，并简洁复述 consumer、结果、non-goals、范围、不可接受结果与验收证据；
 - 契约粒度足以安全开始当前 vertical slice，不要求预先解决不阻断当前工作的全部未来细节；
-- formal spec、public contract、ADR 与 durable state 只在各自触发条件成立时存在，没有为满足模板而生成空壳。
+- formal spec、public contract、ADR 与 continuity record 只在各自触发条件成立时存在，没有为满足模板而生成空壳。
 
 ## 失败处理
 

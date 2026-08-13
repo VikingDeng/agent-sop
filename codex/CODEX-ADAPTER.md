@@ -1,7 +1,7 @@
 # Codex 平台适配层
 
 - **Adapter ID**: `codex-runtime`
-- **版本**: v3
+- **版本**: v4
 - **性质**: platform adapter，不是 SOP、Domain Profile 或 Skill
 
 ## 责任边界
@@ -69,6 +69,16 @@ WCU = 25 * T_sol + 10 * T_terra + 1 * T_luna
 - 有真实不重叠工作时才并行。下一步依赖 child 结果时使用一次与 package 相称的 bounded wait；预计需要数分钟的实现/review 不用连续 20–60 秒轮询。timeout 只表示未完成，不是负面 verdict：先做真实不重叠工作，若没有则用一个更符合剩余工作的 wait；同一 child 连续短轮询是成本 finding，不是进度策略。
 - 每个 open child 必须有当前用途或近期 dependent input；实现者可在一次明确即将到来的 review/correction 期间短暂保留。结果已消费且没有具体下一输入时立即显式 close，再创建下一 child；completed 但未 close 仍占 open capacity。达到并发上限前先消费并关闭已完成 child，而不是等 thread-limit 后再清理。不再需要的 child 明确取消并记录未完成范围；平台无法确认时记为 `OPEN/UNKNOWN`，不声称已关闭。
 - “独立 review”只在实际发生了具有足够独立输入或错误路径的第二视角时成立；role 名和 spawn 记录本身不证明 review 质量。
+
+## 长程目标、handoff 与外部调度
+
+原生持久 goal 只在用户明确要求长程/持续推进，且目标有可观察终点、可运行 verifier、后续动作不需要反复猜用户偏好、权限与成本可界定时启用。goal 保存稳定目标，不保存完整对话或把 token budget 当完成条件。目标和契约仍稳定、当前上下文有决策价值时继续同一顶层 task；目标改变、上下文已被噪声淹没或需要真正独立视角时使用新 task，并从项目事实恢复，不 fork 全历史。
+
+只有真实跨 task/session、外部 scheduler、不可廉价重做或交接需要时，才维护一个项目原生的轻量 continuity record；不要求固定文件名。它只保存恢复当前决定所需的信息：契约/范围与 non-goals、workspace/commit/run/artifact 身份、已完成和未完成/失败证据、下一判别动作、blocker 与授权边界。若有活跃 worker，再记录可观察 lifecycle；若存在自动 retry 或外部副作用，再记录工作是 `replayable`、`resume_only` 还是 `externally_effectful` 及稳定 run/idempotency identity。没有真实恢复需要时不创建 packet、ledger、lease 或 heartbeat。
+
+外部 scheduler 只有在 **contract-ready + oracle-ready**，workspace/artifact 身份可恢复、并发/成本/外部动作包络已界定时，才可接管启动、等待、取消、保留、恢复和有界 retry。它不能选择产品/研究方向、改变 contract/acceptance/method、跨越 HUMAN 边界或代替项目 Oracle 给最终 verdict。`timeout` 是 `INCOMPLETE/UNKNOWN`，不是失败或重派许可；有副作用或身份不明的工作默认保留并等待接管判断，不能自动重跑。
+
+只有能证明活跃 agent 与同一 contract、workspace、role/model 要求和 open state 匹配时才 resume；否则使用 fresh agent + compact continuity record 和项目工件，不转发完整历史。resume、重派或更换 role/model 都不重置适用预算。终态至少如实区分 completed、failed、cancelled、preserved-incomplete 与 unknown；恢复后的 producer 输出在交给 consumer 前重新检查 schema/contract compatibility。
 
 ## Hooks 的边界
 

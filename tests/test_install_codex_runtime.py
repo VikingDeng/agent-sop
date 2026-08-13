@@ -385,8 +385,8 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             for context_text in (global_context, workspace_context):
                 self.assertNotIn("runtime-current/skeletons/contestos-adaptive-overlay", context_text)
             manifest = json.loads((runtime / INSTALL.SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
-            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v3")
-            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v2")
+            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v4")
+            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v3")
             self.assertRegex(manifest["runtime_components"]["kernel"]["sha256"], r"^[0-9a-f]{64}$")
 
     def test_failure_before_current_switch_preserves_old_active_generation(self) -> None:

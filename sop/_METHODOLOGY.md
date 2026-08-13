@@ -2,7 +2,7 @@
 
 > 来源:《agent-sop_tier0细化与质量方法论_v1》(桌面施工单)。本文件回答三件事:一条 SOP 写到什么程度算合格、如何保证它合格、通用性与质量如何兼得。
 > 原则:**先定"合格的定义"和"通用性刻度",再动手写**。本文件自身就是方法的自证——可用 §1 验收清单逐条卡任何一条 SOP 成品。
-> **版本**: v5。相对 v4 进一步把参数化例子改为 claim-proportional：resolved identity 是共同下界，lockfile、CI rebuild 与独立复现只在相应结果契约或可信 failure path 触发。
+> **版本**: v6。相对 v5 删除与运行时 Kernel 重复的 checkpoint 状态表；SOP 只保留结果语义、触发条件和失败路径，长程恢复由平台 Adapter 在确有生命周期需要时提供。
 > **运行时边界**:本方法论的 8 字段用于让 SOP 本身可导航，不要求执行任务时制造八份 artifact、逐步台账或独立 checkpoint 文件。用户/项目契约之下，运行时适用性统一由 `tier0-core/autonomous-supervisor.md` 判断。
 
 ## §1 一条 SOP 的验收标准(A1-A7)
@@ -91,25 +91,11 @@
 2. **完成判定的可自查性**(A4):可以不写死命令，但证据必须足以支持实际 claim；探索性结论允许带不确定性而非伪装二值。
 3. **纪律映射**(A2):再通用也要能指认落实了哪条纪律,否则就是孤儿 SOP。
 
-## 执行粒度:Checkpoint 节奏
+## 执行粒度：结果契约，不是 checkpoint 状态机
 
-SOP 的步骤仍遵循"确认方向 → 自动执行 → 汇总报告"三拍节奏。这里的"确认"是**冻结方向与判据并留痕**,不等于每次都等待人回复。用户发出的明确任务本身就是一份方向证据;计划完成后不得为了形式再次问是否开始。
+运行时统一服从 `tier0-core/autonomous-supervisor.md`。明确请求、issue、proposal、spec 或现有测试可以直接承载 compact contract；方向已冻结且工作可逆时立即执行，不为展示流程而命名 checkpoint、重复确认或生成状态文件。只有命中 Kernel 的真实未授权分叉才等待人。
 
-Checkpoint 分三型,采用前必须按客观条件标注:
-
-| 类型 | 触发条件 | 行为 |
-|---|---|---|
-| `AUTONOMOUS_CHECKPOINT` | 目标明确;验收可从任务/spec/测试推出;修改在授权 workspace 内且可逆;不改变产品语义、public API/兼容承诺;不引入重大生产依赖;不发布、不接触新凭据、不删除数据、不做不可逆迁移 | Supervisor 内部复述并冻结目标、non-goals、假设、范围和验收标准,留下可追溯记录后继续,不等待重复确认 |
-| `INTERACTIVE_CHECKPOINT` | 用户要求阶段同步,或非阻断偏好会改善结果,但已授权方向仍可继续 | 汇报方向与判据;继续执行已授权部分,不把日常命令、验证或 Review 交还用户 |
-| `MANDATORY_HUMAN_CHECKPOINT` | 有两个以上同样合理但产品语义不同的方向;public API/兼容承诺、重大架构/生产依赖、凭据、生产发布、数据删除、不可逆迁移、显著不可预估付费、法律/合规/隐私决策;契约冲突;缺少关键需求只能靠猜 | 停止越权部分,向人提出明确方向决策并等待;不得静默选择或改走 fallback |
-
-三型 checkpoint 都落实 P1，但载体与证据强度按风险不同。`AUTONOMOUS_CHECKPOINT` 可以由用户请求、活动计划、issue/PR 或已有 spec 中的 compact contract 直接满足，不要求复制一份与 `MANDATORY_HUMAN_CHECKPOINT` 同等的留痕；后者才需要把待决方向、影响与授权结果持久化到足以复核。自动执行不等于允许猜需求。PR 可以承担异步人类终审,但不能替代命中 mandatory 条件时的方向裁决。
-
-- **确认方向**:在阶段开始前确定本阶段要做什么、按什么判据做,并选择 checkpoint 类型。只有 mandatory 类型必须等待人。
-- **自动执行**:方向冻结后,本阶段内符合判据且位于授权包络的修改一律执行,不逐条请示。判据本身就是授权边界。
-- **汇总报告**:阶段结束报告改动、理由和证据,不逐条播报内部流水账。
-
-粒度原则:checkpoint 只设在方向可能分叉处,不设在判据已明确处；步骤多不自动意味着 checkpoint 多。长任务只在真实 handoff、跨 session 恢复或未授权方向需要时记录当前契约、已完成证据、下一关键动作与 blocker，不预先抄写完整步骤链。若命中 autonomous 条件,使用现有 compact contract 后立即执行；若命中 mandatory 条件,才外显等待。
+长任务也不预写固定阶段链。只有真实跨 session、外部 scheduler、不可廉价重做的工作或交接需要时，才在项目原生载体中保存足以恢复的契约、工作区/工件身份、已完成与未完成证据、下一判别动作和授权 blocker。具体 lifecycle 与 retry 语义属于平台 Adapter；SOP 作者不得把 package、phase、role、hash 或 handoff 文件升级成通用质量门禁。
 
 ## 重内容下沉:references 边车
 
