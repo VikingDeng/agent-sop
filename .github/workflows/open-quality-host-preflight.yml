@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify frozen runner contract
         shell: bash
-        working-directory: ${{ runner.temp }}/open-quality/open-quality-pilot-v1/runner
+        working-directory: \${{ runner.temp }}/open-quality/open-quality-pilot-v1/runner
         run: |
           set -euo pipefail
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
@@ -53,124 +53,410 @@ jobs:
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
 
-      - name: Install filesystem isolation primitive
+      - name: Probe filesystem PID network capability and FD primitives
         shell: bash
         run: |
-          set -euo pipefail
-          if ! command -v bwrap >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq bubblewrap
-          fi
-          bwrap --version
+          set -Eeuo pipefail
 
-      - name: Probe host filesystem PID network and initial FD isolation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
+          test_root="$(mktemp -d /tmp/host-isolation-preflight.XXXXXX)"
+          cleanup() {
+            sudo --non-interactive rm -rf --one-file-system -- "$test_root"
+          }
+          trap cleanup EXIT
+
+          rootfs="$test_root/rootfs"
+          outside="$test_root/outside"
+          mkdir -p \
+            "$rootfs/proc" \
+            "$rootfs/dev" \
+            "$rootfs/workspace" \
+            "$outside"
+          mkdir -m 1777 "$rootfs/tmp"
+          printf '%s\n' OUTSIDE-CANARY >"$outside/canary"
+
+          cat >"$test_root/probe.c" <<'EOF'
+          #define _GNU_SOURCE
+          #include <arpa/inet.h>
+          #include <ctype.h>
+          #include <dirent.h>
+          #include <errno.h>
+          #include <fcntl.h>
+          #include <linux/capability.h>
+          #include <netinet/in.h>
+          #include <signal.h>
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <sys/mount.h>
+          #include <sys/prctl.h>
+          #include <sys/socket.h>
+          #include <sys/stat.h>
+          #include <sys/syscall.h>
+          #include <sys/types.h>
+          #include <unistd.h>
+
+          #ifndef CLOSE_RANGE_CLOEXEC
+          #define CLOSE_RANGE_CLOEXEC (1U << 2)
+          #endif
+
+          static int failures;
+
+          static void check(int ok, const char *name) {
+              printf("%s - %s\n", ok ? "ok" : "not ok", name);
+              if (!ok) failures++;
+          }
+
+          static void fatal_errno(const char *operation) {
+              perror(operation);
+              exit(2);
+          }
+
+          static unsigned long long namespace_inode(const char *path) {
+              struct stat st;
+              if (stat(path, &st) != 0) fatal_errno(path);
+              return (unsigned long long)st.st_ino;
+          }
+
+          static int numeric_pid_count(void) {
+              DIR *dir = opendir("/proc");
+              struct dirent *entry;
+              int count = 0;
+
+              if (!dir) fatal_errno("opendir /proc");
+              while ((entry = readdir(dir)) != NULL) {
+                  const unsigned char *p =
+                      (const unsigned char *)entry->d_name;
+                  if (!isdigit(*p)) continue;
+                  while (isdigit(*p)) p++;
+                  if (*p == '\0') count++;
+              }
+              closedir(dir);
+              return count;
+          }
+
+          static void lock_down(void) {
+              struct __user_cap_header_struct header = {
+                  _LINUX_CAPABILITY_VERSION_3, 0
+              };
+              struct __user_cap_data_struct empty[2] = {{0}, {0}};
+
+              for (int cap = 0; cap < 256; cap++) {
+                  int present;
+
+                  if (cap == CAP_SETPCAP) continue;
+                  errno = 0;
+                  present = prctl(PR_CAPBSET_READ, cap, 0, 0, 0);
+                  if (present < 0 && errno == EINVAL) continue;
+                  if (present < 0) fatal_errno("PR_CAPBSET_READ");
+                  if (prctl(PR_CAPBSET_DROP, cap, 0, 0, 0) != 0)
+                      fatal_errno("PR_CAPBSET_DROP");
+              }
+
+              if (prctl(PR_CAPBSET_DROP, CAP_SETPCAP, 0, 0, 0) != 0)
+                  fatal_errno("drop CAP_SETPCAP");
+
+              if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0)
+                  fatal_errno("clear ambient capabilities");
+
+              if (syscall(SYS_capset, &header, empty) != 0)
+                  fatal_errno("capset");
+
+              if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0)
+                  fatal_errno("PR_SET_NO_NEW_PRIVS");
+          }
+
+          int main(int argc, char **argv) {
+              struct __user_cap_header_struct header = {
+                  _LINUX_CAPABILITY_VERSION_3, 0
+              };
+              struct __user_cap_data_struct caps[2] = {{0}, {0}};
+              struct stat root_st, proc_root_st;
+              struct sockaddr_in address = {0};
+              unsigned long long host_pid_ns;
+              unsigned long long host_net_ns;
+              unsigned long long host_mnt_ns;
+              pid_t host_pid;
+              int host_port;
+              int fd;
+              int leaked_fd = 0;
+              int bounded_cap = 0;
+              int ambient_cap = 0;
+
+              if (argc != 7) {
+                  fprintf(stderr,
+                          "usage: probe OUTSIDE HOST_PID PORT PID_NS NET_NS MNT_NS\n");
+                  return 2;
+              }
+
+              host_pid = (pid_t)strtol(argv[2], NULL, 10);
+              host_port = atoi(argv[3]);
+              host_pid_ns = strtoull(argv[4], NULL, 10);
+              host_net_ns = strtoull(argv[5], NULL, 10);
+              host_mnt_ns = strtoull(argv[6], NULL, 10);
+
+              lock_down();
+
+              check(getuid() == 0 && geteuid() == 0,
+                    "runs as UID 0");
+              check(prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 1,
+                    "no_new_privs is set");
+
+              if (syscall(SYS_capget, &header, caps) != 0)
+                  fatal_errno("capget");
+              check(
+                  caps[0].effective == 0 && caps[1].effective == 0 &&
+                  caps[0].permitted == 0 && caps[1].permitted == 0 &&
+                  caps[0].inheritable == 0 && caps[1].inheritable == 0,
+                  "effective, permitted, and inheritable capabilities are empty"
+              );
+
+              for (int cap = 0; cap < 256; cap++) {
+                  int value;
+
+                  errno = 0;
+                  value = prctl(PR_CAPBSET_READ, cap, 0, 0, 0);
+                  if (value < 0 && errno == EINVAL) continue;
+                  if (value != 0) bounded_cap = 1;
+
+                  value = prctl(
+                      PR_CAP_AMBIENT, PR_CAP_AMBIENT_IS_SET, cap, 0, 0
+                  );
+                  if (value != 0) ambient_cap = 1;
+              }
+              check(!bounded_cap, "capability bounding set is empty");
+              check(!ambient_cap, "ambient capability set is empty");
+
+              for (int candidate = 3; candidate < 256; candidate++) {
+                  errno = 0;
+                  if (fcntl(candidate, F_GETFD) >= 0 || errno != EBADF)
+                      leaked_fd = 1;
+              }
+              check(!leaked_fd, "no inherited file descriptors above stderr");
+
+              errno = 0;
+              check(
+                  syscall(
+                      SYS_close_range, 1024U, ~0U, CLOSE_RANGE_CLOEXEC
+                  ) == 0,
+                  "close_range CLOEXEC is supported"
+              );
+
+              errno = 0;
+              check(fchdir(9) < 0 && errno == EBADF,
+                    "deliberately inherited directory FD 9 was closed");
+
+              errno = 0;
+              fd = open(argv[1], O_RDONLY | O_NOFOLLOW);
+              check(fd < 0 && errno == ENOENT,
+                    "host path is absent inside chroot");
+              if (fd >= 0) close(fd);
+
+              if (stat("/", &root_st) != 0)
+                  fatal_errno("stat /");
+              if (stat("/proc/1/root", &proc_root_st) != 0)
+                  fatal_errno("stat /proc/1/root");
+              check(
+                  root_st.st_dev == proc_root_st.st_dev &&
+                  root_st.st_ino == proc_root_st.st_ino,
+                  "/proc/1/root cannot expose the host root"
+              );
+
+              check(getpid() == 1, "probe is PID 1 in its PID namespace");
+              check(numeric_pid_count() == 1,
+                    "new procfs exposes only the slot PID");
+              check(
+                  namespace_inode("/proc/self/ns/pid") != host_pid_ns,
+                  "PID namespace differs from host"
+              );
+              check(
+                  namespace_inode("/proc/self/ns/net") != host_net_ns,
+                  "network namespace differs from host"
+              );
+              check(
+                  namespace_inode("/proc/self/ns/mnt") != host_mnt_ns,
+                  "mount namespace differs from host"
+              );
+
+              errno = 0;
+              check(
+                  kill(host_pid, 0) < 0 && errno == ESRCH,
+                  "same-UID host process is not addressable"
+              );
+
+              fd = socket(AF_INET, SOCK_STREAM, 0);
+              if (fd < 0) fatal_errno("socket");
+              address.sin_family = AF_INET;
+              address.sin_port = htons((unsigned short)host_port);
+              if (inet_pton(AF_INET, "127.0.0.1", &address.sin_addr) != 1)
+                  return 2;
+              errno = 0;
+              check(
+                  connect(
+                      fd, (struct sockaddr *)&address, sizeof(address)
+                  ) < 0,
+                  "host loopback listener is unreachable"
+              );
+              close(fd);
+
+              errno = 0;
+              check(chroot("/") < 0 && errno == EPERM,
+                    "CAP_SYS_CHROOT cannot be regained");
+              errno = 0;
+              check(
+                  mount("none", "/tmp", "tmpfs", 0, NULL) < 0 &&
+                  errno == EPERM,
+                  "CAP_SYS_ADMIN cannot be regained"
+              );
+
+              errno = 0;
+              fd = open("/dev/mem", O_RDONLY);
+              check(fd < 0, "no host memory device is exposed");
+              if (fd >= 0) close(fd);
+
+              fd = open(
+                  "/workspace/result",
+                  O_WRONLY | O_CREAT | O_EXCL,
+                  0600
+              );
+              check(fd >= 0, "workspace remains writable");
+              if (fd >= 0) {
+                  if (write(fd, "OK\n", 3) != 3)
+                      fatal_errno("write workspace result");
+                  close(fd);
+              }
+
+              printf(
+                  "%s\n",
+                  failures == 0
+                      ? "HOST_PRIMITIVES_PASS"
+                      : "HOST_PRIMITIVES_FAIL"
+              );
+              return failures == 0 ? 0 : 1;
+          }
+          EOF
+
+          cc -O2 -Wall -Wextra -static \
+            "$test_root/probe.c" \
+            -o "$rootfs/probe"
+
+          file "$rootfs/probe" | grep -q 'statically linked'
+
+          if find "$rootfs" -xdev -type f -links +1 -print -quit |
+             grep -q .; then
+            echo "rootfs contains a hard-linked file" >&2
+            exit 1
+          fi
+
+          if find "$rootfs/dev" -xdev \( -type b -o -type c \) \
+             -print -quit | grep -q .; then
+            echo "rootfs contains a device node" >&2
+            exit 1
+          fi
+
+          sudo --non-interactive chown -R root:root "$rootfs"
+          sudo --non-interactive chmod 0700 "$rootfs"
+
+          cat >"$test_root/run.py" <<'EOF'
           import os
-          import shutil
           import socket
           import subprocess
-          import tempfile
-          from pathlib import Path
+          import sys
 
-          root = Path(tempfile.mkdtemp(prefix="oq-host-preflight-"))
-          secret_dir = root / "host-secret"
-          public_dir = root / "public"
-          secret_dir.mkdir()
-          public_dir.mkdir()
-          secret_file = secret_dir / "oracle.txt"
-          secret_file.write_text("HOST_ONLY\n")
-          (public_dir / "public.txt").write_text("PUBLIC\n")
+          rootfs, outside = sys.argv[1:3]
 
-          listener = socket.socket()
+          listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
           listener.bind(("127.0.0.1", 0))
           listener.listen(1)
           host_port = listener.getsockname()[1]
-          sleeper = subprocess.Popen(["sleep", "300"])
-          directory_fd = os.open(secret_dir, os.O_RDONLY | os.O_DIRECTORY)
-          os.set_inheritable(directory_fd, True)
 
-          inner = r"""
-          import json, os, socket, sys
-          secret_path, host_pid_s, host_port_s, inherited_fd_s = sys.argv[1:]
-          host_pid = int(host_pid_s)
-          host_port = int(host_port_s)
-          inherited_fd = int(inherited_fd_s)
-          checks = {}
-          checks["public_input_visible"] = open("/workspace/public.txt").read() == "PUBLIC\n"
-          checks["host_secret_hidden"] = not os.path.exists(secret_path)
-          try:
-              os.fstat(inherited_fd)
-              checks["initial_directory_fd_scrubbed"] = False
-          except OSError:
-              checks["initial_directory_fd_scrubbed"] = True
-          checks["host_pid_hidden_from_proc"] = not os.path.exists(f"/proc/{host_pid}")
-          try:
-              os.kill(host_pid, 0)
-              checks["host_pid_unsignalable"] = False
-          except ProcessLookupError:
-              checks["host_pid_unsignalable"] = True
-          except PermissionError:
-              checks["host_pid_unsignalable"] = False
-          sock = socket.socket()
-          sock.settimeout(1)
-          checks["host_loopback_blocked"] = sock.connect_ex(("127.0.0.1", host_port)) != 0
-          sock.close()
-          print(json.dumps({"checks": checks}, sort_keys=True))
-          raise SystemExit(0 if all(checks.values()) else 1)
+          target = subprocess.Popen(
+              ["/usr/bin/sleep", "60"],
+              close_fds=True,
+          )
+
+          directory_fd = os.open(
+              outside,
+              os.O_RDONLY | os.O_DIRECTORY,
+          )
+          os.dup2(directory_fd, 9, inheritable=True)
+          if directory_fd != 9:
+              os.close(directory_fd)
+
+          host_pid_ns = os.stat("/proc/self/ns/pid").st_ino
+          host_net_ns = os.stat("/proc/self/ns/net").st_ino
+          host_mnt_ns = os.stat("/proc/self/ns/mnt").st_ino
+
+          setup = r"""
+          rootfs=$1
+          shift
+          mount --make-rprivate /
+          mount -t proc -o nosuid,nodev,noexec proc "$rootfs/proc"
+          exec chroot "$rootfs" /probe "$@"
           """
 
           command = [
-              "bwrap", "--die-with-parent", "--new-session", "--unshare-all",
-              "--uid", "0", "--gid", "0", "--clearenv",
-              "--setenv", "PATH", "/usr/bin:/bin",
-          ]
-          for path in ("/usr", "/bin", "/lib", "/lib64", "/etc"):
-              if os.path.exists(path):
-                  command += ["--ro-bind", path, path]
-          command += [
-              "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-              "--ro-bind", str(public_dir), "/workspace", "--chdir", "/workspace",
-              "/usr/bin/python3", "-c", inner,
-              str(secret_file), str(sleeper.pid), str(host_port), str(directory_fd),
+              "/usr/bin/unshare",
+              "--mount",
+              "--pid",
+              "--fork",
+              "--kill-child=SIGKILL",
+              "--net",
+              "--ipc",
+              "--uts",
+              "/bin/bash",
+              "-ceu",
+              setup,
+              "isolation-preflight",
+              rootfs,
+              os.path.join(outside, "canary"),
+              str(target.pid),
+              str(host_port),
+              str(host_pid_ns),
+              str(host_net_ns),
+              str(host_mnt_ns),
           ]
 
           try:
               completed = subprocess.run(
                   command,
+                  stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
                   text=True,
-                  capture_output=True,
-                  timeout=15,
-                  close_fds=True,
+                  timeout=30,
                   check=False,
+                  close_fds=True,
+                  pass_fds=(),
+                  env={
+                      "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                      "LC_ALL": "C",
+                  },
               )
-              result = {
-                  "schema_version": "open-quality-host-primitives-v1",
-                  "scope": "host primitives only; not formal Pilot readiness",
-                  "exit_code": completed.returncode,
-                  "stdout": completed.stdout.strip(),
-                  "stderr": completed.stderr.strip(),
-                  "status": "HOST_PRIMITIVES_PASS" if completed.returncode == 0 else "HOST_PRIMITIVES_FAIL",
-              }
-              print(json.dumps(result, indent=2, sort_keys=True))
+              sys.stdout.write(completed.stdout)
+              sys.stderr.write(completed.stderr)
               if completed.returncode != 0:
-                  raise SystemExit(1)
+                  raise SystemExit(completed.returncode)
           finally:
-              os.close(directory_fd)
+              os.close(9)
               listener.close()
-              sleeper.terminate()
-              try:
-                  sleeper.wait(timeout=3)
-              except subprocess.TimeoutExpired:
-                  sleeper.kill()
-                  sleeper.wait()
-              shutil.rmtree(root)
-          PY
+              if target.poll() is None:
+                  target.terminate()
+                  try:
+                      target.wait(timeout=5)
+                  except subprocess.TimeoutExpired:
+                      target.kill()
+                      target.wait()
+          EOF
+
+          sudo --non-interactive python3 \
+            "$test_root/run.py" \
+            "$rootfs" \
+            "$outside"
+
+          test "$(sudo --non-interactive cat "$rootfs/workspace/result")" = OK
 
       - name: State formal boundary
+        if: always()
         shell: bash
         run: |
           echo "Host primitives passing does not authorize model calls or promotion."
