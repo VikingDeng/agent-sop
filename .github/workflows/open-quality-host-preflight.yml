@@ -1,0 +1,177 @@
+name: Open Quality Pilot host preflight
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/open-quality-host-preflight.yml
+
+permissions:
+  contents: read
+
+jobs:
+  host-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch frozen independent runner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: pilot/open-quality-runner-v1
+          path: evidence
+          sparse-checkout: external-evidence/open-quality-pilot-v1
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Verify and unpack frozen bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="$GITHUB_WORKSPACE/evidence/external-evidence/open-quality-pilot-v1/open-quality-pilot-v1.tar.gz"
+          echo "cf658be76e3cbd0cc32e1611ce9a1cd9575a4aa29d969d5181d550c5a64015a2  $bundle" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/open-quality"
+          tar -xzf "$bundle" -C "$RUNNER_TEMP/open-quality"
+
+      - name: Verify frozen runner contract
+        shell: bash
+        working-directory: ${{ runner.temp }}/open-quality/open-quality-pilot-v1
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
+          set +e
+          python3 -m open_quality_runner readiness > "$RUNNER_TEMP/readiness.json"
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path(__import__("os").environ["RUNNER_TEMP"]) / "readiness.json"
+          report = json.loads(path.read_text())
+          assert report["status"] == "NO_GO"
+          assert report["formal_samples_permitted"] is False
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+      - name: Install filesystem isolation primitive
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v bwrap >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq bubblewrap
+          fi
+          bwrap --version
+
+      - name: Probe host filesystem PID network and initial FD isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import shutil
+          import socket
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          root = Path(tempfile.mkdtemp(prefix="oq-host-preflight-"))
+          secret_dir = root / "host-secret"
+          public_dir = root / "public"
+          secret_dir.mkdir()
+          public_dir.mkdir()
+          secret_file = secret_dir / "oracle.txt"
+          secret_file.write_text("HOST_ONLY\n")
+          (public_dir / "public.txt").write_text("PUBLIC\n")
+
+          listener = socket.socket()
+          listener.bind(("127.0.0.1", 0))
+          listener.listen(1)
+          host_port = listener.getsockname()[1]
+          sleeper = subprocess.Popen(["sleep", "300"])
+          directory_fd = os.open(secret_dir, os.O_RDONLY | os.O_DIRECTORY)
+          os.set_inheritable(directory_fd, True)
+
+          inner = r"""
+          import json, os, socket, sys
+          secret_path, host_pid_s, host_port_s, inherited_fd_s = sys.argv[1:]
+          host_pid = int(host_pid_s)
+          host_port = int(host_port_s)
+          inherited_fd = int(inherited_fd_s)
+          checks = {}
+          checks["public_input_visible"] = open("/workspace/public.txt").read() == "PUBLIC\n"
+          checks["host_secret_hidden"] = not os.path.exists(secret_path)
+          try:
+              os.fstat(inherited_fd)
+              checks["initial_directory_fd_scrubbed"] = False
+          except OSError:
+              checks["initial_directory_fd_scrubbed"] = True
+          checks["host_pid_hidden_from_proc"] = not os.path.exists(f"/proc/{host_pid}")
+          try:
+              os.kill(host_pid, 0)
+              checks["host_pid_unsignalable"] = False
+          except ProcessLookupError:
+              checks["host_pid_unsignalable"] = True
+          except PermissionError:
+              checks["host_pid_unsignalable"] = False
+          sock = socket.socket()
+          sock.settimeout(1)
+          checks["host_loopback_blocked"] = sock.connect_ex(("127.0.0.1", host_port)) != 0
+          sock.close()
+          print(json.dumps({"checks": checks}, sort_keys=True))
+          raise SystemExit(0 if all(checks.values()) else 1)
+          """
+
+          command = [
+              "bwrap", "--die-with-parent", "--new-session", "--unshare-all",
+              "--uid", "0", "--gid", "0", "--clearenv",
+              "--setenv", "PATH", "/usr/bin:/bin",
+          ]
+          for path in ("/usr", "/bin", "/lib", "/lib64", "/etc"):
+              if os.path.exists(path):
+                  command += ["--ro-bind", path, path]
+          command += [
+              "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+              "--ro-bind", str(public_dir), "/workspace", "--chdir", "/workspace",
+              "/usr/bin/python3", "-c", inner,
+              str(secret_file), str(sleeper.pid), str(host_port), str(directory_fd),
+          ]
+
+          try:
+              completed = subprocess.run(
+                  command,
+                  text=True,
+                  capture_output=True,
+                  timeout=15,
+                  close_fds=True,
+                  check=False,
+              )
+              result = {
+                  "schema_version": "open-quality-host-primitives-v1",
+                  "scope": "host primitives only; not formal Pilot readiness",
+                  "exit_code": completed.returncode,
+                  "stdout": completed.stdout.strip(),
+                  "stderr": completed.stderr.strip(),
+                  "status": "HOST_PRIMITIVES_PASS" if completed.returncode == 0 else "HOST_PRIMITIVES_FAIL",
+              }
+              print(json.dumps(result, indent=2, sort_keys=True))
+              if completed.returncode != 0:
+                  raise SystemExit(1)
+          finally:
+              os.close(directory_fd)
+              listener.close()
+              sleeper.terminate()
+              try:
+                  sleeper.wait(timeout=3)
+              except subprocess.TimeoutExpired:
+                  sleeper.kill()
+                  sleeper.wait()
+              shutil.rmtree(root)
+          PY
+
+      - name: State formal boundary
+        shell: bash
+        run: |
+          echo "Host primitives passing does not authorize model calls or promotion."
+          echo "Credential handoff, every tool-child FD scrub, browser, and external evidence collection remain required."
