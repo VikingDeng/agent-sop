@@ -37,12 +37,14 @@ automatic product/research direction authority, or promotion by showcase.
 ## Current evidence state (2026-08-13)
 
 - Frozen control B: `main@497b5ba436a1a0392af01db3f2fecd3aa53e95e9`.
-- PR #29 (open-quality candidate) and PR #30 (per-fixture network-ceiling
-  fix) are merged. GitHub `main` is `da5028746c97db8913e22fa026d40aaf75dc871d`.
-- The hosted `validate` workflow passed on that `main` commit (Actions run
-  `31688050043`). `main` is still unprotected, so the workflow is not a
-  required check. No Git tag or GitHub Release has been published; this is an
-  active-experimental merge, not a stable capability release.
+- PR #29 (open-quality candidate), PR #30 (per-fixture network ceiling), and
+  PR #33 (Pilot-readiness P0/P1 repairs) are merged. PR #33 was squash-merged
+  as `4cdc15812a81f27b68a07f18b37af8e28a3b7308`.
+- The hosted `validate` workflow passed on PR #33 (Actions run `31700141847`)
+  and again on post-merge `main` (run `31700236394`). `main` is still
+  unprotected, so the workflow is not a required check. No Git tag or GitHub
+  Release has been published; this remains active-experimental, not a stable
+  capability release.
 - The baseline had 313 local tests. Most covered routing/audit/control-plane
   code, not product or research net lift.
 - The Skill registry has no promoted capability. A prior one-session frontend
@@ -90,7 +92,7 @@ the next decision.
 |---|---|---|
 | P0 | Freeze goal, non-goals, A/B/C arms, routing boundaries, blind quality, WCU, elapsed time, rework, variance, promotion and deletion gates | 24 routing cases, 12 outcome contracts, four pilot outcomes, package schema/validator, numeric policy, and independent promotion boundary are frozen; a complete synthetic package remains explicitly unverified — **done locally; no outcome evidence yet** |
 | P0 | Implement the smallest candidate treatment | Fast-path Kernel routing, Option Search v1, Development v4 golden slice/visual/browser evidence, Competition v5 delivery grade, Adapter v5 readiness/role split, and runtime snapshot integration — **done locally** |
-| P0 | Make repository checks externally reproducible | Validation workflow runs structure, full tests, and whitespace checks; hosted `validate` passed on `main@da502874`, but branch protection is off and no check is required — **CI pass; protection pending** |
+| P0 | Make repository checks externally reproducible | Validation workflow runs structure, full tests, and whitespace checks; hosted `validate` passed on PR #33 and post-merge `main`, but branch protection is off and no check is required — **CI pass; protection pending** |
 | P0 | Materialize real pilot fixtures | The four pilot outcomes—one per stratum—have isolated starting artifacts, immutable prompt/contract identity, an executable or independent Oracle, blind rubric, and ceiling; deterministic tree/archive locks and positive/negative controls pass — **revalidated locally after Oracle/gold fixes; freeze fresh manifests before any run** |
 | P0 | Run matched pilot | A/B/C run once per pilot case with frozen concealed assignments and no cross-arm leakage; package is complete and an independent authority finds all pilot decision gates satisfied — **pending** |
 | P1 | Run confirmatory promotion study | Frozen C runs three fresh repetitions of all 24 cases; every promotion gate passes. A failed/no-lift treatment stays disabled or is deleted — **blocked by pilot** |
