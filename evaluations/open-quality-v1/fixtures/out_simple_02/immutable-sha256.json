@@ -1,0 +1,15 @@
+{
+  "version": "fixture-lock-v1",
+  "algorithm": "sha256",
+  "tree_definition": "sha256 of sorted relative_path + NUL + file_sha256 + LF",
+  "tree_sha256": "2e50cb9457841862e978776a6318a7c420be6b6cb6d0e205fc22e7805b7ba18c",
+  "deterministic_zip_sha256": "aff5fe47e2706a8968acb35f3ca3a8e834241c89344ebc15cd034c0c6dfb225c",
+  "files": {
+    "README.md": "1d2efd3d71ceeb2de3aab2d0b2f934a7a8b17295be3cf498ef90f90e929d0f12",
+    "pyproject.toml": "8f8f30d2948e4dcac88d484bfa984e5bf42d82bad421fe08167e2d0919641147",
+    "src/__init__.py": "488ab48b35e29046bf6ae62b0a482ad2934188c6464d552085aaaad7f68d30e2",
+    "src/api_models.py": "f64f4b69ab752fbd69d7fa7c92d0b98475679e0c558042d81b728e409f8803cf",
+    "src/serializer.py": "4021708226d7ebf98dc8bdf411eff4948bd15cab8ceaa7e45e0f6603a475314a",
+    "tests/test_user_response.py": "b973fb71bbee94d990677d9c9cc7a5308606cc4ac14329905e06498e1610ffc5"
+  }
+}

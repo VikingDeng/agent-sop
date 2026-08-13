@@ -1,0 +1,3 @@
+run_id,dataset,arm,task_success,tool_steps,paper_eligible,purpose
+smoke-b,synthetic-wiring,baseline,1,2,false,proves adapter wiring only
+smoke-m,synthetic-wiring,method,1,3,false,proves method branch wiring only

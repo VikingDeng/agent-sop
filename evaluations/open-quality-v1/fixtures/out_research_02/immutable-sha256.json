@@ -1,0 +1,21 @@
+{
+  "version": "fixture-lock-v1",
+  "algorithm": "sha256",
+  "tree_definition": "sha256 of sorted relative_path + NUL + file_sha256 + LF",
+  "tree_sha256": "9af3e7d924a92a6181f9fabf98caee1630f965afec63afa13261a4e6f352f9fa",
+  "deterministic_zip_sha256": "e1dad0113cf9a29621945bddb448715064dba686a86e529bd2e9d7c5f146c274",
+  "files": {
+    "README.md": "16ce4b1b6d6eb1808b3a3ee774d34ecda8ebb95b3ec68e42a2d774c383489d81",
+    "immutable/baseline-config.json": "8df0a000f6c6c0791f234a6a42138e0a5dbd3912378a40c9ed889e99b7b1af25",
+    "immutable/costs.csv": "15832e9ac3ec562db637a9befbdb494c3b6e0f16858635b96969dac8839285b8",
+    "immutable/method-config.json": "00981f4e9977c445aaf480f625577702ab1aceb688f0fc6d6a230cfeea3f6851",
+    "immutable/preregistered-gate.json": "ff7f30833d40773a2d5572ffca7ed25cc4039d346384781edf7824f8a3c0a1cb",
+    "immutable/proposal.md": "7fece6e64fcfcdfa536c61110d1c1d3982bf68463a8c9e8bb1a928fe221ed258",
+    "immutable/raw-results.csv": "64c24389b56cd609c5522d6faef656b7af7b95e64aea8391b58a641d4c5c5d63",
+    "immutable/raw-traces.json": "15fbad0e079854349b1813bd412f9ccbea2dbb02443af7fcff15c7ba8aa8f6bf",
+    "immutable/run-order.json": "922b64147da27fdb88cfbff271155cf9c7f0fb5410e08b03b202ec16b5ef3184",
+    "immutable/runner.py": "ceb279e0179b51e1c4b3a2cab9ccbd91fe687e241bdc7ccc63a094e99b2bc983",
+    "immutable/smoke-results.csv": "43b6228f230dd34fff96aae4aea61dc6a39473f37bc579aee3aef114d3c710ab",
+    "submission.schema.json": "ee4ac79a0bac39dac481a0094ef088bba30980bdc25e29f3e9e785852a6fd710"
+  }
+}

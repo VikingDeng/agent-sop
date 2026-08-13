@@ -1,0 +1,14 @@
+{
+  "version": "materialized-fixture-v1",
+  "outcome_id": "out_idea_01",
+  "task_class": "research_ideation",
+  "agent_input_root": "workspace",
+  "independent_oracle": "oracle/check_submission.py",
+  "immutable_paths": ["workspace/evidence/", "workspace/submission.schema.json"],
+  "writable_paths": ["workspace/submission.json"],
+  "expected_start": {
+    "evidence_integrity": "PASS",
+    "submission_oracle": "FAIL until an Agent supplies a candidate set"
+  },
+  "external_evidence": ["blind scientific-quality score", "pairwise novelty and impact judgment", "citation spot-check"]
+}

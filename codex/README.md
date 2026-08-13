@@ -29,7 +29,7 @@ python3 scripts/install_codex_runtime.py --routing-profile strict --dry-run
 The installer:
 
 - builds a content-addressed, read-only generation under `~/.codex/runtime-snapshots/` and atomically switches `~/.codex/runtime-current`;
-- snapshots the Kernel, three current Domain Profiles, their direct runtime references, the Skill registry, Codex Adapter, role files, Hooks, and optional legacy compatibility material;
+- snapshots the Kernel, three current Domain Profiles, Option Search, their direct runtime references, the Skill registry, Codex Adapter, role files, Hooks, and optional legacy compatibility material;
 - records component version and content identity in `snapshot-manifest.json`;
 - links the global/workspace AGENTS files, role TOMLs, and Hook scripts through `runtime-current`;
 - installs the session auditor at `~/.codex/bin/audit-codex-session` through the same verified generation;
@@ -47,7 +47,7 @@ The verified Python launcher is an external runtime dependency and must remain e
 
 ## Runtime provenance
 
-The SessionStart Hook emits one compact `SOP_RUNTIME` envelope containing the content-addressed generation, Kernel/Adapter/profile versions, selected routing profile, reported foreground model/effort, and session identity. The domain profile can be supplied through `SOP_DOMAIN_PROFILE`; otherwise it is explicitly `UNRESOLVED_BY_SESSIONSTART` and the Agent selects the profile from closest instructions.
+The SessionStart Hook emits one compact `SOP_RUNTIME` envelope containing the content-addressed generation, Kernel/Adapter/profile and Option Search versions, selected routing profile, reported foreground model/effort, and session identity. The domain profile can be supplied through `SOP_DOMAIN_PROFILE`; otherwise it is explicitly `UNRESOLVED_BY_SESSIONSTART` and the Agent selects the profile from closest instructions.
 
 The session auditor reads this marker when it appears in the captured trace, but treats it as an unverified trace observation because arbitrary task text can contain the same shape. The report keeps the recorded startup profile separate from the selected audit policy. `--strict` cannot rewrite the historical field, and an injected marker cannot weaken strict auditing. Old logs without a marker remain auditable, but their runtime generation/profile is unknown.
 

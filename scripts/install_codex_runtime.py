@@ -96,6 +96,7 @@ SNAPSHOT_FILES = (
     "sop/tier1-skeleton/run-experiment.md",
     "sop/tier1-skeleton/statistics-oracle.md",
     "sop/tier1-skeleton/write-contract.md",
+    "sop/tier2-activity/option-search.md",
     "sop/tier2-activity/ops-remote-compute.md",
     "scripts/audit_codex_session.py",
     "scripts/validate_research_execution_grill.py",
@@ -421,6 +422,7 @@ class Installer:
             "development_profile": "sop/tier1-skeleton/run-development.md",
             "research_profile": "sop/tier1-skeleton/research-execution-grill.md",
             "competition_profile": "sop/tier1-skeleton/run-competition.md",
+            "option_search": "sop/tier2-activity/option-search.md",
             "statistics_oracle": "sop/tier1-skeleton/statistics-oracle.md",
         }
         components: dict[str, Any] = {}

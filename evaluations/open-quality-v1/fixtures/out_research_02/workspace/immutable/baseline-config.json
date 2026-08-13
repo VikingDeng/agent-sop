@@ -1,0 +1,9 @@
+{
+  "arm": "baseline",
+  "policy": "react-fixed-v4",
+  "model_snapshot": "model-q-2026-05-30",
+  "max_tool_steps": 40,
+  "max_retries": 1,
+  "temperature": 0,
+  "method_component": null
+}

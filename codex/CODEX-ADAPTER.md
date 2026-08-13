@@ -1,7 +1,7 @@
 # Codex 平台适配层
 
 - **Adapter ID**: `codex-runtime`
-- **版本**: v4
+- **版本**: v5
 - **性质**: platform adapter，不是 SOP、Domain Profile 或 Skill
 
 ## 责任边界
@@ -50,6 +50,8 @@ started_at: <timestamp>
 
 选择 Sol 作为顶层不改变分工：Sol 可以调查决定性证据、作出架构/研究判断、集成少量窄改动并裁决验收，但重复写代码、跑完整测试、操作浏览器、打包或整理日志应在可用时合并成一个有直接 Oracle 的 Luna/Terra 结果包。若顶层连续承担这些机械动作，应重新切包；只有委派开销明显高于窄工作本身或没有可用角色时才留在顶层，并如实记录成本原因。
 
+开放式 Option Search 中，根 Agent/Sol 保留问题定义、候选是否实质不同、致命反例裁决、方向冻结与最终集成权；Terra 适合并行做只读的真实工作流调查、最近邻/跨领域碰撞、falsifier、产品/视觉 critique 与普通 Browser QA；Luna 只在问题、输入、Oracle 和停止条件已经稳定时运行廉价 probe、批量检索/测试或实现候选 slice。并行用于增加独立证据，选择与核心不变式裁决保持串行；候选生成者、Reviewer 和 worker 都不能把方向标为已批准。多个 writer 只有在独立 worktree 或明确文件边界下才可并行，核心语义未定时不让实现 swarm 用代码量替代选择。
+
 以上是可被实证修正的偏好，不是资格表。优先选择能保持 acceptance 的最低成本路径；模型/role 不可用或证据表明错配时，可显式更换路由，但要以未改变的 acceptance 重新验收。不得把“用了 Sol”写成质量证据，也不得把“只用 Luna”当作质量失败。
 
 当前成本诊断可用：
@@ -74,9 +76,9 @@ WCU = 25 * T_sol + 10 * T_terra + 1 * T_luna
 
 原生持久 goal 只在用户明确要求长程/持续推进，且目标有可观察终点、可运行 verifier、后续动作不需要反复猜用户偏好、权限与成本可界定时启用。goal 保存稳定目标，不保存完整对话或把 token budget 当完成条件。目标和契约仍稳定、当前上下文有决策价值时继续同一顶层 task；目标改变、上下文已被噪声淹没或需要真正独立视角时使用新 task，并从项目事实恢复，不 fork 全历史。
 
-只有真实跨 task/session、外部 scheduler、不可廉价重做或交接需要时，才维护一个项目原生的轻量 continuity record；不要求固定文件名。它只保存恢复当前决定所需的信息：契约/范围与 non-goals、workspace/commit/run/artifact 身份、已完成和未完成/失败证据、下一判别动作、blocker 与授权边界。若有活跃 worker，再记录可观察 lifecycle；若存在自动 retry 或外部副作用，再记录工作是 `replayable`、`resume_only` 还是 `externally_effectful` 及稳定 run/idempotency identity。没有真实恢复需要时不创建 packet、ledger、lease 或 heartbeat。
+只有真实跨 task/session、外部 scheduler、不可廉价重做或交接需要时，才维护一个项目原生的轻量 continuity record；不要求固定文件名。它只保存恢复当前决定所需的信息：契约/范围与 non-goals、已证实事实、已作决定及其证据/理由、workspace/commit/run/当前最佳 artifact 身份、已完成和未完成/失败证据、下一判别动作、blocker 与必须交给用户的授权分叉。若有活跃 worker，再记录可观察 lifecycle；若存在自动 retry 或外部副作用，再记录工作是 `replayable`、`resume_only` 还是 `externally_effectful` 及稳定 run/idempotency identity。没有真实恢复需要时不创建 packet、ledger、lease 或 heartbeat。
 
-外部 scheduler 只有在 **contract-ready + oracle-ready**，workspace/artifact 身份可恢复、并发/成本/外部动作包络已界定时，才可接管启动、等待、取消、保留、恢复和有界 retry。它不能选择产品/研究方向、改变 contract/acceptance/method、跨越 HUMAN 边界或代替项目 Oracle 给最终 verdict。`timeout` 是 `INCOMPLETE/UNKNOWN`，不是失败或重派许可；有副作用或身份不明的工作默认保留并等待接管判断，不能自动重跑。
+外部 scheduler 只有同时满足四项 readiness 才可接管：**contract-ready**（outcome/non-goals/authority/acceptance 已稳定）、**oracle-ready**（Agent 能由直接证据区分改善与退化）、**state-ready**（workspace/run/artifact 与恢复语义可确认）和 **decomposition-ready**（子任务不需要反复重定核心产品/研究语义）。并发、成本与外部动作包络也必须已界定。它只能接管启动、等待、取消、保留、恢复和有界 retry，不能选择产品/研究方向、改变 contract/acceptance/method、跨越 HUMAN 边界或代替项目 Oracle 给最终 verdict。任一 readiness 失效、同类失败重复且无新信息、局部补丁只增加复杂度、需要 re-contract/HUMAN 或 acceptance 已满足时停止循环。`timeout` 是 `INCOMPLETE/UNKNOWN`，不是失败或重派许可；有副作用或身份不明的工作默认保留并等待接管判断，不能自动重跑。
 
 只有能证明活跃 agent 与同一 contract、workspace、role/model 要求和 open state 匹配时才 resume；否则使用 fresh agent + compact continuity record 和项目工件，不转发完整历史。resume、重派或更换 role/model 都不重置适用预算。终态至少如实区分 completed、failed、cancelled、preserved-incomplete 与 unknown；恢复后的 producer 输出在交给 consumer 前重新检查 schema/contract compatibility。
 

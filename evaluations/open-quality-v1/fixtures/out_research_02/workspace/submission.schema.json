@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "recomputed_metrics", "blockers", "claim_status", "fresh_run_plan"],
+  "properties": {
+    "verdict": {"enum": ["GO", "NO-GO"]},
+    "recomputed_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_success", "method_success", "success_delta", "tool_cost_ratio"],
+      "properties": {
+        "baseline_success": {"type": "number"},
+        "method_success": {"type": "number"},
+        "success_delta": {"type": "number"},
+        "tool_cost_ratio": {"type": "number"}
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "evidence_refs"],
+        "properties": {
+          "code": {"type": "string"},
+          "evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        }
+      }
+    },
+    "claim_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scientific_success", "smoke_is_paper_evidence", "reason"],
+      "properties": {
+        "scientific_success": {"type": "boolean"},
+        "smoke_is_paper_evidence": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 25}
+      }
+    },
+    "fresh_run_plan": {"type": "string", "minLength": 30}
+  }
+}

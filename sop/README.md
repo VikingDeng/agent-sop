@@ -14,10 +14,10 @@
 > 不设 universal clean-tree、`ENV_LOCK`、clean-rebuild 或多 seed 门禁。
 > 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
 > 的派生视图契约；它不要求新建 dashboard 或独立台账。
-> `tier0-core/autonomous-supervisor.md` 当前为 **v18**，`build-oracle.md` 为 **v3**，
-> `tier1-skeleton/run-development.md` 为 **v3**，`write-contract.md` 为 **v4**：方向已冻结就直接执行；
-> 只有方向真实开放时才用共同判据和判别性 slice 比较；价值 claim 则单独要求真实价值信号，并区分
-> “能力已交付”与“价值已建立”。public API/兼容任务仍用 caller-visible contract 的 claim-matched Oracle 验收。
+> `tier0-core/autonomous-supervisor.md` 当前为 **v19**，`build-oracle.md` 为 **v3**，
+> `tier1-skeleton/run-development.md` 为 **v4**，`tier2-activity/option-search.md` 为 **v1**：
+> 清楚小任务走快路，冻结方向直接执行，只有未冻结 material fork 才做候选碰撞与 decisive probe。
+> Development v4 先验证 representative slice，通过后才作为 golden implementation 扩展；价值 claim 仍单独要求真实价值信号。
 
 ## Tier 0 — 核心横切(所有场景共用)
 
@@ -47,7 +47,7 @@
 | tier1-skeleton/maintain-patch-series.md | competition | U1 | P4 | — |
 | tier1-skeleton/write-contract.md | development | U1 | P1 | autonomous-supervisor |
 | tier1-skeleton/drift-check.md | development | U1 | P1 | write-contract, add-dependency, no-fallback-review |
-| tier1-skeleton/run-development.md | development | U1 | P1 P2 P3 P4 | autonomous-supervisor, write-contract, drift-check, build-oracle, no-fallback-review |
+| tier1-skeleton/run-development.md | development | U1 | P1 P2 P3 P4 | autonomous-supervisor, write-contract, drift-check, build-oracle, no-fallback-review, option-search |
 | tier1-skeleton/release-version.md | development | U1 | P4 | drift-check, lock-env, commit-and-pr, add-dependency |
 
 ## Tier 2 — 活动型(非项目工作)
@@ -64,6 +64,7 @@
 | tier2-activity/writing-report.md | 写作 | U0 | P2 P3 P4 | — |
 | tier2-activity/scientific-paper.md | 写作 | U1 | P1 P2 P3 P4 | build-oracle, reproduce-result, contamination-check, statistics-oracle, PROSE_STANDARD |
 | tier2-activity/research-investigation.md | 调研 | U0 | P1 P2 | — |
+| tier2-activity/option-search.md | 方向搜索 | U0 | P1 P2 P3 P4 | — |
 
 ## 使用方式
 

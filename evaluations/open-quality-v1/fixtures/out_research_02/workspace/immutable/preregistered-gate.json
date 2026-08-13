@@ -1,0 +1,39 @@
+{
+  "version": "cdr-phase0-gate-v1",
+  "proposal_id": "cdr-phase0-2026-06-11",
+  "paper_eligible_dataset": "phase0-real",
+  "task_ids": ["task-01", "task-02", "task-03", "task-04", "task-05", "task-06"],
+  "required_arms": ["baseline", "method"],
+  "design": {
+    "kind": "paired-interleaved-by-task",
+    "frozen_order": [
+      ["task-01", "baseline"],
+      ["task-01", "method"],
+      ["task-02", "method"],
+      ["task-02", "baseline"],
+      ["task-03", "baseline"],
+      ["task-03", "method"],
+      ["task-04", "method"],
+      ["task-04", "baseline"],
+      ["task-05", "baseline"],
+      ["task-05", "method"],
+      ["task-06", "method"],
+      ["task-06", "baseline"]
+    ],
+    "required_environment_snapshot": "phase0-env-v3"
+  },
+  "primary_metric": "task_success",
+  "go_thresholds": {
+    "minimum_success_delta": 0.10,
+    "maximum_collateral_delta": 0.0,
+    "maximum_tool_cost_ratio": 1.20
+  },
+  "validity_requirements": [
+    "all twelve paired rows are present exactly once",
+    "actual order equals frozen_order",
+    "all rows use required_environment_snapshot",
+    "every row binds a present raw trace by sha256",
+    "no smoke row enters any gate calculation"
+  ],
+  "invalid_run_decision": "NO-GO; preserve the run and repair only through a fresh preregistered run"
+}

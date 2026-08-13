@@ -1,0 +1,40 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate SOP structure
+        run: python3 scripts/validate_sop_repo.py
+      - name: Validate open-quality evaluation contract
+        run: |
+          python3 evaluations/open-quality-v1/validate_and_score.py --validate-only
+          python3 evaluations/open-quality-v1/validate_and_score.py --self-test
+          PYTHONDONTWRITEBYTECODE=1 python3 evaluations/open-quality-v1/fixtures/verify_fixtures.py
+      - name: Run unit and contract tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Check patch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check "${{ github.event.pull_request.base.sha }}...HEAD"
+      - name: Check pushed commit whitespace
+        if: github.event_name == 'push'
+        run: git show --check --format=fuller --no-renames HEAD

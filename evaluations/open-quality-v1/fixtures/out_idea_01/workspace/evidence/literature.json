@@ -1,0 +1,198 @@
+{
+  "version": "long-horizon-literature-cards-v1",
+  "cutoff": "2025-01-31",
+  "cards": [
+    {
+      "id": "lit-001",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "year": 2022,
+      "source": "https://arxiv.org/abs/2210.03629",
+      "core_operation": "Interleave generated reasoning traces with environment actions and observations.",
+      "relevant_limit": "It does not itself assign delayed credit across many failed subtasks."
+    },
+    {
+      "id": "lit-002",
+      "title": "Reflexion: Language Agents with Verbal Reinforcement Learning",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2303.11366",
+      "core_operation": "Store linguistic reflections derived from feedback and reuse them on later trials.",
+      "relevant_limit": "The reflection is a free-form summary and can preserve a wrong causal diagnosis."
+    },
+    {
+      "id": "lit-003",
+      "title": "Voyager: An Open-Ended Embodied Agent with Large Language Models",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2305.16291",
+      "core_operation": "Grow an executable skill library under an automatic curriculum and retrieve skills for new tasks.",
+      "relevant_limit": "Its skill accumulation setting does not isolate which prior event caused a later software-task failure."
+    },
+    {
+      "id": "lit-004",
+      "title": "Language Agent Tree Search Unifies Reasoning, Acting, and Planning in Language Models",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2310.04406",
+      "core_operation": "Use Monte Carlo tree search with language-model value estimates and reflection.",
+      "relevant_limit": "Branch expansion can be expensive when one environment transition is a long tool trajectory."
+    },
+    {
+      "id": "lit-005",
+      "title": "Tree of Thoughts: Deliberate Problem Solving with Large Language Models",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2305.10601",
+      "core_operation": "Search over intermediate thought states using generation, evaluation, and backtracking.",
+      "relevant_limit": "Thought-state scoring is not equivalent to execution-state verification."
+    },
+    {
+      "id": "lit-006",
+      "title": "Toolformer: Language Models Can Teach Themselves to Use Tools",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2302.04761",
+      "core_operation": "Self-supervise where tool calls should be inserted into language-model text.",
+      "relevant_limit": "The learned call placement does not address multi-step recovery after state-changing actions."
+    },
+    {
+      "id": "lit-007",
+      "title": "Self-Refine: Iterative Refinement with Self-Feedback",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2303.17651",
+      "core_operation": "Alternate self-generated feedback and output refinement without additional training.",
+      "relevant_limit": "Self-feedback need not be grounded in an independently observed environment delta."
+    },
+    {
+      "id": "lit-008",
+      "title": "CRITIC: Large Language Models Can Self-Correct with Tool-Interactive Critiquing",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2305.11738",
+      "core_operation": "Use external tools to ground critique before revising an answer.",
+      "relevant_limit": "Correction quality remains bounded by the selected tool and the critique query."
+    },
+    {
+      "id": "lit-009",
+      "title": "ExpeL: LLM Agents Are Experiential Learners",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2308.10144",
+      "core_operation": "Extract cross-task natural-language insights from successful and failed trajectories for later reuse.",
+      "relevant_limit": "Aggregated insights can blur task-specific preconditions and competing causal explanations."
+    },
+    {
+      "id": "lit-010",
+      "title": "Generative Agents: Interactive Simulacra of Human Behavior",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2304.03442",
+      "core_operation": "Retrieve, reflect over, and plan from a stream of memory records.",
+      "relevant_limit": "Importance and recency retrieval are not designed around executable task success."
+    },
+    {
+      "id": "lit-011",
+      "title": "MemoryBank: Enhancing Large Language Models with Long-Term Memory",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2305.10250",
+      "core_operation": "Maintain and update long-term conversational memories with an explicit forgetting mechanism.",
+      "relevant_limit": "Conversation-level retention provides no direct operation for crediting a tool transition."
+    },
+    {
+      "id": "lit-012",
+      "title": "Reasoning with Language Model is Planning with World Model",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2305.14992",
+      "core_operation": "Use a language model as both world model and policy within planning search.",
+      "relevant_limit": "Modelled transitions can disagree with real software or API state transitions."
+    },
+    {
+      "id": "lit-013",
+      "title": "AppWorld: A Controllable World of Apps and People for Benchmarking Interactive Coding Agents",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2407.18901",
+      "core_operation": "Evaluate rich multi-app tasks with executable state-based tests and collateral-damage checks.",
+      "relevant_limit": "Final-state tests reveal failure but do not uniquely locate the causal trajectory step."
+    },
+    {
+      "id": "lit-014",
+      "title": "OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2404.07972",
+      "core_operation": "Run agents in real computer environments with task-specific setup and execution evaluators.",
+      "relevant_limit": "GUI grounding and operational knowledge failures can be entangled in the same trace."
+    },
+    {
+      "id": "lit-015",
+      "title": "WebArena: A Realistic Web Environment for Building Autonomous Agents",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2307.13854",
+      "core_operation": "Benchmark agents on self-hosted, realistic websites with functional correctness evaluation.",
+      "relevant_limit": "Sparse terminal reward leaves many semantically different failed trajectories equivalent."
+    },
+    {
+      "id": "lit-016",
+      "title": "WorkArena: How Capable Are Web Agents at Solving Common Knowledge Work Tasks?",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2403.07718",
+      "core_operation": "Evaluate knowledge-work interactions in a reproducible enterprise web environment.",
+      "relevant_limit": "Benchmark evaluation does not by itself determine a reusable recovery operation."
+    },
+    {
+      "id": "lit-017",
+      "title": "SWE-bench: Can Language Models Resolve Real-World GitHub Issues?",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2310.06770",
+      "core_operation": "Evaluate repository-level issue resolution against executable tests from real projects.",
+      "relevant_limit": "Test outcomes are strong terminal oracles but expose limited process-level attribution."
+    },
+    {
+      "id": "lit-018",
+      "title": "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2405.15793",
+      "core_operation": "Reshape the agent-computer interface to make repository navigation, editing, and execution easier for agents.",
+      "relevant_limit": "Interface improvements do not decide how evidence from past runs should alter a future policy."
+    },
+    {
+      "id": "lit-019",
+      "title": "Agentless: Demystifying LLM-based Software Engineering Agents",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2407.01489",
+      "core_operation": "Use a fixed localization, repair, and validation pipeline instead of a free-running agent loop.",
+      "relevant_limit": "A fixed pipeline is a strong simplicity baseline but does not cover arbitrary long-horizon tool workflows."
+    },
+    {
+      "id": "lit-020",
+      "title": "OpenHands: An Open Platform for AI Software Developers as Generalist Agents",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2407.16741",
+      "core_operation": "Provide an open event-stream architecture and sandboxed interaction surface for software agents.",
+      "relevant_limit": "A platform trace format is infrastructure, not an algorithm for learning from the trace."
+    },
+    {
+      "id": "lit-021",
+      "title": "AgentBench: Evaluating LLMs as Agents",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2308.03688",
+      "core_operation": "Compare language-model agents across multiple interactive environments under common evaluation.",
+      "relevant_limit": "Cross-environment aggregate scores can hide environment-specific failure mechanisms."
+    },
+    {
+      "id": "lit-022",
+      "title": "AgentBoard: An Analytical Evaluation Board of Multi-turn LLM Agents",
+      "year": 2024,
+      "source": "https://arxiv.org/abs/2401.13178",
+      "core_operation": "Expose progress and fine-grained capability metrics for multi-turn agent evaluation.",
+      "relevant_limit": "Analytical metrics diagnose behavior but do not specify a new state-update operation."
+    },
+    {
+      "id": "lit-023",
+      "title": "GAIA: a benchmark for General AI Assistants",
+      "year": 2023,
+      "source": "https://arxiv.org/abs/2311.12983",
+      "core_operation": "Evaluate assistants on questions requiring reasoning, multimodality, browsing, and tools.",
+      "relevant_limit": "Answer correctness offers less state-transition visibility than instrumented software environments."
+    },
+    {
+      "id": "lit-024",
+      "title": "WebShop: Towards Scalable Real-World Web Interaction with Grounded Language Agents",
+      "year": 2022,
+      "source": "https://arxiv.org/abs/2207.01206",
+      "core_operation": "Evaluate language agents in a large simulated e-commerce website with grounded goals.",
+      "relevant_limit": "Reward and action traces do not resolve whether an error arose from retrieval, planning, or grounding."
+    }
+  ]
+}

@@ -366,6 +366,8 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertIn("0→1 development", (runtime / "sop/tier1-skeleton/run-development.md").read_text())
             self.assertIn("已批准 proposal", (runtime / "sop/tier1-skeleton/research-execution-grill.md").read_text())
             self.assertIn("有截止时间", (runtime / "sop/tier1-skeleton/run-competition.md").read_text())
+            option_search = runtime / "sop/tier2-activity/option-search.md"
+            self.assertIn("candidate packet", option_search.read_text(encoding="utf-8"))
             evidence_reference = runtime / "sop/tier1-skeleton/references/research-evidence-presentation.md"
             self.assertIn("authoritative final table", evidence_reference.read_text(encoding="utf-8"))
             overlay = runtime / "skeletons/contestos-adaptive-overlay-v2.md"
@@ -379,15 +381,20 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             global_context = (codex_home / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn("~/.codex/runtime-current/codex/CODEX-ADAPTER.md", global_context)
             self.assertIn("~/.codex/runtime-current/sop/tier1-skeleton/run-development.md", global_context)
+            self.assertIn("~/.codex/runtime-current/sop/tier2-activity/option-search.md", global_context)
             self.assertIn(competition_reference, global_context)
             workspace_context = (workspace / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn("Codex routing comes from `codex/CODEX-ADAPTER.md`", workspace_context)
             for context_text in (global_context, workspace_context):
                 self.assertNotIn("runtime-current/skeletons/contestos-adaptive-overlay", context_text)
             manifest = json.loads((runtime / INSTALL.SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
-            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v4")
-            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v3")
+            self.assertEqual(manifest["runtime_components"]["kernel"]["version"], "v19")
+            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v5")
+            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v4")
+            self.assertEqual(manifest["runtime_components"]["competition_profile"]["version"], "v5")
+            self.assertEqual(manifest["runtime_components"]["option_search"]["version"], "v1")
             self.assertRegex(manifest["runtime_components"]["kernel"]["sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue(marker["available_activities"]["option_search"].startswith("v1@"))
 
     def test_failure_before_current_switch_preserves_old_active_generation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
