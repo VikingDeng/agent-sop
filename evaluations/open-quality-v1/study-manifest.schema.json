@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/VikingDeng/agent-sop/evaluations/open-quality-v1/study-manifest.schema.json",
+  "title": "Open Quality v1 unverified package manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version", "study_manifest_id", "study_stage",
+    "candidate_frozen_before_results", "arms", "runtime", "budget",
+    "resource_ceiling", "randomization", "fixtures"
+  ],
+  "properties": {
+    "manifest_version": {"const": "open-quality-study-manifest-v1"},
+    "study_manifest_id": {"type": "string", "minLength": 1},
+    "study_stage": {"enum": ["pilot", "promotion"]},
+    "candidate_frozen_before_results": {"const": true},
+    "arms": {
+      "type": "object", "additionalProperties": false,
+      "required": ["A", "B", "C"],
+      "properties": {
+        "A": {"$ref": "#/$defs/rawArm"},
+        "B": {"$ref": "#/$defs/mainArm"},
+        "C": {"$ref": "#/$defs/candidateArm"}
+      }
+    },
+    "runtime": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reported_model", "reported_build", "reported_reasoning_effort", "permissions_ref", "permissions_sha256"],
+      "properties": {
+        "reported_model": {"type": "string", "minLength": 1},
+        "reported_build": {"type": "string", "minLength": 1},
+        "reported_reasoning_effort": {"type": "string", "minLength": 1},
+        "permissions_ref": {"$ref": "#/$defs/ref"},
+        "permissions_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_total_reported_wcu", "max_total_reported_run_seconds", "max_reported_external_cost_usd"],
+      "properties": {
+        "max_total_reported_wcu": {"type": "number", "exclusiveMinimum": 0},
+        "max_total_reported_run_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "max_reported_external_cost_usd": {"type": "number", "minimum": 0}
+      }
+    },
+    "resource_ceiling": {
+      "type": "object", "additionalProperties": false,
+      "required": ["network", "max_agents", "max_gpu_count"],
+      "properties": {
+        "network": {"enum": ["disabled", "fixture_only"]},
+        "max_agents": {"type": "integer", "minimum": 1},
+        "max_gpu_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "randomization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reported_method", "assignment_plan_ref", "assignment_plan_sha256"],
+      "properties": {
+        "reported_method": {"type": "string", "minLength": 1},
+        "assignment_plan_ref": {"$ref": "#/$defs/ref"},
+        "assignment_plan_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "fixtures": {
+      "type": "object", "additionalProperties": false,
+      "required": ["routing", "outcome"],
+      "properties": {
+        "routing": {"type": "array", "items": {"$ref": "#/$defs/routingBinding"}},
+        "outcome": {"type": "array", "items": {"$ref": "#/$defs/outcomeBinding"}}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^(?!0{64}$)[0-9a-f]{64}$"},
+    "ref": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*:)(?!.*\\\\).+$"},
+    "baseArm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["treatment", "reported_repository_commit", "treatment_ref", "treatment_sha256"]
+    },
+    "rawArm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["treatment", "reported_repository_commit", "treatment_ref", "treatment_sha256"],
+      "properties": {
+        "treatment": {"const": "raw_platform_only"},
+        "reported_repository_commit": {"type": "null"},
+        "treatment_ref": {"$ref": "#/$defs/ref"},
+        "treatment_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "mainArm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["treatment", "reported_repository_commit", "treatment_ref", "treatment_sha256"],
+      "properties": {
+        "treatment": {"const": "main_at_497b5ba"},
+        "reported_repository_commit": {"const": "497b5ba436a1a0392af01db3f2fecd3aa53e95e9"},
+        "treatment_ref": {"$ref": "#/$defs/ref"},
+        "treatment_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "candidateArm": {
+      "type": "object", "additionalProperties": false,
+      "required": ["treatment", "reported_repository_commit", "reported_candidate_tree_sha256", "treatment_ref", "treatment_sha256"],
+      "properties": {
+        "treatment": {"const": "candidate"},
+        "reported_repository_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "reported_candidate_tree_sha256": {"$ref": "#/$defs/sha256"},
+        "treatment_ref": {"$ref": "#/$defs/ref"},
+        "treatment_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "routingBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fixture_id", "fixture_hash"],
+      "properties": {
+        "fixture_id": {"type": "string", "minLength": 1},
+        "fixture_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "outcomeBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fixture_id", "fixture_hash", "prompt_sha256", "oracle_contract_sha256", "blind_rubric_sha256", "materialized_input_ref", "materialized_input_sha256"],
+      "properties": {
+        "fixture_id": {"type": "string", "minLength": 1},
+        "fixture_hash": {"$ref": "#/$defs/sha256"},
+        "prompt_sha256": {"$ref": "#/$defs/sha256"},
+        "oracle_contract_sha256": {"$ref": "#/$defs/sha256"},
+        "blind_rubric_sha256": {"$ref": "#/$defs/sha256"},
+        "materialized_input_ref": {"$ref": "#/$defs/ref"},
+        "materialized_input_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

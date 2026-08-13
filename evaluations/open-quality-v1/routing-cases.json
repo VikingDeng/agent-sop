@@ -1,0 +1,339 @@
+{
+  "version": "open-quality-routing-cases-v1",
+  "task_classes": [
+    "open_product",
+    "research_ideation",
+    "approved_research_execution",
+    "simple_bounded_change"
+  ],
+  "primary_modes": [
+    "fast_path",
+    "option_search",
+    "contract_ready_execution",
+    "evidence_closure",
+    "re_contract"
+  ],
+  "overlays": [
+    "browser_walkthrough",
+    "durable_goal",
+    "high_risk_supervision",
+    "independent_review",
+    "research_collision",
+    "research_fidelity",
+    "visual_critic"
+  ],
+  "cases": [
+    {
+      "id": "product_01",
+      "task_class": "open_product",
+      "pilot": true,
+      "boundary_pair": "product_direction",
+      "prompt": "从 0 到 1 做一个真正高质量的完整产品，不要平庸。目标用户和视觉方向尚未确定，任务会跨多个 session。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": ["browser_walkthrough", "durable_goal", "visual_critic"],
+        "user_decision": "defer_until_evidence"
+      },
+      "why": "方向仍是主要未知量；先形成有证据的少量候选，再进入实现。"
+    },
+    {
+      "id": "product_02",
+      "task_class": "open_product",
+      "pilot": true,
+      "boundary_pair": "product_direction",
+      "prompt": "实现已批准的产品说明。用户、核心旅程、视觉参考、non-goals、API 契约和验收标准都已冻结；先做指定 vertical slice，再扩展。任务会跨 session。",
+      "expected": {
+        "primary_mode": "contract_ready_execution",
+        "overlays": ["browser_walkthrough", "durable_goal", "visual_critic"],
+        "user_decision": "not_needed"
+      },
+      "why": "高质量不等于重新发散；契约和方向已经足以执行。"
+    },
+    {
+      "id": "product_03",
+      "task_class": "open_product",
+      "pilot": false,
+      "boundary_pair": "product_completion",
+      "prompt": "产品代码已经实现并通过单元测试。现在判断是否真的完成：走主用户路径、空错加载状态、窄屏和视觉质量，并给出可信证据。",
+      "expected": {
+        "primary_mode": "evidence_closure",
+        "overlays": ["browser_walkthrough", "independent_review", "visual_critic"],
+        "user_decision": "not_needed"
+      },
+      "why": "剩余未知量是实际产品质量而非更多实现。"
+    },
+    {
+      "id": "product_04",
+      "task_class": "open_product",
+      "pilot": true,
+      "boundary_pair": "product_scope",
+      "prompt": "把设置页现有按钮的上下 padding 从 6px 改为 8px，不改其他行为或视觉。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "范围明确、可逆、有直接渲染检查；不得误触发产品探索。"
+    },
+    {
+      "id": "product_05",
+      "task_class": "open_product",
+      "pilot": false,
+      "boundary_pair": "product_scope",
+      "prompt": "这个 dashboard 能运行，但很像廉价 AI 模板。定位、信息层级和主路径都可以重想；先判断最值得采用的产品与视觉方向。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": ["browser_walkthrough", "visual_critic"],
+        "user_decision": "defer_until_evidence"
+      },
+      "why": "问题不是一个 CSS tweak；需要用参考、反例和候选方向解决语义与视觉选择。"
+    },
+    {
+      "id": "product_06",
+      "task_class": "open_product",
+      "pilot": false,
+      "boundary_pair": "product_completion",
+      "prompt": "golden slice 已由用户批准。按同一交互、信息层级和组件语义扩展其余三个页面，契约禁止新增功能。",
+      "expected": {
+        "primary_mode": "contract_ready_execution",
+        "overlays": ["browser_walkthrough", "visual_critic"],
+        "user_decision": "not_needed"
+      },
+      "why": "代表性范例已经冻结；现在应忠实扩展而非重新选方向。"
+    },
+    {
+      "id": "idea_01",
+      "task_class": "research_ideation",
+      "pilot": true,
+      "boundary_pair": "idea_novelty",
+      "prompt": "为长程 Agent 提出一个 8 分以上的核心算法创新。当前没有批准的 idea；必须从真实 benchmark 信号和最近邻出发。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": ["durable_goal", "independent_review", "research_collision"],
+        "user_decision": "defer_until_evidence"
+      },
+      "why": "多个核心操作仍可能合理；先搜索、碰撞和做决定性检验。"
+    },
+    {
+      "id": "idea_02",
+      "task_class": "research_ideation",
+      "pilot": false,
+      "boundary_pair": "idea_novelty",
+      "prompt": "只评估这个候选是否和最近工作撞车、信号是否能从公开 benchmark 提取，并给出最强反对理由；不要写 proposal 或代码。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": ["independent_review", "research_collision"],
+        "user_decision": "not_needed"
+      },
+      "why": "仍在方向筛选期，但用户已授权 Agent 给出调查判断，不必先暂停。"
+    },
+    {
+      "id": "idea_03",
+      "task_class": "research_ideation",
+      "pilot": true,
+      "boundary_pair": "idea_decisive_test",
+      "prompt": "已有三个核心操作真正不同的候选。为每个候选找最近邻和 kill condition，选择信息量最高的最小实验后再让我裁决。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": ["durable_goal", "research_collision"],
+        "user_decision": "defer_until_evidence"
+      },
+      "why": "候选存在不等于方向冻结；需要可区分的证据后再选择。"
+    },
+    {
+      "id": "idea_04",
+      "task_class": "research_ideation",
+      "pilot": false,
+      "boundary_pair": "idea_decisive_test",
+      "prompt": "候选和 kill condition 已冻结，且用户授权在本地公开数据上运行指定的低成本决定性实验；不得扩大为正式训练。",
+      "expected": {
+        "primary_mode": "contract_ready_execution",
+        "overlays": ["research_collision"],
+        "user_decision": "not_needed"
+      },
+      "why": "方向搜索中的下一实验已经形成可执行契约，不需继续发散。"
+    },
+    {
+      "id": "idea_05",
+      "task_class": "research_ideation",
+      "pilot": true,
+      "boundary_pair": "idea_adjudication",
+      "prompt": "检索、最近邻矩阵和三个决定性实验都已完成。独立审查证据，kill 弱候选并推荐是否值得让用户批准剩余方向。",
+      "expected": {
+        "primary_mode": "evidence_closure",
+        "overlays": ["independent_review", "research_collision"],
+        "user_decision": "required_now"
+      },
+      "why": "需要收口现有证据并把真实选择交回用户，而非增加模块。"
+    },
+    {
+      "id": "idea_06",
+      "task_class": "research_ideation",
+      "pilot": false,
+      "boundary_pair": "idea_adjudication",
+      "prompt": "用通俗中文解释我贴出的算法核心操作和信号来源。不要检索、评价创新性、改 idea 或做实验。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "研究语境不自动触发重型探索；这是边界清楚的解释任务。"
+    },
+    {
+      "id": "research_01",
+      "task_class": "approved_research_execution",
+      "pilot": true,
+      "boundary_pair": "research_phase",
+      "prompt": "proposal 已由用户批准。按冻结方法和 Phase 0 protocol 实现真实 adapter，保存方法语义与独立 Oracle；任务跨服务器批次。",
+      "expected": {
+        "primary_mode": "contract_ready_execution",
+        "overlays": ["durable_goal", "research_fidelity"],
+        "user_decision": "not_needed"
+      },
+      "why": "idea 已批准，应保真执行和保存可恢复状态，不再重新发明。"
+    },
+    {
+      "id": "research_02",
+      "task_class": "approved_research_execution",
+      "pilot": false,
+      "boundary_pair": "research_phase",
+      "prompt": "Phase 0 实现和 immutable run 已完成。用独立 checker 判定预注册 GO/NO-GO，检查 smoke 未进入论文证据，然后停止或请求 scale。",
+      "expected": {
+        "primary_mode": "evidence_closure",
+        "overlays": ["independent_review", "research_fidelity"],
+        "user_decision": "required_now"
+      },
+      "why": "现阶段要裁决已有 pilot，而不是修到它看似成功或擅自扩容。"
+    },
+    {
+      "id": "research_03",
+      "task_class": "approved_research_execution",
+      "pilot": true,
+      "boundary_pair": "research_fix",
+      "prompt": "修复实验 runner 中已定位的 JSON 字段拼写错误，方法、数据、预算和 acceptance 都不变；运行对应单测。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "已定位且方法无关的可逆修复不应触发重新审议 proposal。"
+    },
+    {
+      "id": "research_04",
+      "task_class": "approved_research_execution",
+      "pilot": true,
+      "boundary_pair": "research_fix",
+      "prompt": "实现太难，考虑把已批准方法换成一个 proxy objective、换 benchmark 并弱化 claim；这些变化尚未得到用户同意。",
+      "expected": {
+        "primary_mode": "re_contract",
+        "overlays": ["durable_goal", "research_fidelity"],
+        "user_decision": "required_now"
+      },
+      "why": "这是 material re-contract，不是允许静默 fallback 或先行 option search 的实现细节；必须 HUMAN 裁决。"
+    },
+    {
+      "id": "research_05",
+      "task_class": "approved_research_execution",
+      "pilot": false,
+      "boundary_pair": "research_scale",
+      "prompt": "代码 smoke 通过，但真实 Phase 0 结果、独立 Oracle 和 scale criteria 仍缺失。用户问能否直接启动 50+ checkpoints。",
+      "expected": {
+        "primary_mode": "evidence_closure",
+        "overlays": ["independent_review", "research_fidelity"],
+        "user_decision": "not_needed"
+      },
+      "why": "先补齐能改变扩容决定的真实证据；smoke 不能触发科学 GO。"
+    },
+    {
+      "id": "research_06",
+      "task_class": "approved_research_execution",
+      "pilot": false,
+      "boundary_pair": "research_scale",
+      "prompt": "Phase 0 已由独立 Oracle 判定 GO，用户已批准冻结的规模和预算。启动注册的正式实验队列并保持方法不漂移。",
+      "expected": {
+        "primary_mode": "contract_ready_execution",
+        "overlays": ["durable_goal", "high_risk_supervision", "research_fidelity"],
+        "user_decision": "not_needed"
+      },
+      "why": "方向、证据门槛和资源授权都已满足，适合自动化吞吐。"
+    },
+    {
+      "id": "simple_01",
+      "task_class": "simple_bounded_change",
+      "pilot": true,
+      "boundary_pair": "simple_text",
+      "prompt": "把 README 中的 `teh` 改成 `the`，不要改其他内容。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "明确、局部、可逆，直接修改并检查 diff。"
+    },
+    {
+      "id": "simple_02",
+      "task_class": "simple_bounded_change",
+      "pilot": false,
+      "boundary_pair": "simple_text",
+      "prompt": "在现有响应 DTO 加一个可选的 `nickname` 字段；API 兼容性和对应测试已经明确。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "契约足够且改动小，不需要候选方向或持久目标。"
+    },
+    {
+      "id": "simple_03",
+      "task_class": "simple_bounded_change",
+      "pilot": true,
+      "boundary_pair": "simple_bug",
+      "prompt": "修复已由 failing unit test 定位的 off-by-one，并只运行最相关测试和 diff 检查。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "有直接 Oracle 的局部 bug 不应派生开放式流程。"
+    },
+    {
+      "id": "simple_04",
+      "task_class": "simple_bounded_change",
+      "pilot": false,
+      "boundary_pair": "simple_bug",
+      "prompt": "为现有纯函数补一个指定输入输出的普通单元测试，不改生产代码。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "目标与 Oracle 均明确；额外 review 和 browser QA 没有信息增益。"
+    },
+    {
+      "id": "simple_05",
+      "task_class": "simple_bounded_change",
+      "pilot": true,
+      "boundary_pair": "simple_quality_words",
+      "prompt": "高质量地把一个明确 CSS gap 从 12px 调成设计稿指定的 16px；其余像素不得变化。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "“高质量”字样不是重型路由触发器；范围仍是一个直接可验的数值。"
+    },
+    {
+      "id": "simple_06",
+      "task_class": "simple_bounded_change",
+      "pilot": false,
+      "boundary_pair": "simple_quality_words",
+      "prompt": "在贡献指南增加用户给出的一个官方链接，保持现有格式；不要检索替代链接或重写章节。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "来源和变更位置都由用户冻结，直接编辑并验证链接文本即可。"
+    }
+  ]
+}

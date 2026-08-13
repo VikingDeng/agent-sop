@@ -1,0 +1,8 @@
+[project]
+name = "typed-api-fixture"
+version = "0.0.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.fixture]
+test-command = "python3 -m unittest discover -s tests -p 'test_*.py'"

@@ -1,0 +1,16 @@
+{
+  "version": "fixture-lock-v1",
+  "algorithm": "sha256",
+  "tree_definition": "sha256 of sorted relative_path + NUL + file_sha256 + LF",
+  "tree_sha256": "af2a3408b67586369dccc77e30e843ae2e275d3af6a4ee02544f82d83ad69cea",
+  "deterministic_zip_sha256": "0d8d5cd817ac1588ccd78ff3408ac119d55704579ad0b715e6fc9f402cfb452f",
+  "files": {
+    "README.md": "169ae6b619476703109c4d63d359ab4f02c090579c06dd54b4617bf8acb0a9da",
+    "api-contract.json": "8f227eb4098571eb30ffb3de0fb6e7477a4cc33cc17f9d99c0110cefecd3d682",
+    "app.py": "1555eaccdf3756357435a0c76caab4f38f737d9b16e3cc7b415b513dea025d20",
+    "data/runs.json": "caf8997df6dc907936437c187b9fed07e9819e5c7aca58f4e4e1311f8b83772d",
+    "static/app.js": "1aa067c0b3266cfa9a853ce01c5348a5d8417497a6c4f1f37dec7c6e1148781b",
+    "static/index.html": "96c46428de89b93a20cf546507872783c9c1e301d7b3e815d4c9ec45b8bf004a",
+    "static/styles.css": "e06faf7558aff2ae74e22f0c555a542d63b680bc40758a02057ab8677ee65679"
+  }
+}

@@ -1,0 +1,13 @@
+run_id,task_id,arm,sequence,environment_snapshot,task_success,collateral_damage,tool_steps,trace_sha256,paper_eligible
+b01,task-01,baseline,1,phase0-env-v3-before-maintenance,0,0,34,6f38e73833b57111d6e4ce964f1bed26e95e44b81101cb4bbe2deaf5eab63d3d,true
+b02,task-02,baseline,2,phase0-env-v3-before-maintenance,1,0,27,0c9e5778fe51ffe96d366288a06a6127bf442b7b1567400a48a5e073cea8074d,true
+b03,task-03,baseline,3,phase0-env-v3-before-maintenance,0,0,39,1ad49d3766d00dcfbe59850f239c4910aff1e0989f74a2b368f864739ff2b8cf,true
+b04,task-04,baseline,4,phase0-env-v3-before-maintenance,1,0,25,3be28177820224db20f510b4a341657b0d2ef8faa573630818b167efb011a713,true
+b05,task-05,baseline,5,phase0-env-v3-before-maintenance,1,0,31,f39d6110ff903e8c9de4338f2205323f5896be9582d636a3f26a5ca02b1b3f70,true
+b06,task-06,baseline,6,phase0-env-v3-before-maintenance,0,0,38,a6ff14fc64ae68da74bf52a53a32c1d3f54edb7e6884b4df498fa3f4d49e3b59,true
+m01,task-01,method,8,phase0-env-v3-after-maintenance,1,0,36,ed704ef889ac0fb7a8b9f2955acc9a5f0029eccbb0f49cf6276636a46610869a,true
+m02,task-02,method,9,phase0-env-v3-after-maintenance,1,0,29,2d32b94431dee31a3365cde36c80fa51d49dab6465b9cde5a22d5146f7418f8f,true
+m03,task-03,method,10,phase0-env-v3-after-maintenance,1,0,38,a9f27b01b2f8635df29cfd3885555229ae2e344eebd57c89a88e1706f10704f7,true
+m04,task-04,method,11,phase0-env-v3-after-maintenance,1,0,28,,true
+m05,task-05,method,12,phase0-env-v3-after-maintenance,1,0,33,dbbf8a847fe2a2fce9006e7b514206e885644196dbb9c1b89908cdd4038ffb2d,true
+m06,task-06,method,13,phase0-env-v3-after-maintenance,0,0,40,d06388ebb079859293b8779b00830dba472b8ca812f31493a84dbacd9e7b6ab1,true

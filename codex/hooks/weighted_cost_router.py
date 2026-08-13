@@ -128,6 +128,7 @@ def _runtime_provenance(data: dict[str, Any]) -> dict[str, Any]:
             "research": component("research_profile"),
             "competition": component("competition_profile"),
         },
+        "available_activities": {"option_search": component("option_search")},
         "selected_domain_profile": selected,
         "routing_profile": "strict" if _strict_enforcement() else "advisory",
         "foreground_model": _bounded_identity(

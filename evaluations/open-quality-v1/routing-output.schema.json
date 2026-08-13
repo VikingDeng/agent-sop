@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/VikingDeng/agent-sop/evaluations/open-quality-v1/routing-output.schema.json",
+  "title": "Open Quality v1 Codex routing decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "primary_mode",
+    "overlays",
+    "user_decision",
+    "decisive_facts",
+    "next_action"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "open-quality-routing-v1"
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{2,31}$"
+    },
+    "primary_mode": {
+      "type": "string",
+      "enum": [
+        "fast_path",
+        "option_search",
+        "contract_ready_execution",
+        "evidence_closure",
+        "re_contract"
+      ]
+    },
+    "overlays": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "enum": [
+          "browser_walkthrough",
+          "durable_goal",
+          "high_risk_supervision",
+          "independent_review",
+          "research_collision",
+          "research_fidelity",
+          "visual_critic"
+        ]
+      }
+    },
+    "user_decision": {
+      "type": "string",
+      "enum": [
+        "not_needed",
+        "defer_until_evidence",
+        "required_now"
+      ]
+    },
+    "decisive_facts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      }
+    },
+    "next_action": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 320
+    }
+  }
+}

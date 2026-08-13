@@ -1,0 +1,78 @@
+{
+  "next_id": 205,
+  "runs": [
+    {
+      "id": "run-201",
+      "name": "retrieval baseline",
+      "dataset": "support-intents-v3",
+      "status": "completed",
+      "created_at": "2026-07-18T09:12:00Z",
+      "progress": 100,
+      "metrics": {"accuracy": 0.781, "latency_ms": 94.0, "cost_usd": 1.84},
+      "parameters": {"retriever": "bm25", "top_k": 6, "seed": 17},
+      "failure": null,
+      "logs": [
+        "09:12:00 dataset loaded: 1200 examples",
+        "09:12:04 evaluation started",
+        "09:14:11 evaluation complete: 1200/1200"
+      ]
+    },
+    {
+      "id": "run-202",
+      "name": "hybrid reranker",
+      "dataset": "support-intents-v3",
+      "status": "completed",
+      "created_at": "2026-07-18T10:03:00Z",
+      "progress": 100,
+      "metrics": {"accuracy": 0.824, "latency_ms": 137.0, "cost_usd": 2.31},
+      "parameters": {"retriever": "hybrid", "top_k": 12, "seed": 17},
+      "failure": null,
+      "logs": [
+        "10:03:00 dataset loaded: 1200 examples",
+        "10:03:05 reranker warmup complete",
+        "10:06:42 evaluation complete: 1200/1200"
+      ]
+    },
+    {
+      "id": "run-203",
+      "name": "nightly ablation",
+      "dataset": "support-intents-v3",
+      "status": "running",
+      "created_at": "2026-07-18T11:40:00Z",
+      "progress": 63,
+      "metrics": {"accuracy": 0.799, "latency_ms": 112.0, "cost_usd": 1.02},
+      "parameters": {"retriever": "dense", "top_k": 8, "seed": 29},
+      "failure": null,
+      "logs": [
+        "11:40:00 dataset loaded: 1200 examples",
+        "11:40:07 evaluation started",
+        "11:42:19 checkpoint: 756/1200"
+      ]
+    },
+    {
+      "id": "run-204",
+      "name": "high-recall stress test with an intentionally long descriptive name",
+      "dataset": "long-tail-escalations-2026-07",
+      "status": "failed",
+      "created_at": "2026-07-18T12:15:00Z",
+      "progress": 47,
+      "metrics": {"accuracy": 0.612, "latency_ms": 318.0, "cost_usd": 0.91},
+      "parameters": {"retriever": "dense", "top_k": 64, "seed": 31},
+      "failure": {
+        "code": "embedding_dimension_mismatch",
+        "message": "Expected 1536 dimensions but shard 7 supplied 1024.",
+        "retryable": false,
+        "first_bad_item": "ticket-00947"
+      },
+      "logs": [
+        "12:15:00 loading shard 1/12",
+        "12:15:03 loading shard 2/12",
+        "12:15:06 loading shard 3/12"
+      ],
+      "log_repeat": {
+        "count": 96,
+        "template": "12:16:{second} evaluator item {item}: candidate retrieval set contains 64 passages; top passage exceeded the ordinary diagnostic width"
+      }
+    }
+  ]
+}

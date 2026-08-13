@@ -1,0 +1,15 @@
+{
+  "version": "fixture-lock-v1",
+  "algorithm": "sha256",
+  "tree_definition": "sha256 of sorted relative_path + NUL + file_sha256 + LF",
+  "tree_sha256": "fa686013d4edf549473a044adeb6d39baf56b52be60b0d8406b1ba75213941d6",
+  "deterministic_zip_sha256": "3eb17e929eed3ad35b5dd646ad6fb163b236371dc601eb45f261bc760c008109",
+  "files": {
+    "README.md": "5d061a351e59d85a1c0f8a1c8100dc7cd27a868020f38dd4fe92e0652a9bca47",
+    "evidence/benchmark-adapter-contract.json": "cc07de9d8ecb1b8213ddafb42b15da1a999799c523d6c2aea1f2dfa29609caf5",
+    "evidence/collision-matrix.json": "c49a9bb60320c75d8708ef0eb646e144b678d2ae2485a65434fd92ef6cb0a9ec",
+    "evidence/literature.json": "aea96bae382fdc480eecd429c3f30e982f9b19c55ca086d1f552aa30ac855dbf",
+    "evidence/traces.json": "7807def6e63e4e346ae7b4022f67c0bfe1111400c12c50ef5eb45ec922dabf46",
+    "submission.schema.json": "168ac6a1d5d106a82c1c0a15f75fb85f3c8bc671deb0c02f4a893789a0cef6ec"
+  }
+}

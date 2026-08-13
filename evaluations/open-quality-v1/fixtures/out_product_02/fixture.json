@@ -1,0 +1,14 @@
+{
+  "version": "materialized-fixture-v1",
+  "outcome_id": "out_product_02",
+  "task_class": "open_product",
+  "agent_input_root": "workspace",
+  "independent_oracle": "oracle/behavior_oracle.py",
+  "immutable_paths": ["workspace/api-contract.json", "workspace/data/runs.json"],
+  "writable_paths": ["workspace/app.py", "workspace/static/"],
+  "expected_start": {
+    "behavior_oracle": "PASS",
+    "visual_state": "intentionally template-like and missing required boundary-state UX"
+  },
+  "external_evidence": ["real-browser walkthrough", "390px and desktop screenshots", "console/network trace", "blind visual/product score"]
+}

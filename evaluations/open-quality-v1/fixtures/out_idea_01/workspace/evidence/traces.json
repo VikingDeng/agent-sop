@@ -1,0 +1,174 @@
+{
+  "version": "long-horizon-replay-traces-v1",
+  "provenance": "Purpose-built deterministic evaluation replays. These are not paper-reported benchmark scores.",
+  "traces": [
+    {
+      "id": "trace-001",
+      "benchmark": "AppWorld-compatible",
+      "task": "Move only overdue household bills into a payment plan and notify the owner.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "list_bills", "observation": "6 bills; 2 overdue"},
+        {"step": 2, "action": "create_plan(all_bill_ids)", "observation": "plan created for 6 bills"},
+        {"step": 3, "action": "send_message", "observation": "owner notified"},
+        {"step": 4, "action": "state_test", "observation": "collateral damage: 4 non-overdue bills modified"}
+      ],
+      "observable_signal": "The first unexpected state delta occurs at step 2.",
+      "ambiguity": "The trace does not reveal whether filtering was forgotten or the API argument was misunderstood."
+    },
+    {
+      "id": "trace-002",
+      "benchmark": "AppWorld-compatible",
+      "task": "Reschedule a meeting after finding a slot shared by all required attendees.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "read_calendars", "observation": "three candidate slots"},
+        {"step": 2, "action": "select_slot", "observation": "09:00 chosen from organizer calendar only"},
+        {"step": 3, "action": "update_event", "observation": "event updated"},
+        {"step": 4, "action": "state_test", "observation": "one required attendee has a conflict"}
+      ],
+      "observable_signal": "A locally valid action produces a globally invalid final state.",
+      "ambiguity": "Search truncation and constraint omission explain the same terminal failure."
+    },
+    {
+      "id": "trace-003",
+      "benchmark": "AppWorld-compatible",
+      "task": "Buy the cheapest in-stock replacement that meets two dietary constraints.",
+      "terminal_result": "success",
+      "events": [
+        {"step": 1, "action": "search_products", "observation": "28 results"},
+        {"step": 2, "action": "filter_constraints", "observation": "3 eligible results"},
+        {"step": 3, "action": "sort_price", "observation": "sku-18 cheapest"},
+        {"step": 4, "action": "purchase", "observation": "order confirmed; state tests pass"}
+      ],
+      "observable_signal": "Explicit constraint state is preserved before the irreversible action.",
+      "ambiguity": "This single success does not isolate whether filtering or explicit state representation mattered."
+    },
+    {
+      "id": "trace-004",
+      "benchmark": "AppWorld-compatible",
+      "task": "Delete duplicate contacts without deleting homonyms.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "list_contacts", "observation": "42 contacts"},
+        {"step": 2, "action": "group_by_name", "observation": "5 repeated names"},
+        {"step": 3, "action": "bulk_delete", "observation": "5 records deleted"},
+        {"step": 4, "action": "state_test", "observation": "2 distinct people deleted"}
+      ],
+      "observable_signal": "The chosen equivalence relation is weaker than the evaluator's identity relation.",
+      "ambiguity": "No counterfactual was run with email and phone included."
+    },
+    {
+      "id": "trace-005",
+      "benchmark": "AppWorld-compatible",
+      "task": "File travel receipts, then reimburse only policy-compliant items.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "read_policy", "observation": "meal cap depends on city"},
+        {"step": 2, "action": "classify_receipts", "observation": "8 compliant, 2 over cap"},
+        {"step": 3, "action": "submit_reimbursement", "observation": "all 10 submitted"},
+        {"step": 4, "action": "self_review", "observation": "narrative says only 8 were submitted"}
+      ],
+      "observable_signal": "The reflection contradicts the executable state delta.",
+      "ambiguity": "The agent may have reasoned correctly but bound the wrong variable to the tool call."
+    },
+    {
+      "id": "trace-006",
+      "benchmark": "AppWorld-compatible",
+      "task": "Archive resolved support threads while preserving escalated threads.",
+      "terminal_result": "success",
+      "events": [
+        {"step": 1, "action": "list_threads", "observation": "31 threads"},
+        {"step": 2, "action": "preview_state_delta", "observation": "12 archive, 19 unchanged"},
+        {"step": 3, "action": "archive_threads", "observation": "12 archived"},
+        {"step": 4, "action": "state_test", "observation": "all tests and collateral checks pass"}
+      ],
+      "observable_signal": "A previewed state delta matches the committed state delta.",
+      "ambiguity": "The fixture cannot distinguish preview benefit from an easier instance."
+    },
+    {
+      "id": "trace-007",
+      "benchmark": "SWE-bench-compatible",
+      "task": "Fix timezone parsing without changing naive-datetime behavior.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "search(parse_datetime)", "observation": "3 implementations"},
+        {"step": 2, "action": "edit first match", "observation": "timezone test passes"},
+        {"step": 3, "action": "run focused test", "observation": "1 passed"},
+        {"step": 4, "action": "run suite", "observation": "11 naive-datetime regressions"}
+      ],
+      "observable_signal": "The focused oracle and acceptance oracle disagree.",
+      "ambiguity": "Localization error and missing invariant both remain plausible."
+    },
+    {
+      "id": "trace-008",
+      "benchmark": "SWE-bench-compatible",
+      "task": "Stop a cache key collision for two request variants.",
+      "terminal_result": "success",
+      "events": [
+        {"step": 1, "action": "inspect failing test", "observation": "headers omitted from key"},
+        {"step": 2, "action": "trace callers", "observation": "two public call paths"},
+        {"step": 3, "action": "edit canonical key function", "observation": "single invariant changed"},
+        {"step": 4, "action": "run targeted and suite", "observation": "all pass"}
+      ],
+      "observable_signal": "Caller tracing locates one shared semantic choke point.",
+      "ambiguity": "No evidence shows that the same strategy transfers beyond this repository."
+    },
+    {
+      "id": "trace-009",
+      "benchmark": "SWE-bench-compatible",
+      "task": "Restore a CLI flag removed during parser refactoring.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "search flag name", "observation": "documentation only"},
+        {"step": 2, "action": "add parser option", "observation": "help output contains flag"},
+        {"step": 3, "action": "run CLI smoke", "observation": "exit 0"},
+        {"step": 4, "action": "hidden behavior test", "observation": "flag value never reaches execution config"}
+      ],
+      "observable_signal": "Surface acceptance succeeds while the internal state transition is absent.",
+      "ambiguity": "A dataflow trace or a semantic test could each have prevented the error."
+    },
+    {
+      "id": "trace-010",
+      "benchmark": "SWE-bench-compatible",
+      "task": "Make a serializer preserve an optional field through round-trip.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "edit serializer", "observation": "field written"},
+        {"step": 2, "action": "run new test", "observation": "write test passes"},
+        {"step": 3, "action": "run round-trip test", "observation": "reader drops field"},
+        {"step": 4, "action": "patch reader", "observation": "deadline reached before suite"}
+      ],
+      "observable_signal": "A late oracle exposes a two-sided invariant after budget has been spent.",
+      "ambiguity": "Earlier contract extraction and broader test selection are competing interventions."
+    },
+    {
+      "id": "trace-011",
+      "benchmark": "SWE-bench-compatible",
+      "task": "Prevent a retry loop from swallowing a permanent authentication error.",
+      "terminal_result": "success",
+      "events": [
+        {"step": 1, "action": "reproduce", "observation": "retry loop reaches timeout"},
+        {"step": 2, "action": "inspect exception hierarchy", "observation": "permanent error subclasses broad retryable error"},
+        {"step": 3, "action": "add semantic guard", "observation": "auth error exits immediately"},
+        {"step": 4, "action": "run fault matrix", "observation": "transient retries preserved; suite passes"}
+      ],
+      "observable_signal": "A failure taxonomy predicts which transition should be retried.",
+      "ambiguity": "The taxonomy was supplied by code structure rather than learned from experience."
+    },
+    {
+      "id": "trace-012",
+      "benchmark": "SWE-bench-compatible",
+      "task": "Fix an intermittent test caused by global locale state.",
+      "terminal_result": "fail",
+      "events": [
+        {"step": 1, "action": "run failing test", "observation": "passes alone"},
+        {"step": 2, "action": "repeat test", "observation": "20/20 pass"},
+        {"step": 3, "action": "mark test flaky", "observation": "suite green with rerun"},
+        {"step": 4, "action": "run order probe", "observation": "fails only after locale-mutating test"}
+      ],
+      "observable_signal": "A controlled order intervention reveals hidden environment state.",
+      "ambiguity": "The trace does not decide between test isolation and production-state hardening."
+    }
+  ]
+}

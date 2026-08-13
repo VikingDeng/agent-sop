@@ -1,0 +1,16 @@
+{
+  "version": "phase0-traces-v1",
+  "records": [
+    {"run_id": "b01", "payload": "b01|task-01|baseline|success=0|environment=before-maintenance"},
+    {"run_id": "b02", "payload": "b02|task-02|baseline|success=1|environment=before-maintenance"},
+    {"run_id": "b03", "payload": "b03|task-03|baseline|success=0|environment=before-maintenance"},
+    {"run_id": "b04", "payload": "b04|task-04|baseline|success=1|environment=before-maintenance"},
+    {"run_id": "b05", "payload": "b05|task-05|baseline|success=1|environment=before-maintenance"},
+    {"run_id": "b06", "payload": "b06|task-06|baseline|success=0|environment=before-maintenance"},
+    {"run_id": "m01", "payload": "m01|task-01|method|success=1|environment=after-maintenance"},
+    {"run_id": "m02", "payload": "m02|task-02|method|success=1|environment=after-maintenance"},
+    {"run_id": "m03", "payload": "m03|task-03|method|success=1|environment=after-maintenance"},
+    {"run_id": "m05", "payload": "m05|task-05|method|success=1|environment=after-maintenance"},
+    {"run_id": "m06", "payload": "m06|task-06|method|success=0|environment=after-maintenance"}
+  ]
+}

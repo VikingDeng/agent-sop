@@ -1,0 +1,51 @@
+{
+  "version": "collision-matrix-v1",
+  "purpose": "Known nearest-neighbor collisions to test, not a list of approved ideas.",
+  "operation_families": [
+    {
+      "id": "verbal-memory",
+      "nearest_refs": ["lit-002", "lit-009", "lit-010", "lit-011"],
+      "collision_test": "If the proposal only stores or retrieves textual lessons, state why it is not one of these memory updates."
+    },
+    {
+      "id": "branch-search",
+      "nearest_refs": ["lit-004", "lit-005", "lit-012"],
+      "collision_test": "If the proposal explores alternatives, identify the search state, expansion rule, evaluator, and cost delta."
+    },
+    {
+      "id": "tool-grounded-revision",
+      "nearest_refs": ["lit-001", "lit-007", "lit-008"],
+      "collision_test": "If the proposal critiques and retries, name the new information unavailable to ordinary tool-grounded revision."
+    },
+    {
+      "id": "interface-or-fixed-pipeline",
+      "nearest_refs": ["lit-018", "lit-019", "lit-020"],
+      "collision_test": "If the proposal constrains actions, distinguish an algorithmic update from an interface or pipeline redesign."
+    },
+    {
+      "id": "benchmark-diagnostics",
+      "nearest_refs": ["lit-013", "lit-014", "lit-015", "lit-016", "lit-017", "lit-021", "lit-022", "lit-023", "lit-024"],
+      "collision_test": "If the proposal adds trace metrics, show what policy or state transition the diagnostic changes."
+    }
+  ],
+  "cross_domain_collisions": [
+    {
+      "id": "collision-01",
+      "trace_refs": ["trace-001", "trace-007"],
+      "shared_observation": "A local success precedes a global acceptance failure.",
+      "unresolved_alternatives": ["better invariant extraction", "later full oracle", "counterfactual state-delta check"]
+    },
+    {
+      "id": "collision-02",
+      "trace_refs": ["trace-005", "trace-009"],
+      "shared_observation": "Narrative or surface evidence claims a behavior that executable state does not contain.",
+      "unresolved_alternatives": ["dataflow binding", "execution-grounded reflection", "semantic state probe"]
+    },
+    {
+      "id": "collision-03",
+      "trace_refs": ["trace-002", "trace-004", "trace-012"],
+      "shared_observation": "A hidden relation or environment variable invalidates an otherwise plausible action.",
+      "unresolved_alternatives": ["relation discovery", "state intervention", "broader context retrieval"]
+    }
+  ]
+}

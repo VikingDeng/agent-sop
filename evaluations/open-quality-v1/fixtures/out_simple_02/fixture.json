@@ -1,0 +1,14 @@
+{
+  "version": "materialized-fixture-v1",
+  "outcome_id": "out_simple_02",
+  "task_class": "simple_bounded_change",
+  "agent_input_root": "workspace",
+  "independent_oracle": "oracle/check_change.py",
+  "immutable_paths": ["workspace/README.md", "workspace/pyproject.toml", "workspace/src/__init__.py"],
+  "writable_paths": ["workspace/src/api_models.py", "workspace/src/serializer.py", "workspace/tests/test_user_response.py"],
+  "expected_start": {
+    "project_tests": "PASS",
+    "change_oracle": "FAIL until optional nickname is implemented"
+  },
+  "external_evidence": ["max_agents=1", "network disabled", "WCU/elapsed", "zero artifacts outside the candidate root"]
+}

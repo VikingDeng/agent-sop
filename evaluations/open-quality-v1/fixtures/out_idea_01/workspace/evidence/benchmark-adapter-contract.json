@@ -1,0 +1,30 @@
+{
+  "version": "decisive-probe-adapter-v1",
+  "network": "disabled",
+  "available_splits": ["appworld-compatible", "swe-bench-compatible"],
+  "unit_of_randomization": "task_id",
+  "inputs": {
+    "task_id": "string",
+    "initial_state_ref": "immutable fixture reference",
+    "agent_policy": "callable that emits actions",
+    "max_steps": "positive integer no greater than 40",
+    "seed": "integer"
+  },
+  "observations": [
+    "action and normalized arguments",
+    "environment response",
+    "observable state delta",
+    "elapsed tool steps",
+    "terminal evaluator result",
+    "collateral-damage result"
+  ],
+  "primary_metrics": ["task_success", "collateral_damage_rate", "tool_steps"],
+  "allowed_probe_budget": {"tasks_per_arm": 6, "seeds_per_task": 1, "max_arms": 3},
+  "prohibited_substitutions": [
+    "synthetic tasks in place of the two frozen splits",
+    "self-graded success in place of the terminal evaluator",
+    "prompt-token likelihood as a proxy for task success",
+    "a plumbing smoke test reported as an outcome experiment"
+  ],
+  "note": "The adapter contract states what can be measured. It does not privilege a candidate operation."
+}

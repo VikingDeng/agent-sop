@@ -1,0 +1,51 @@
+{
+  "version": "experiment-api-v1",
+  "media_type": "application/json",
+  "run_statuses": ["queued", "running", "completed", "failed"],
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/runs",
+      "query": {"scenario": ["default", "empty", "error", "slow"]},
+      "success": {"status": 200, "body": {"runs": "RunSummary[]"}}
+    },
+    {
+      "method": "POST",
+      "path": "/api/runs",
+      "request": {"name": "non-empty string", "dataset": "non-empty string"},
+      "success": {"status": 201, "body": {"run": "RunDetail"}},
+      "errors": [{"status": 400, "code": "invalid_request"}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/{run_id}",
+      "success": {"status": 200, "body": {"run": "RunDetail"}},
+      "errors": [{"status": 404, "code": "run_not_found"}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/{run_id}/logs",
+      "success": {"status": 200, "body": {"run_id": "string", "lines": "string[]"}},
+      "errors": [{"status": 404, "code": "run_not_found"}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/compare?left={run_id}&right={run_id}",
+      "success": {
+        "status": 200,
+        "body": {"left": "RunSummary", "right": "RunSummary", "metric_deltas": "object"}
+      },
+      "errors": [{"status": 404, "code": "run_not_found"}]
+    }
+  ],
+  "types": {
+    "RunSummary": ["id", "name", "dataset", "status", "created_at", "progress", "metrics"],
+    "RunDetail": ["id", "name", "dataset", "status", "created_at", "progress", "metrics", "parameters", "failure"]
+  },
+  "invariants": [
+    "progress is an integer from 0 through 100",
+    "failure is null unless status is failed",
+    "a newly created run is queued with progress 0 and is persisted",
+    "compare computes right minus left for metrics present in both runs"
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "out_idea_01 candidate search result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["problem", "candidates", "selection"],
+  "properties": {
+    "problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "trace_refs", "uncertainty"],
+      "properties": {
+        "statement": {"type": "string", "minLength": 40},
+        "trace_refs": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+        "uncertainty": {"type": "string", "minLength": 20}
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "core_operation", "signal", "evidence_refs", "nearest_neighbor", "decisive_experiment", "kill_condition", "impact_ceiling", "uncertainty"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^candidate-[1-5]$"},
+          "core_operation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["input", "state_transition", "output"],
+            "properties": {
+              "input": {"type": "string", "minLength": 15},
+              "state_transition": {"type": "string", "minLength": 35},
+              "output": {"type": "string", "minLength": 15}
+            }
+          },
+          "signal": {"type": "string", "minLength": 25},
+          "evidence_refs": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+          "nearest_neighbor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["literature_ref", "same", "different"],
+            "properties": {
+              "literature_ref": {"type": "string"},
+              "same": {"type": "string", "minLength": 15},
+              "different": {"type": "string", "minLength": 25}
+            }
+          },
+          "decisive_experiment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["benchmark_split", "arms", "primary_metric", "decision_rule", "competing_explanations"],
+            "properties": {
+              "benchmark_split": {"enum": ["appworld-compatible", "swe-bench-compatible", "both"]},
+              "arms": {"type": "array", "minItems": 2, "maxItems": 3, "items": {"type": "string"}},
+              "primary_metric": {"enum": ["task_success", "collateral_damage_rate", "tool_steps"]},
+              "decision_rule": {"type": "string", "minLength": 25},
+              "competing_explanations": {"type": "array", "minItems": 2, "items": {"type": "string"}}
+            }
+          },
+          "kill_condition": {"type": "string", "minLength": 25},
+          "impact_ceiling": {"type": "string", "minLength": 20},
+          "uncertainty": {"type": "string", "minLength": 20}
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "evidence_refs", "why_not_others"],
+      "properties": {
+        "candidate_id": {"type": ["string", "null"]},
+        "evidence_refs": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+        "why_not_others": {"type": "string", "minLength": 30}
+      }
+    }
+  }
+}
