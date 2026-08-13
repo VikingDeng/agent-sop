@@ -79,6 +79,170 @@ jobs:
           }, indent=2, sort_keys=True))
           PY
 
+      - name: Probe Codex 0.147 native tool sandbox without model or real secret
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap apparmor-profiles apparmor-utils
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if test -f "$profile"; then
+            sudo install -m 0644 "$profile" /etc/apparmor.d/bwrap-userns-restrict
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+          fi
+
+          npm_root="$RUNNER_TEMP/codex-0.147"
+          npm install --silent --no-audit --no-fund --prefix "$npm_root" @openai/codex@0.147.0
+          codex_cli="$npm_root/node_modules/.bin/codex"
+          test "$("$codex_cli" --version)" = "codex-cli 0.147.0"
+
+          native_root="$(mktemp -d "$RUNNER_TEMP/codex-native.XXXXXX")"
+          trap 'rm -rf -- "$native_root"' EXIT
+          workspace="$native_root/workspace"
+          outside="$native_root/evaluator-only"
+          codex_home="$native_root/codex-home"
+          user_home="$native_root/user-home"
+          mkdir -p "$workspace" "$outside" "$codex_home" "$user_home"
+          printf '%s\n' PUBLIC >"$workspace/public.txt"
+          printf '%s\n' EVALUATOR-ONLY >"$outside/oracle.txt"
+
+          cat >"$codex_home/config.toml" <<'EOF'
+          default_permissions = "pilot-tool"
+          approval_policy = "never"
+          allow_login_shell = false
+
+          [shell_environment_policy]
+          inherit = "none"
+          ignore_default_excludes = false
+          include_only = ["PATH", "HOME", "LANG", "LC_ALL"]
+          set = { PATH = "/usr/bin:/bin", HOME = "/workspace", LANG = "C.UTF-8", LC_ALL = "C.UTF-8" }
+
+          [permissions.pilot-tool]
+          extends = ":workspace"
+
+          [permissions.pilot-tool.filesystem]
+          ":root" = "deny"
+          ":minimal" = "read"
+          ":tmpdir" = "deny"
+          ":slash_tmp" = "deny"
+
+          [permissions.pilot-tool.filesystem.":workspace_roots"]
+          "." = "write"
+
+          [permissions.pilot-tool.network]
+          enabled = false
+          EOF
+
+          CODEX_CLI="$codex_cli" \
+          PILOT_WORKSPACE="$workspace" \
+          PILOT_OUTSIDE="$outside/oracle.txt" \
+          PILOT_CODEX_HOME="$codex_home" \
+          PILOT_USER_HOME="$user_home" \
+          python3 - <<'PY'
+          import json
+          import os
+          import socket
+          import subprocess
+          import sys
+
+          cli = os.environ["CODEX_CLI"]
+          workspace = os.environ["PILOT_WORKSPACE"]
+          outside = os.environ["PILOT_OUTSIDE"]
+          codex_home = os.environ["PILOT_CODEX_HOME"]
+          user_home = os.environ["PILOT_USER_HOME"]
+
+          listener = socket.socket()
+          listener.bind(("127.0.0.1", 0))
+          listener.listen(1)
+          host_port = listener.getsockname()[1]
+
+          inner = r"""
+          import json, os, socket, sys
+          outside, codex_home, parent_pid_s, host_port_s = sys.argv[1:]
+          checks = {}
+          checks["workspace_readable"] = open("public.txt").read() == "PUBLIC\n"
+          with open("native-sandbox-result.txt", "w") as handle:
+              handle.write("OK\n")
+          checks["workspace_writable"] = open("native-sandbox-result.txt").read() == "OK\n"
+
+          try:
+              open(outside).read()
+              checks["evaluator_path_hidden"] = False
+          except (FileNotFoundError, PermissionError):
+              checks["evaluator_path_hidden"] = True
+
+          checks["codex_home_hidden"] = not os.path.exists(codex_home)
+          checks["fake_credential_scrubbed"] = "PILOT_FAKE_CREDENTIAL" not in os.environ
+          parent_pid = int(parent_pid_s)
+          checks["sandbox_parent_pid_hidden"] = not os.path.exists(f"/proc/{parent_pid}")
+
+          probe = socket.socket()
+          probe.settimeout(1)
+          checks["host_loopback_blocked"] = probe.connect_ex(
+              ("127.0.0.1", int(host_port_s))
+          ) != 0
+          probe.close()
+
+          print(json.dumps({"checks": checks}, sort_keys=True))
+          raise SystemExit(0 if all(checks.values()) else 1)
+          """
+
+          env = {
+              "PATH": os.environ["PATH"],
+              "HOME": user_home,
+              "CODEX_HOME": codex_home,
+              "PILOT_FAKE_CREDENTIAL": "SYNTHETIC-CANARY-NOT-A-SECRET",
+              "LANG": "C.UTF-8",
+              "LC_ALL": "C.UTF-8",
+          }
+          command = [
+              cli,
+              "sandbox",
+              "-P", "pilot-tool",
+              "-C", workspace,
+              "--",
+              "/usr/bin/python3",
+              "-c", inner,
+              outside,
+              codex_home,
+              str(os.getpid()),
+              str(host_port),
+          ]
+          try:
+              completed = subprocess.run(
+                  command,
+                  cwd=workspace,
+                  env=env,
+                  stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  text=True,
+                  timeout=30,
+                  close_fds=True,
+                  pass_fds=(),
+                  check=False,
+              )
+              result = {
+                  "schema_version": "open-quality-codex-native-sandbox-v1",
+                  "codex_version": "0.147.0",
+                  "model_calls": 0,
+                  "real_secret_values_read": False,
+                  "exit_code": completed.returncode,
+                  "stdout": completed.stdout.strip(),
+                  "stderr": completed.stderr.strip(),
+                  "status": (
+                      "CODEX_NATIVE_SANDBOX_PASS"
+                      if completed.returncode == 0
+                      else "CODEX_NATIVE_SANDBOX_FAIL"
+                  ),
+              }
+              print(json.dumps(result, indent=2, sort_keys=True))
+              if completed.returncode != 0:
+                  raise SystemExit(1)
+          finally:
+              listener.close()
+          PY
+
       - name: Probe filesystem PID network capability and FD primitives
         shell: bash
         run: |
