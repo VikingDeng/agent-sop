@@ -27,6 +27,13 @@ changes retain the direct edit → focused check → diff path.
 Overlays add only an evidenced need. They cannot change acceptance or turn a
 bounded task into ceremony.
 
+An overlay is emitted only when the selected primary mode needs that mechanism
+before the next routing or user-decision boundary; do not predeclare a
+mechanism solely because a later mode or the final delivery may need it. The
+current activity can include its decisive probe—for example, a representative
+browser slice used to choose a product direction—without turning later generic
+completion QA into an early overlay.
+
 ## Two separate suites
 
 | Suite | Frozen content | Purpose |

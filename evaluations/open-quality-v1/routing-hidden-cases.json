@@ -66,12 +66,11 @@
       "expected": {
         "primary_mode": "option_search",
         "overlays": [
-          "independent_review",
           "research_collision"
         ],
         "user_decision": "defer_until_evidence"
       },
-      "why": "未来交付措辞不改变当前仍是未批准候选的证据化方向搜索。"
+      "why": "未来顶会措辞不改变当前仍是未批准候选的证据化方向搜索；最近邻与跨域碰撞属于当前工作，独立审查不是。"
     },
     {
       "id": "hidden_research_01",
