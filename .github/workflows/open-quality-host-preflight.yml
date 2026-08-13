@@ -106,7 +106,7 @@ jobs:
           printf '%s\n' PUBLIC >"$workspace/public.txt"
           printf '%s\n' EVALUATOR-ONLY >"$outside/oracle.txt"
 
-          cat >"$codex_home/config.toml" <<'EOF'
+          cat >"$codex_home/config.toml" <<EOF
           default_permissions = "pilot-tool"
           approval_policy = "never"
           allow_login_shell = false
@@ -123,6 +123,7 @@ jobs:
           [permissions.pilot-tool.filesystem]
           ":root" = "deny"
           ":minimal" = "read"
+          "$npm_root" = "read"
           ":tmpdir" = "deny"
           ":slash_tmp" = "deny"
 
