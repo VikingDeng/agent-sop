@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify frozen runner contract
         shell: bash
-        working-directory: ${{ runner.temp }}/open-quality/open-quality-pilot-v1
+        working-directory: ${{ runner.temp }}/open-quality/open-quality-pilot-v1/runner
         run: |
           set -euo pipefail
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
