@@ -53,6 +53,32 @@ jobs:
           print(json.dumps(report, indent=2, sort_keys=True))
           PY
 
+      - name: Report formal credential availability without reading values
+        shell: bash
+        env:
+          HAS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+          HAS_CODEX_ACCESS_TOKEN: ${{ secrets.CODEX_ACCESS_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          availability = {
+              "OPENAI_API_KEY": os.environ["HAS_OPENAI_API_KEY"] == "true",
+              "CODEX_ACCESS_TOKEN": os.environ["HAS_CODEX_ACCESS_TOKEN"] == "true",
+          }
+          print(json.dumps({
+              "schema_version": "open-quality-credential-presence-v1",
+              "values_read": False,
+              "availability": availability,
+              "status": (
+                  "FORMAL_CREDENTIAL_PRESENT"
+                  if any(availability.values())
+                  else "FORMAL_CREDENTIAL_ABSENT"
+              ),
+          }, indent=2, sort_keys=True))
+          PY
+
       - name: Probe filesystem PID network capability and FD primitives
         shell: bash
         run: |
