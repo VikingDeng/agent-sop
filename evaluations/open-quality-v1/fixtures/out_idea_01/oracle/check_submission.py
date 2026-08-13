@@ -7,10 +7,15 @@ This intentionally does not score which scientific idea is best.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
 from typing import Any
+
+
+DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+FIXTURE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load(path: Path) -> Any:
@@ -22,12 +27,87 @@ def _words(value: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", value.lower()))
 
 
+def _json_path(parts: Any) -> str:
+    path = "$"
+    for part in parts:
+        path += f"[{part}]" if isinstance(part, int) else f".{part}"
+    return path
+
+
+def _schema_errors(schema: Any, submission: Any) -> list[str]:
+    """Validate the whole public contract with its declared JSON Schema draft."""
+
+    if not isinstance(schema, dict) or schema.get("$schema") != DRAFT_2020_12:
+        raise RuntimeError(
+            "submission.schema.json must declare JSON Schema Draft 2020-12"
+        )
+    try:
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import SchemaError
+    except ImportError as error:
+        raise RuntimeError(
+            "Draft 2020-12 validation unavailable: install the pinned jsonschema dependency"
+        ) from error
+
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as error:
+        raise RuntimeError(f"invalid submission.schema.json: {error.message}") from error
+
+    validator = Draft202012Validator(schema)
+    return [
+        f"schema {_json_path(error.absolute_path)}: {error.message}"
+        for error in sorted(
+            validator.iter_errors(submission),
+            key=lambda item: (tuple(str(part) for part in item.absolute_path), item.message),
+        )
+    ]
+
+
+def _verify_immutable_inputs(candidate: Path) -> None:
+    """Bind schema and evidence reads to the evaluator-held fixture lock."""
+
+    lock = _load(FIXTURE_ROOT / "immutable-sha256.json")
+    locked_files = lock.get("files")
+    if not isinstance(locked_files, dict):
+        raise RuntimeError("invalid evaluator-held immutable input lock")
+    changed: list[str] = []
+    for relative, expected_hash in locked_files.items():
+        path = candidate / relative
+        if not path.is_file():
+            changed.append(relative)
+            continue
+        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual_hash != expected_hash:
+            changed.append(relative)
+    if changed:
+        raise RuntimeError(f"immutable idea inputs changed: {sorted(changed)}")
+
+
+def _result(errors: list[str], checked_candidates: int) -> dict[str, Any]:
+    return {
+        "fixture": "out_idea_01",
+        "status": "PASS" if not errors else "FAIL",
+        "errors": errors,
+        "checked_candidates": checked_candidates,
+        "note": "This oracle checks the complete public schema and closed-world evidence binding only; scientific quality remains blind-review evidence.",
+    }
+
+
 def check(candidate: Path, submission_path: Path) -> dict[str, Any]:
+    _verify_immutable_inputs(candidate)
     literature = _load(candidate / "evidence" / "literature.json")["cards"]
     traces = _load(candidate / "evidence" / "traces.json")["traces"]
     collisions = _load(candidate / "evidence" / "collision-matrix.json")
     adapter = _load(candidate / "evidence" / "benchmark-adapter-contract.json")
+    schema = _load(candidate / "submission.schema.json")
     submission = _load(submission_path)
+
+    schema_errors = _schema_errors(schema, submission)
+    if schema_errors:
+        candidates = submission.get("candidates", []) if isinstance(submission, dict) else []
+        checked_candidates = len(candidates) if isinstance(candidates, list) else 0
+        return _result(schema_errors, checked_candidates)
 
     literature_ids = {card["id"] for card in literature}
     trace_ids = {trace["id"] for trace in traces}
@@ -109,14 +189,7 @@ def check(candidate: Path, submission_path: Path) -> dict[str, Any]:
     if len(selection_refs) < 2 or selection_refs - known_refs:
         errors.append("selection must bind at least two known evidence refs")
 
-    status = "PASS" if not errors else "FAIL"
-    return {
-        "fixture": "out_idea_01",
-        "status": status,
-        "errors": errors,
-        "checked_candidates": len(candidates),
-        "note": "This oracle checks structure/evidence binding only; scientific quality remains blind-review evidence.",
-    }
+    return _result(errors, len(candidates))
 
 
 def main() -> int:
@@ -127,7 +200,7 @@ def main() -> int:
     try:
         result = check(args.candidate.resolve(), args.submission.resolve())
     except Exception as error:
-        result = {"fixture": "out_idea_01", "status": "FAIL", "errors": [str(error)]}
+        result = _result([f"oracle failure: {error}"], 0)
     print(json.dumps(result, sort_keys=True))
     return 0 if result["status"] == "PASS" else 1
 

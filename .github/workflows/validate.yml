@@ -14,15 +14,19 @@ concurrency:
 
 jobs:
   repository-contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.11"
+          cache: pip
+          cache-dependency-path: evaluations/open-quality-v1/requirements-ci.txt
+      - name: Install pinned evaluator dependencies
+        run: python3 -m pip install --requirement evaluations/open-quality-v1/requirements-ci.txt
       - name: Validate SOP structure
         run: python3 scripts/validate_sop_repo.py
       - name: Validate open-quality evaluation contract

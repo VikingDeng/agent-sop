@@ -11,7 +11,9 @@ from collections import Counter, defaultdict
 import hashlib
 import json
 import math
+import os
 from pathlib import Path, PurePosixPath
+import stat
 import statistics
 import tempfile
 from typing import Any
@@ -250,39 +252,72 @@ def manifest_template(routing: dict[str, dict[str, Any]], outcomes: dict[str, di
     }
 
 
+def checked_file(root: Path, path: Path, label: str) -> tuple[Path | None, list[str]]:
+    """Resolve one package file without accepting symlinked path components."""
+    try:
+        lexical_root = Path(os.path.abspath(root))
+        for candidate in (lexical_root, *lexical_root.parents):
+            if candidate == Path(candidate.anchor):
+                break
+            if stat.S_ISLNK(candidate.lstat().st_mode):
+                return None, [f"{label}: symlink evidence root forbidden"]
+        lexical_path = Path(os.path.abspath(path))
+        relative = lexical_path.relative_to(lexical_root)
+        resolved_root = lexical_root.resolve(strict=True)
+        current = lexical_root
+        for part in relative.parts:
+            current = current / part
+            if stat.S_ISLNK(current.lstat().st_mode):
+                return None, [f"{label}: symlink path forbidden"]
+        resolved = lexical_path.resolve(strict=True)
+        resolved.relative_to(resolved_root)
+    except (OSError, ValueError, RuntimeError) as exc:
+        return None, [f"{label}: must be a file inside evidence root: {exc}"]
+    if not resolved.is_file():
+        return None, [f"{label}: expected regular file"]
+    return resolved, []
+
+
 def safe_file(root: Path, ref: Any, digest: Any, label: str) -> tuple[Path | None, list[str]]:
     if not nonempty(ref) or not is_sha256(digest) or "\\" in ref or ":" in ref:
         return None, [f"{label}: invalid relative ref/hash"]
     pure = PurePosixPath(ref)
     if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
         return None, [f"{label}: path escape forbidden"]
-    try:
-        resolved_root = root.resolve(strict=True)
-        path = (resolved_root / Path(*pure.parts)).resolve(strict=True)
-        path.relative_to(resolved_root)
-    except (OSError, ValueError) as exc:
-        return None, [f"{label}: cannot resolve inside evidence root: {exc}"]
-    if not path.is_file():
-        return None, [f"{label}: expected regular file"]
+    path, errors = checked_file(root, root / Path(*pure.parts), label)
+    if errors or path is None:
+        return None, errors
     return path, [] if file_sha256(path) == digest else [f"{label}: hash mismatch"]
 
 
 class Paths:
-    def __init__(self, seeded: dict[str, str] | None = None) -> None:
-        self.used: dict[str, str] = dict(seeded or {})
+    def __init__(self, root: Path) -> None:
+        lexical_root = Path(os.path.abspath(root))
+        for candidate in (lexical_root, *lexical_root.parents):
+            if candidate == Path(candidate.anchor):
+                break
+            if stat.S_ISLNK(candidate.lstat().st_mode):
+                raise ValueError("symlink evidence root forbidden")
+        self.root = root.resolve(strict=True)
+        self.used: dict[str, str] = {}
 
-    def add(self, ref: Any, label: str) -> list[str]:
-        if not isinstance(ref, str):
+    def add(self, path: Path | None, label: str) -> list[str]:
+        if path is None:
             return []
-        if ref in self.used:
-            return [f"{label}: path reused from {self.used[ref]}"]
-        self.used[ref] = label
+        try:
+            canonical = path.resolve(strict=True).relative_to(self.root).as_posix()
+        except (OSError, ValueError, RuntimeError) as exc:
+            return [f"{label}: cannot canonicalize inside evidence root: {exc}"]
+        if canonical in self.used:
+            return [f"{label}: path reused from {self.used[canonical]}"]
+        self.used[canonical] = label
         return []
 
 
 def validate_manifest(path: Path, root: Path, stage: str,
                       routing: dict[str, dict[str, Any]],
-                      outcomes: dict[str, dict[str, Any]]) -> tuple[list[str], dict[str, Any]]:
+                      outcomes: dict[str, dict[str, Any]],
+                      paths: Paths) -> tuple[list[str], dict[str, Any]]:
     errors: list[str] = []
     try:
         resolved_root = root.resolve(strict=True)
@@ -311,15 +346,6 @@ def validate_manifest(path: Path, root: Path, stage: str,
         errors.append("manifest: candidate not frozen")
 
     arm_context: dict[str, Any] = {}
-    manifest_paths: dict[str, str] = {}
-
-    def reserve_manifest_path(ref: Any, label: str) -> None:
-        if not isinstance(ref, str):
-            return
-        if ref in manifest_paths:
-            errors.append(f"{label}: path reused from {manifest_paths[ref]}")
-        else:
-            manifest_paths[ref] = label
     arms, arm_errors = closed(manifest.get("arms"), set(ARMS), "manifest.arms")
     errors.extend(arm_errors)
     if arms:
@@ -343,9 +369,9 @@ def validate_manifest(path: Path, root: Path, stage: str,
                     errors.append("manifest.arms.C.reported_repository_commit: invalid shape")
                 if not is_sha256(row.get("reported_candidate_tree_sha256")):
                     errors.append("manifest.arms.C.reported_candidate_tree_sha256: invalid")
-            _, file_errors = safe_file(root, row.get("treatment_ref"), row.get("treatment_sha256"), f"manifest.arms.{arm}.treatment")
+            treatment_path, file_errors = safe_file(root, row.get("treatment_ref"), row.get("treatment_sha256"), f"manifest.arms.{arm}.treatment")
             errors.extend(file_errors)
-            reserve_manifest_path(row.get("treatment_ref"), f"manifest.arms.{arm}.treatment_ref")
+            errors.extend(paths.add(treatment_path, f"manifest.arms.{arm}.treatment_ref"))
             arm_context[arm] = row
 
     runtime_keys = {"reported_model", "reported_build", "reported_reasoning_effort", "permissions_ref", "permissions_sha256"}
@@ -355,9 +381,9 @@ def validate_manifest(path: Path, root: Path, stage: str,
         for field in ("reported_model", "reported_build", "reported_reasoning_effort"):
             if not nonempty(runtime.get(field)):
                 errors.append(f"manifest.runtime.{field}: invalid")
-        _, file_errors = safe_file(root, runtime.get("permissions_ref"), runtime.get("permissions_sha256"), "manifest.runtime.permissions")
+        permissions_path, file_errors = safe_file(root, runtime.get("permissions_ref"), runtime.get("permissions_sha256"), "manifest.runtime.permissions")
         errors.extend(file_errors)
-        reserve_manifest_path(runtime.get("permissions_ref"), "manifest.runtime.permissions_ref")
+        errors.extend(paths.add(permissions_path, "manifest.runtime.permissions_ref"))
 
     budget_keys = {"max_total_reported_wcu", "max_total_reported_run_seconds", "max_reported_external_cost_usd"}
     budget, budget_errors = closed(manifest.get("budget"), budget_keys, "manifest.budget")
@@ -388,7 +414,7 @@ def validate_manifest(path: Path, root: Path, stage: str,
     if randomization:
         plan_path, file_errors = safe_file(root, randomization.get("assignment_plan_ref"), randomization.get("assignment_plan_sha256"), "manifest.randomization.assignment_plan")
         errors.extend(file_errors)
-        reserve_manifest_path(randomization.get("assignment_plan_ref"), "manifest.randomization.assignment_plan_ref")
+        errors.extend(paths.add(plan_path, "manifest.randomization.assignment_plan_ref"))
 
     active_routing = active_fixtures(stage, routing)
     active_outcomes = active_fixtures(stage, outcomes)
@@ -419,19 +445,29 @@ def validate_manifest(path: Path, root: Path, stage: str,
                     errors.extend(item_errors)
                     if item is None:
                         continue
-                    slot = (row.get("fixture_id"), row.get("replicate"))
+                    fixture_id, replicate = row.get("fixture_id"), row.get("replicate")
+                    if (not isinstance(fixture_id, str)
+                            or not isinstance(replicate, int)
+                            or isinstance(replicate, bool)):
+                        errors.append(f"{label}: fixture_id/replicate types invalid")
+                        continue
+                    slot = (fixture_id, replicate)
                     if slot not in expected_slots or slot in observed_slots:
                         errors.append(f"{label}: unexpected/duplicate slot")
                         continue
                     observed_slots.add(slot)
                     order = row.get("concealed_order")
                     assignments = row.get("assignments")
-                    if not isinstance(order, list) or len(order) != 3 or len(set(order)) != 3:
+                    if (not isinstance(order, list)
+                            or any(not isinstance(value, str) for value in order)
+                            or len(order) != 3 or len(set(order)) != 3):
                         errors.append(f"{label}.concealed_order: expected 3 unique IDs")
                         continue
                     assignment_obj, assignment_errors = closed(assignments, set(ARMS), f"{label}.assignments")
                     errors.extend(assignment_errors)
-                    if assignment_obj is None or set(order) != set(assignments.values()):
+                    if (assignment_obj is None
+                            or any(not isinstance(value, str) for value in assignments.values())
+                            or set(order) != set(assignments.values())):
                         errors.append(f"{label}: concealed order must permute A/B/C assignment IDs")
                         continue
                     for arm, assignment_id in assignments.items():
@@ -473,9 +509,9 @@ def validate_manifest(path: Path, root: Path, stage: str,
                     for field in ("prompt_sha256", "oracle_contract_sha256", "blind_rubric_sha256"):
                         if row.get(field) != fixture[field]:
                             errors.append(f"{label}.{field}: static drift")
-                    _, file_errors = safe_file(root, row.get("materialized_input_ref"), row.get("materialized_input_sha256"), f"{label}.materialized_input")
+                    input_path, file_errors = safe_file(root, row.get("materialized_input_ref"), row.get("materialized_input_sha256"), f"{label}.materialized_input")
                     errors.extend(file_errors)
-                    reserve_manifest_path(row.get("materialized_input_ref"), f"{label}.materialized_input_ref")
+                    errors.extend(paths.add(input_path, f"{label}.materialized_input_ref"))
                 target[fixture_id] = row
             if set(target) != set(fixtures):
                 errors.append(f"manifest.fixtures.{suite}: incomplete/excess stage binding")
@@ -485,7 +521,7 @@ def validate_manifest(path: Path, root: Path, stage: str,
         "routing": routing_bindings, "outcome": outcome_bindings,
         "active_routing": active_routing, "active_outcomes": active_outcomes,
         "assignment_plan": assignment_plan,
-        "manifest_paths": manifest_paths,
+        "paths": paths,
     }
     return errors, context
 
@@ -500,7 +536,10 @@ def validate_routing_output(value: Any, fixture_id: str, label: str) -> list[str
     if row.get("primary_mode") not in PRIMARY_MODES:
         errors.append(f"{label}.primary_mode: invalid")
     overlays = row.get("overlays")
-    if not isinstance(overlays, list) or len(overlays) != len(set(overlays)) or set(overlays) - set(OVERLAYS):
+    if (not isinstance(overlays, list)
+            or any(not isinstance(item, str) for item in overlays)
+            or len(overlays) != len(set(overlays))
+            or set(overlays) - set(OVERLAYS)):
         errors.append(f"{label}.overlays: invalid")
     if row.get("user_decision") not in USER_DECISIONS:
         errors.append(f"{label}.user_decision: invalid")
@@ -522,7 +561,7 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
         "outcome": {(key, arm, rep) for key in context["active_outcomes"] for arm in ARMS for rep in reps},
     }
     observed = {"routing": set(), "outcome": set()}
-    paths = Paths(context.get("manifest_paths"))
+    paths = context["paths"]
     run_ids: set[str] = set()
     assignment_ids: set[str] = set()
 
@@ -534,6 +573,10 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
         if obj is None:
             return
         fixture_id, arm, rep = row.get("fixture_id"), row.get("arm"), row.get("replicate")
+        if (not isinstance(fixture_id, str) or not isinstance(arm, str)
+                or not isinstance(rep, int) or isinstance(rep, bool)):
+            errors.append(f"{label}: fixture_id/arm/replicate types invalid")
+            return
         slot = (fixture_id, arm, rep)
         if slot not in expected[suite] or slot in observed[suite]:
             errors.append(f"{label}: slot outside design or duplicate {slot}")
@@ -555,9 +598,9 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
         else:
             run_ids.add(run_id)
         for ref_field, hash_field in (("trace_ref", "trace_sha256"), ("token_usage_ref", "token_usage_sha256")):
-            _, file_errors = safe_file(context["root"], row.get(ref_field), row.get(hash_field), f"{label}.{ref_field}")
+            evidence_path, file_errors = safe_file(context["root"], row.get(ref_field), row.get(hash_field), f"{label}.{ref_field}")
             errors.extend(file_errors)
-            errors.extend(paths.add(row.get(ref_field), f"{label}.{ref_field}"))
+            errors.extend(paths.add(evidence_path, f"{label}.{ref_field}"))
         if row.get("reported_wcu_complete") is not True:
             errors.append(f"{label}.reported_wcu_complete: false")
         for field in ("reported_wcu", "reported_elapsed_seconds"):
@@ -575,7 +618,12 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
         resources = context["resources"]
         if row.get("reported_network_mode") not in {"disabled", resources.get("network")}:
             errors.append(f"{label}.reported_network_mode: exceeds ceiling")
-        if row.get("reported_agents_used", 0) > resources.get("max_agents", -1) or row.get("reported_gpu_count", 0) > resources.get("max_gpu_count", -1):
+        if ((isinstance(row.get("reported_agents_used"), int)
+             and not isinstance(row.get("reported_agents_used"), bool)
+             and row["reported_agents_used"] > resources.get("max_agents", -1))
+                or (isinstance(row.get("reported_gpu_count"), int)
+                    and not isinstance(row.get("reported_gpu_count"), bool)
+                    and row["reported_gpu_count"] > resources.get("max_gpu_count", -1))):
             errors.append(f"{label}: exceeds study resource ceiling")
         if suite == "routing":
             errors.extend(validate_routing_output(row.get("routing"), fixture_id, f"{label}.routing"))
@@ -585,9 +633,9 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
         if row.get("materialized_input_sha256") != binding["materialized_input_sha256"]:
             errors.append(f"{label}.materialized_input_sha256: manifest mismatch")
         for ref_field, hash_field in (("artifact_ref", "artifact_sha256"), ("oracle_ref", "oracle_sha256"), ("blind_assignment_ref", "blind_assignment_sha256")):
-            _, file_errors = safe_file(context["root"], row.get(ref_field), row.get(hash_field), f"{label}.{ref_field}")
+            evidence_path, file_errors = safe_file(context["root"], row.get(ref_field), row.get(hash_field), f"{label}.{ref_field}")
             errors.extend(file_errors)
-            errors.extend(paths.add(row.get(ref_field), f"{label}.{ref_field}"))
+            errors.extend(paths.add(evidence_path, f"{label}.{ref_field}"))
         assignment = row.get("blind_assignment_id")
         if not nonempty(assignment) or assignment in assignment_ids:
             errors.append(f"{label}.blind_assignment_id: invalid/duplicate")
@@ -600,7 +648,8 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
                 errors.append(f"{label}.{field}: expected boolean")
         if row.get("acceptance_changed") is not False or row.get("unauthorized_side_effect") is not False:
             errors.append(f"{label}: acceptance changed or unauthorized side effect")
-        if not finite(row.get("reported_blind_score")) or not 0 <= row["reported_blind_score"] <= 10:
+        if (not finite(row.get("reported_blind_score"))
+                or not 0 <= row["reported_blind_score"] <= 10):
             errors.append(f"{label}.reported_blind_score: invalid")
         if not nonempty(row.get("reported_reviewer_id")):
             errors.append(f"{label}.reported_reviewer_id: invalid")
@@ -611,12 +660,22 @@ def validate_results(routing_rows: list[Any], outcome_rows: list[Any], stage: st
                     or row[field] < 0):
                 errors.append(f"{label}.{field}: invalid")
         budget = fixture["budget"]
-        if row.get("reported_wcu", 0) > budget["max_wcu"] or row.get("reported_elapsed_seconds", 0) > budget["max_elapsed_seconds"]:
+        if ((finite(row.get("reported_wcu"))
+             and row["reported_wcu"] > budget["max_wcu"])
+                or (finite(row.get("reported_elapsed_seconds"))
+                    and row["reported_elapsed_seconds"] > budget["max_elapsed_seconds"])):
             errors.append(f"{label}: fixture budget exceeded")
         ceiling = fixture["resource_ceiling"]
         if row.get("reported_network_mode") not in {"disabled", ceiling["network"]}:
             errors.append(f"{label}.reported_network_mode: exceeds fixture resource ceiling")
-        if row.get("reported_agents_used", 0) > ceiling["max_agents"] or row.get("reported_gpu_count", 0) > ceiling["max_gpu_count"] or row.get("reported_external_cost_usd", 0) > ceiling["max_external_cost_usd"]:
+        if ((isinstance(row.get("reported_agents_used"), int)
+             and not isinstance(row.get("reported_agents_used"), bool)
+             and row["reported_agents_used"] > ceiling["max_agents"])
+                or (isinstance(row.get("reported_gpu_count"), int)
+                    and not isinstance(row.get("reported_gpu_count"), bool)
+                    and row["reported_gpu_count"] > ceiling["max_gpu_count"])
+                or (finite(row.get("reported_external_cost_usd"))
+                    and row["reported_external_cost_usd"] > ceiling["max_external_cost_usd"])):
             errors.append(f"{label}: fixture resource ceiling exceeded")
         valid_outcomes.append(row)
 
@@ -678,33 +737,38 @@ def reported_metrics(routing_rows: list[dict[str, Any]], outcome_rows: list[dict
 def run_package(stage: str, manifest_path: Path, root: Path,
                 routing_results_path: Path, outcome_results_path: Path,
                 routing: dict[str, dict[str, Any]], outcomes: dict[str, dict[str, Any]]) -> tuple[int, dict[str, Any]]:
-    manifest_errors, context = validate_manifest(manifest_path, root, stage, routing, outcomes)
+    try:
+        paths = Paths(root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return 1, {
+            "decision": "PACKAGE_INVALID", "promotion_eligible": False,
+            "errors": [f"evidence root: cannot resolve: {exc}"],
+        }
     path_errors: list[str] = []
-    for path, label in ((routing_results_path, "routing results"), (outcome_results_path, "outcome results")):
-        try:
-            resolved = path.resolve(strict=True)
-            resolved.relative_to(root.resolve(strict=True))
-            if not resolved.is_file():
-                path_errors.append(f"{label}: expected regular file")
-        except (OSError, ValueError) as exc:
-            path_errors.append(f"{label}: must be inside evidence root: {exc}")
-    routing_rows, route_load_errors = load_jsonl(routing_results_path)
-    outcome_rows, outcome_load_errors = load_jsonl(outcome_results_path)
-    errors = [*manifest_errors, *path_errors, *route_load_errors, *outcome_load_errors]
-    if errors:
-        return 1, {"decision": "PACKAGE_INVALID", "promotion_eligible": False, "errors": errors}
+    controls: dict[str, Path] = {}
     for package_path, label in (
+        (manifest_path, "study manifest"),
         (routing_results_path, "routing results"),
         (outcome_results_path, "outcome results"),
     ):
-        relative = package_path.resolve(strict=True).relative_to(root.resolve(strict=True)).as_posix()
-        if relative in context["manifest_paths"]:
-            return 1, {
-                "decision": "PACKAGE_INVALID",
-                "promotion_eligible": False,
-                "errors": [f"{label}: path reused from {context['manifest_paths'][relative]}"],
-            }
-        context["manifest_paths"][relative] = label
+        resolved, file_errors = checked_file(root, package_path, label)
+        path_errors.extend(file_errors)
+        path_errors.extend(paths.add(resolved, label))
+        if resolved is not None:
+            controls[label] = resolved
+    if path_errors:
+        return 1, {
+            "decision": "PACKAGE_INVALID", "promotion_eligible": False,
+            "errors": path_errors,
+        }
+    manifest_errors, context = validate_manifest(
+        controls["study manifest"], root, stage, routing, outcomes, paths,
+    )
+    routing_rows, route_load_errors = load_jsonl(controls["routing results"])
+    outcome_rows, outcome_load_errors = load_jsonl(controls["outcome results"])
+    errors = [*manifest_errors, *path_errors, *route_load_errors, *outcome_load_errors]
+    if errors:
+        return 1, {"decision": "PACKAGE_INVALID", "promotion_eligible": False, "errors": errors}
     row_errors, valid_routes, valid_outcomes, integrity = validate_results(routing_rows, outcome_rows, stage, context, outcomes)
     if row_errors:
         return 1, {"decision": "PACKAGE_INVALID", "promotion_eligible": False, "integrity": integrity, "errors": row_errors}
@@ -877,6 +941,47 @@ def run_self_test(routing: dict[str, dict[str, Any]], outcomes: dict[str, dict[s
             "promotion", manifest_path, root, route_path,
             network_mismatch_path, routing, outcomes,
         )
+        symlink_path = root / "study/routing-symlink.jsonl"
+        symlink_path.symlink_to(route_path.name)
+        symlink_code, symlink_report = run_package(
+            "promotion", manifest_path, root, symlink_path,
+            outcome_path, routing, outcomes,
+        )
+        control_reuse_code, control_reuse_report = run_package(
+            "promotion", manifest_path, root, route_path,
+            manifest_path, routing, outcomes,
+        )
+        evidence_root_link = root.parent / f"{root.name}-link"
+        evidence_root_link.symlink_to(root, target_is_directory=True)
+        root_symlink_code, root_symlink_report = run_package(
+            "promotion",
+            evidence_root_link / manifest_path.relative_to(root),
+            evidence_root_link,
+            evidence_root_link / route_path.relative_to(root),
+            evidence_root_link / outcome_path.relative_to(root),
+            routing,
+            outcomes,
+        )
+        evidence_root_link.unlink()
+        parent_real = root.parent / f"{root.name}-parent-real"
+        parent_real.mkdir()
+        nested_root = parent_real / "root"
+        nested_root.symlink_to(root, target_is_directory=True)
+        parent_link = root.parent / f"{root.name}-parent-link"
+        parent_link.symlink_to(parent_real, target_is_directory=True)
+        ancestor_path = parent_link / "root"
+        ancestor_symlink_code, ancestor_symlink_report = run_package(
+            "promotion",
+            ancestor_path / manifest_path.relative_to(root),
+            ancestor_path,
+            ancestor_path / route_path.relative_to(root),
+            ancestor_path / outcome_path.relative_to(root),
+            routing,
+            outcomes,
+        )
+        parent_link.unlink()
+        nested_root.unlink()
+        parent_real.rmdir()
         return {
             "complete_synthetic_is_unverified": code == 0 and complete.get("decision") == "PACKAGE_COMPLETE_UNVERIFIED" and complete.get("promotion_eligible") is False,
             "missing_slot_rejected": missing_code == 1,
@@ -889,6 +994,34 @@ def run_self_test(routing: dict[str, dict[str, Any]], outcomes: dict[str, dict[s
                 and any(
                     "reported_network_mode: exceeds fixture resource ceiling" in error
                     for error in network_mismatch_report.get("errors", [])
+                )
+            ),
+            "symlink_path_rejected": (
+                symlink_code == 1
+                and any(
+                    "symlink path forbidden" in error
+                    for error in symlink_report.get("errors", [])
+                )
+            ),
+            "manifest_and_results_paths_reserved": (
+                control_reuse_code == 1
+                and any(
+                    "path reused from study manifest" in error
+                    for error in control_reuse_report.get("errors", [])
+                )
+            ),
+            "symlink_evidence_root_rejected": (
+                root_symlink_code == 1
+                and any(
+                    "symlink evidence root forbidden" in error
+                    for error in root_symlink_report.get("errors", [])
+                )
+            ),
+            "symlink_evidence_root_ancestor_rejected": (
+                ancestor_symlink_code == 1
+                and any(
+                    "symlink evidence root forbidden" in error
+                    for error in ancestor_symlink_report.get("errors", [])
                 )
             ),
             "identical_final_bytes_across_arms_valid": code == 0,

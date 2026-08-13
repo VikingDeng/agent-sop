@@ -109,7 +109,7 @@
       "prompt": "为长程 Agent 提出一个 8 分以上的核心算法创新。当前没有批准的 idea；必须从真实 benchmark 信号和最近邻出发。",
       "expected": {
         "primary_mode": "option_search",
-        "overlays": ["durable_goal", "independent_review", "research_collision"],
+        "overlays": ["independent_review", "research_collision"],
         "user_decision": "defer_until_evidence"
       },
       "why": "多个核心操作仍可能合理；先搜索、碰撞和做决定性检验。"
@@ -135,7 +135,7 @@
       "prompt": "已有三个核心操作真正不同的候选。为每个候选找最近邻和 kill condition，选择信息量最高的最小实验后再让我裁决。",
       "expected": {
         "primary_mode": "option_search",
-        "overlays": ["durable_goal", "research_collision"],
+        "overlays": ["research_collision"],
         "user_decision": "defer_until_evidence"
       },
       "why": "候选存在不等于方向冻结；需要可区分的证据后再选择。"
@@ -226,7 +226,7 @@
       "prompt": "实现太难，考虑把已批准方法换成一个 proxy objective、换 benchmark 并弱化 claim；这些变化尚未得到用户同意。",
       "expected": {
         "primary_mode": "re_contract",
-        "overlays": ["durable_goal", "research_fidelity"],
+        "overlays": ["research_fidelity"],
         "user_decision": "required_now"
       },
       "why": "这是 material re-contract，不是允许静默 fallback 或先行 option search 的实现细节；必须 HUMAN 裁决。"

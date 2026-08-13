@@ -1,0 +1,89 @@
+{
+  "problem": {
+    "statement": "Long-horizon agents can preserve a locally plausible history even after executable evidence shows that history will prevent terminal task success.",
+    "trace_refs": ["trace-001", "trace-005"],
+    "uncertainty": "The frozen traces establish candidate failure signals, not their prevalence outside these two benchmark-compatible splits."
+  },
+  "candidates": [
+    {
+      "id": "candidate-1",
+      "core_operation": {
+        "input": "A failed trace and an earlier state with matched observable task progress.",
+        "state_transition": "Replace only the execution-state fields whose counterfactual replay changes the terminal evaluator result while holding the action prefix fixed.",
+        "output": "A repaired execution state plus the minimal changed-field mask."
+      },
+      "signal": "Matched states in trace-001 expose a local-success history that conflicts with terminal acceptance.",
+      "evidence_refs": ["lit-002", "trace-001", "collision-01"],
+      "nearest_neighbor": {
+        "literature_ref": "lit-002",
+        "same": "Both approaches reuse information from an earlier agent trajectory.",
+        "different": "This operation requires an evaluator-changing state intervention rather than storing or retrieving a textual lesson."
+      },
+      "decisive_experiment": {
+        "benchmark_split": "appworld-compatible",
+        "arms": ["unchanged failed state", "matched state-field intervention"],
+        "primary_metric": "task_success",
+        "decision_rule": "Retain only if the intervention improves paired terminal task success without increasing collateral damage on the six frozen tasks.",
+        "competing_explanations": ["textual memory retrieval is sufficient", "the changed state fields causally affect recovery"]
+      },
+      "kill_condition": "Kill if paired task success does not improve or if gains disappear when the action prefix is held fixed.",
+      "impact_ceiling": "A general repair operator for history-induced failures across stateful long-horizon agents.",
+      "uncertainty": "The fixture cannot establish whether suitable matched states occur often enough for economical training."
+    },
+    {
+      "id": "candidate-2",
+      "core_operation": {
+        "input": "A trace containing an invalidated hidden relation and the observed environment deltas.",
+        "state_transition": "Compile contradicted relations into a dependency ledger, then block only actions whose required relation no longer holds in the current observation.",
+        "output": "A relation-consistent action mask and an auditable contradiction record."
+      },
+      "signal": "trace-004 shows that an untracked relation can invalidate an otherwise plausible next action.",
+      "evidence_refs": ["lit-004", "trace-004", "collision-03"],
+      "nearest_neighbor": {
+        "literature_ref": "lit-004",
+        "same": "Both approaches use structured alternatives to avoid committing to a bad continuation.",
+        "different": "The proposed transition updates a relation dependency ledger and masks invalid actions rather than expanding a search tree."
+      },
+      "decisive_experiment": {
+        "benchmark_split": "both",
+        "arms": ["unmodified policy", "dependency-ledger mask", "branch-search control"],
+        "primary_metric": "collateral_damage_rate",
+        "decision_rule": "Retain only if the ledger lowers collateral damage versus both controls while preserving terminal task success within one task.",
+        "competing_explanations": ["generic branch search explains the gain", "explicit relation invalidation prevents unsafe continuation"]
+      },
+      "kill_condition": "Kill if relation masking cannot beat branch search on collateral damage at the frozen probe budget.",
+      "impact_ceiling": "A reusable mechanism for preventing stale relational assumptions from propagating through tool use.",
+      "uncertainty": "The frozen observations may omit relations needed to build a complete dependency ledger."
+    },
+    {
+      "id": "candidate-3",
+      "core_operation": {
+        "input": "A narrative claim, executable state delta, and the action that produced both records.",
+        "state_transition": "Align every claimed effect to an observed state delta and revise the next action only when the claimed effect lacks executable support.",
+        "output": "An evidence-bound revision with unsupported effects removed from policy context."
+      },
+      "signal": "trace-005 contains a surface claim that is absent from executable state and later misdirects the agent.",
+      "evidence_refs": ["lit-007", "trace-005", "collision-02"],
+      "nearest_neighbor": {
+        "literature_ref": "lit-007",
+        "same": "Both approaches revise an agent continuation by applying generated feedback.",
+        "different": "This operation binds each claimed effect to a concrete state delta before revision instead of applying an unconstrained critique-and-retry step."
+      },
+      "decisive_experiment": {
+        "benchmark_split": "swe-bench-compatible",
+        "arms": ["ordinary tool-grounded revision", "state-delta-bound revision"],
+        "primary_metric": "tool_steps",
+        "decision_rule": "Retain only if state-delta binding reaches at least equal terminal success with fewer tool steps on the frozen paired tasks.",
+        "competing_explanations": ["ordinary retry already uses all relevant feedback", "explicit effect binding removes unsupported narrative state"]
+      },
+      "kill_condition": "Kill if the bound revision does not reduce tool steps at matched task success on the frozen split.",
+      "impact_ceiling": "A general grounding layer that prevents narrative state from outrunning executable evidence.",
+      "uncertainty": "Some useful effects may be latent and therefore absent from the fixture's observable state deltas."
+    }
+  ],
+  "selection": {
+    "candidate_id": "candidate-1",
+    "evidence_refs": ["lit-002", "trace-001", "collision-01"],
+    "why_not_others": "Candidate 1 offers the cleanest paired intervention; candidates 2 and 3 remain viable but their proposed ledgers and bindings have broader observability assumptions."
+  }
+}

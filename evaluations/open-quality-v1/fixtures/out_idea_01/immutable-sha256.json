@@ -2,10 +2,10 @@
   "version": "fixture-lock-v1",
   "algorithm": "sha256",
   "tree_definition": "sha256 of sorted relative_path + NUL + file_sha256 + LF",
-  "tree_sha256": "fa686013d4edf549473a044adeb6d39baf56b52be60b0d8406b1ba75213941d6",
-  "deterministic_zip_sha256": "3eb17e929eed3ad35b5dd646ad6fb163b236371dc601eb45f261bc760c008109",
+  "tree_sha256": "092e81ef99f962c87d6eadb13d8887fda2eece230073d776d6a48c2dd74a3796",
+  "deterministic_zip_sha256": "0922ad8d4c405344d5db5c8ff73850635903ac52cafe699bc0f3419e71bed971",
   "files": {
-    "README.md": "5d061a351e59d85a1c0f8a1c8100dc7cd27a868020f38dd4fe92e0652a9bca47",
+    "README.md": "e2285384b79290844fdd1729b2a4fa4fd18cc4396b7dcd9c3c2565a342a738bd",
     "evidence/benchmark-adapter-contract.json": "cc07de9d8ecb1b8213ddafb42b15da1a999799c523d6c2aea1f2dfa29609caf5",
     "evidence/collision-matrix.json": "c49a9bb60320c75d8708ef0eb646e144b678d2ae2485a65434fd92ef6cb0a9ec",
     "evidence/literature.json": "aea96bae382fdc480eecd429c3f30e982f9b19c55ca086d1f552aa30ac855dbf",

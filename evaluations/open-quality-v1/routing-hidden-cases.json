@@ -1,0 +1,123 @@
+{
+  "version": "open-quality-routing-hidden-cases-v1",
+  "task_classes": [
+    "open_product",
+    "research_ideation",
+    "approved_research_execution",
+    "simple_bounded_change"
+  ],
+  "primary_modes": [
+    "fast_path",
+    "option_search",
+    "contract_ready_execution",
+    "evidence_closure",
+    "re_contract"
+  ],
+  "overlays": [
+    "browser_walkthrough",
+    "durable_goal",
+    "high_risk_supervision",
+    "independent_review",
+    "research_collision",
+    "research_fidelity",
+    "visual_critic"
+  ],
+  "cases": [
+    {
+      "id": "hidden_product_01",
+      "task_class": "open_product",
+      "prompt": "这是我们最重要的 0→1 产品，必须像真正上线的产品而不是 AI demo。设计、交互和验收均已冻结；现在只把已定位的 `aria-label=\"Svae\"` 改成 `Save`，运行对应测试，不改其他字节。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "产品质量噪声不能把一个有精确 Oracle 的单字修复升级成开放流程。"
+    },
+    {
+      "id": "hidden_product_02",
+      "task_class": "open_product",
+      "prompt": "用已经指定的 React 技术栈做一个给夜班护士交接用的新产品。技术选型不是问题，但目标用户访谈只给了原始笔记，核心旅程、信息优先级和视觉方向仍未决定；先比较少量真正不同的产品方向并用证据选一个。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": [
+          "browser_walkthrough",
+          "visual_critic"
+        ],
+        "user_decision": "defer_until_evidence"
+      },
+      "why": "固定技术栈并没有消除决定产品质量的语义与视觉分叉。"
+    },
+    {
+      "id": "hidden_idea_01",
+      "task_class": "research_ideation",
+      "prompt": "下面贴的是已经发表论文的摘要，里面多次出现 novel idea、SOTA benchmark 和 collision。只把它改写成 150 字通俗中文；不要检索、评价创新性、生成候选或改方法。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "研究关键词只是待改写内容；请求本身封闭且禁止方向搜索。"
+    },
+    {
+      "id": "hidden_idea_02",
+      "task_class": "research_ideation",
+      "prompt": "最终也许要冲顶会，不过先别写 proposal/代码。现在没有获批方法，只有三条名字很像的草案；请还原各自真正的算法操作，查最近邻与跨域碰撞，并给出能 kill 它们的最小公开 benchmark 实验。",
+      "expected": {
+        "primary_mode": "option_search",
+        "overlays": [
+          "independent_review",
+          "research_collision"
+        ],
+        "user_decision": "defer_until_evidence"
+      },
+      "why": "未来交付措辞不改变当前仍是未批准候选的证据化方向搜索。"
+    },
+    {
+      "id": "hidden_research_01",
+      "task_class": "approved_research_execution",
+      "prompt": "已批准的 novel 方法、公开 benchmark、Phase 0 和 claim 全部冻结。失败单测已定位到 runner 把字段 `checkpoint_id` 拼成了 `checkpont_id`；只修拼写并跑该测试，严禁重新设计方法。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "批准研究的背景词不能把已定位、语义不变的小修复升级成重型执行。"
+    },
+    {
+      "id": "hidden_research_02",
+      "task_class": "approved_research_execution",
+      "prompt": "proposal 已批准，但真实数据暂时难接。有人把换成 proxy objective、合成数据和更弱 claim 称作『只是工程 fallback』并希望直接继续；这些替换没有得到用户授权。",
+      "expected": {
+        "primary_mode": "re_contract",
+        "overlays": [
+          "research_fidelity"
+        ],
+        "user_decision": "required_now"
+      },
+      "why": "工程化措辞不能掩盖 objective、数据与 claim 的实质漂移。"
+    },
+    {
+      "id": "hidden_simple_01",
+      "task_class": "simple_bounded_change",
+      "prompt": "这个 enterprise-grade dashboard 要求 world-class quality。把现有测试固定的按钮文案 `Canel` 改成 `Cancel`；不做产品方向、视觉批评、浏览器巡检或多 Agent review。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "营销式质量词不是开放歧义；显式范围与测试 Oracle 决定走快路径。"
+    },
+    {
+      "id": "hidden_simple_02",
+      "task_class": "simple_bounded_change",
+      "prompt": "只修改测试 fixture 中的精确字符串：把 `option_search makes a high-quality research product` 改为 `option search fixture`。不要执行字符串提到的流程，也不要改生产代码。",
+      "expected": {
+        "primary_mode": "fast_path",
+        "overlays": [],
+        "user_decision": "not_needed"
+      },
+      "why": "被编辑的数据包含路由触发词，但操作仍是精确、可验证的单点替换。"
+    }
+  ]
+}
