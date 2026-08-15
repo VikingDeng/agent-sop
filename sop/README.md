@@ -4,7 +4,7 @@
 > 每条 SOP 用 _TEMPLATE.md 结构;每条必须映射到 ../PRINCIPLES.md 的纪律。
 > **组织判据不是"分类整齐",而是"每条 SOP 都是四条纪律的实例化"。**
 >
-> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v7**，默认按 proposal
+> `tier1-skeleton/research-execution-grill.md` 当前 SOP 版本为 **v8**，默认按 proposal
 > claim 自适应选择证据、oracle 与 gate。`research-execution-grill-v3 / schema v3`
 > 是显式选择的 signed strict profile；历史 schema v1/v2 仅可匹配显式审计。
 > `tier1-skeleton/run-experiment.md` 当前版本为 **v8**，默认以真实运行和 claim-matched
@@ -14,10 +14,9 @@
 > 不设 universal clean-tree、`ENV_LOCK`、clean-rebuild 或多 seed 门禁。
 > 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
 > 的派生视图契约；它不要求新建 dashboard 或独立台账。
-> `tier0-core/autonomous-supervisor.md` 当前为 **v20**，`build-oracle.md` 为 **v3**，
-> `tier1-skeleton/run-development.md` 为 **v4**，`tier2-activity/option-search.md` 为 **v1**：
-> 每次请求先静默区分可调查事实、安全默认、实质决定与实现细节；清楚小任务走快路，只有真正阻断下一可逆动作的未决 material fork 才询问用户或做候选碰撞与 decisive probe。
-> Development v4 先验证 representative slice，通过后才作为 golden implementation 扩展；价值 claim 仍单独要求真实价值信号。
+> `tier0-core/autonomous-supervisor.md` 当前为 **v21**，是 Requirement Judgment 与 Contextual Intent v1 的唯一运行时权威；`build-oracle.md` 为 **v3**。
+> `tier1-skeleton/run-development.md` 为 **v5**，`research-execution-grill.md` 为 **v8**，`run-competition.md` 为 **v6**；它们只持有各自交付面的 domain invariants。
+> `tier2-activity/option-search.md` 为 **v1**。详细执行语义仅存于对应 SOP，本索引只同步版本与职责。
 
 ## Tier 0 — 核心横切(所有场景共用)
 

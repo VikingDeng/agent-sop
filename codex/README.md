@@ -1,6 +1,6 @@
 # Codex adapter
 
-This directory implements Codex-native HUMAN interaction, model routing, roles, Hooks, installation, provenance, and session audit. The platform-independent result contract lives in the [execution Kernel](../sop/tier0-core/autonomous-supervisor.md); the architectural boundary is [CODEX-ADAPTER.md](CODEX-ADAPTER.md).
+This directory implements Codex-native HUMAN interaction, outcome-level collaboration, model routing, roles, Hooks, installation, provenance, and session audit. The platform-independent result contract and contextual-intent semantics live in the [execution Kernel](../sop/tier0-core/autonomous-supervisor.md); the architectural boundary is [CODEX-ADAPTER.md](CODEX-ADAPTER.md).
 
 ## Instruction scopes
 
@@ -37,6 +37,7 @@ The installer:
 - resolves and verifies the base Python interpreter running the installer, then writes that executable's absolute path into managed Hook commands instead of assuming `/usr/bin/python3`;
 - preserves the foreground model by default; explicit profiles set Terra/high or Sol/high;
 - manages `[features].default_mode_request_user_input = true` so supported Codex clients can present material requirement decisions as native popups in Default mode while preserving unrelated feature settings;
+- leaves local Codex Memories under the user's native Settings or `/memories` controls; installation does not opt chats into persistent recall or generation;
 - installs advisory routing by default and keeps strict routing opt-in;
 - relocates the old internal `research-execution-grill` Skill link and recognized historical backup copies outside Codex Skill discovery when exact path or content evidence proves they were adapter-managed. Unknown same-named user content is preserved. The Research Grill remains a Domain Profile, not a Skill.
 
@@ -48,9 +49,17 @@ The verified Python launcher is an external runtime dependency and must remain e
 
 ## Requirement decision prompts
 
-The managed feature flag exposes the native `request_user_input` surface; it does not create an always-on questionnaire. The Kernel silently investigates discoverable facts, takes grounded reversible defaults, and keeps implementation choices inside the Agent. A popup appears only after evidence and a proportionate probe cannot resolve the surviving alternatives, no safe default exists, and the decision changes the result contract or authority boundary while blocking the affected path's next safe reversible action. Each popup normally contains one decision with 2–3 outcome-level choices and a recommended option; the client supplies free-form `Other` input.
+The managed feature flag requests the native `request_user_input` surface on supported clients; it neither creates an always-on questionnaire nor proves that the current turn exposes the tool. Runtime judgment, response and fallback semantics live only in the [Kernel](../sop/tier0-core/autonomous-supervisor.md) and [Adapter](CODEX-ADAPTER.md).
 
 Configuration is consumed by newly started Codex tasks. If an already-running client does not reload it, restart the client or start a fresh task. Clients or modes that do not expose the native tool fall back to the same single concise question in ordinary conversation; tool absence never counts as approval.
+
+## Contextual intent and memories
+
+Contextual Intent v1 is defined only by the Kernel; the Codex layer adds no database, Hook state machine or second router. The installer neither enables nor rewrites native Memories configuration, and Contextual Intent does not depend on persistent Memories.
+
+If the user has independently enabled native local Memories, relevant recall is only an optional user-managed evidence source under the Kernel's authority and preference rules. Required team guidance remains in `AGENTS.md` or checked-in documentation. Memory controls and current platform behavior are documented in the [official OpenAI Memories documentation](https://learn.chatgpt.com/docs/customization/memories).
+
+Outcome events defined by the Kernel are mapped to Codex commentary/final channels by the Adapter; adjacent technical actions may be grouped to satisfy platform activity cadence without command-by-command narration.
 
 ## Runtime provenance
 
@@ -119,3 +128,4 @@ To uninstall, remove only links and Hook registrations owned by this adapter and
 - [Subagents and custom agent files](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 - [Codex Hooks](https://learn.chatgpt.com/docs/hooks)
 - [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+- [Codex local Memories](https://learn.chatgpt.com/docs/customization/memories)

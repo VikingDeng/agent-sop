@@ -1,12 +1,12 @@
 # Codex 平台适配层
 
 - **Adapter ID**: `codex-runtime`
-- **版本**: v6
+- **版本**: v7
 - **性质**: platform adapter，不是 SOP、Domain Profile 或 Skill
 
 ## 责任边界
 
-本文档是 Codex 原生 HUMAN 交互、Sol/Terra/Luna 路由、sub-agent 协作、WCU 计量、Codex Hooks 与 session auditor 的架构归属点。它只回答“如何在 Codex 上以可审计、成本合理的方式执行”，不回答“什么结果算成功”。
+本文档是 Codex 原生 HUMAN 交互、结果级协作沟通、Sol/Terra/Luna 路由、sub-agent 协作、WCU 计量、Codex Hooks 与 session auditor 的架构归属点。它只回答“如何在 Codex 上以可审计、成本合理的方式执行”，不回答“什么结果算成功”。
 
 权威顺序是：用户和 closest project instructions → [`PRINCIPLES.md`](../PRINCIPLES.md) 与 [`sop/tier0-core/autonomous-supervisor.md`](../sop/tier0-core/autonomous-supervisor.md) → 已触发的 Domain Profile → 本 Adapter → 可替换 Skill/Oracle/role recipe。本 Adapter 不得：
 
@@ -28,6 +28,14 @@ HUMAN gate 是否成立只由 Kernel 决定，本 Adapter 不新增、扩大或�
 - 收到答案后回到 Kernel 重新 `RESOLVE/CONTRACT`，不预先排出固定问题链，也不把该答复视为对其他边界的概括授权。用户追问原因时解释当前分叉并保持它未决；用户明确委托 Agent 决定时，只在 Kernel 允许安全默认的范围内继续。
 
 如果当前 Codex 版本、模式或客户端没有暴露 `request_user_input`，或一次符合当前 schema 的调用失败，通过普通对话提出表达同一决定的一句简洁自然语言问题，说明关键影响与推荐后等待；只有更高优先级的当前模式指令允许时才在文本中列出选项。工具缺失不是用户授权，也不能成为扩大问题数量、降低 acceptance、改变契约或展示内部分类的理由。若 Kernel 判定没有阻断性决定，则不调用该工具、不发澄清消息，直接调查、采用安全默认或执行。
+
+原生交互能力按当前 turn 的实际工具暴露判断，不把安装配置、feature maturity、磁盘文件、Hook marker 或旧 turn 成功当作本次可用性的证明。对每个当前决定只跟踪最小生命周期：`configured/advertised → observed available → invoked → answered | cancelled | failed | unavailable`。只有绑定当前未决问题的有效 answer 才能解除 gate；cancel、空答、调用失败、过期问题答案或用户仅要求解释都不能推断选择。失败后只对同一决定使用上述文本 fallback，不循环 probe、不写永久 unavailable 标记，也不自动安装 Skill/plugin 作为替代；新 turn 需要时重新观察能力。
+
+## 结果级协作沟通
+
+Kernel 决定 outcome 事件的触发条件；本 Adapter 只把这些事件映射到 Codex 的 commentary/final channel。当前平台若要求更频繁的活性更新，将相邻技术动作合并成同一结果状态，不逐条播报命令、文件或工具调用。
+
+每次更新尽量压缩为“当前结果状态或变化 → 为什么影响用户结果 → 下一动作”。已知上下文只引用与当前决定有关的部分，不重复要求用户确认；必要的一句话 outcome 回放不能变成新的仪式。不得在 commentary/final 暴露 Requirement Judgment 分类、完整 intent frame、推断偏好、敏感 provenance 或无关历史。最终答复仍先交付已达到的结果与决定性证据，再说明实际限制和 Git/外部状态。
 
 ## 会话来源与运行时 provenance
 
@@ -77,6 +85,7 @@ WCU = 25 * T_sol + 10 * T_terra + 1 * T_luna
 ## Sub-agent 协作与生命周期
 
 - 只委派能独立交付的 coherent outcome package；packet 至少给出 objective、scope/write boundary、必要输入、acceptance evidence 与 stop/escalation condition。
+- child packet 只携带完成该 package 必需的契约、非敏感证据指针，以及 package 必需且非敏感的作用域内已确认偏好；不转发完整对话、无关 memory/continuity、推断偏好、secret、敏感 provenance 或可间接还原敏感内容的 evidence pointer。敏感偏好只有在用户明确授权该 child 与具体用途时才可传递；偏好不能因进入 child context 而扩大 scope 或变成授权。
 - 优先根 Agent 扁平路由；不把 child 再委派 child、固定并发数或某个 role 存在当作成功条件。
 - 不按单条命令拆包，不传入与结果无关的完整历史。优先仓库 artifact 和最小自包含 packet，仅在具体依赖无法压缩时继承最少必要 context。
 - 核心不变式未确定且阻断 critical path 时，先由根 Agent、判别 oracle 或紧凑 architect package 关闭；不预先让多个 implementer/reviewer 在同一未知量上竞争。

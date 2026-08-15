@@ -87,8 +87,43 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.assertTrue((home / ".codex/config.toml").is_file())
             parsed = tomllib.loads((home / ".codex/config.toml").read_text(encoding="utf-8"))
             self.assertTrue(parsed["features"]["default_mode_request_user_input"])
+            self.assertNotIn("memories", parsed["features"])
+            self.assertNotIn("memories", parsed)
             self.assertTrue((home / ".codex/AGENTS.md").is_file())
             self.assertTrue((home / INSTALL.RUNTIME_CURRENT).is_symlink())
+
+    def test_install_preserves_user_managed_memories_settings(self) -> None:
+        self.assertNotIn("memories", INSTALL.FEATURE_SETTINGS)
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as directory:
+                home, workspace, codex_home = self.make_environment(Path(directory))
+                config = codex_home / "config.toml"
+                rendered_enabled = str(enabled).lower()
+                config.write_text(
+                    f'features = {{ memories = {rendered_enabled}, unrelated = true }}\n\n'
+                    '[memories]\n'
+                    'generate_memories = false\n'
+                    'use_memories = true\n'
+                    'disable_on_external_context = true\n',
+                    encoding="utf-8",
+                )
+
+                self.install(home, workspace)
+                first = config.read_bytes()
+                parsed = tomllib.loads(first.decode("utf-8"))
+                self.assertEqual(parsed["features"]["memories"], enabled)
+                self.assertTrue(parsed["features"]["default_mode_request_user_input"])
+                self.assertEqual(
+                    parsed["memories"],
+                    {
+                        "generate_memories": False,
+                        "use_memories": True,
+                        "disable_on_external_context": True,
+                    },
+                )
+
+                self.install(home, workspace)
+                self.assertEqual(config.read_bytes(), first)
 
     def test_migration_from_direct_snapshot_or_repository_links_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -390,10 +425,14 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             for context_text in (global_context, workspace_context):
                 self.assertNotIn("runtime-current/skeletons/contestos-adaptive-overlay", context_text)
             manifest = json.loads((runtime / INSTALL.SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
-            self.assertEqual(manifest["runtime_components"]["kernel"]["version"], "v20")
-            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v6")
-            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v4")
-            self.assertEqual(manifest["runtime_components"]["competition_profile"]["version"], "v5")
+            self.assertEqual(manifest["runtime_components"]["kernel"]["version"], "v21")
+            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v7")
+            self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v5")
+            self.assertEqual(
+                manifest["runtime_components"]["research_profile"]["version"],
+                "v8（adaptive default；signed v3 为可选 strict profile）",
+            )
+            self.assertEqual(manifest["runtime_components"]["competition_profile"]["version"], "v6")
             self.assertEqual(manifest["runtime_components"]["option_search"]["version"], "v1")
             self.assertRegex(manifest["runtime_components"]["kernel"]["sha256"], r"^[0-9a-f]{64}$")
             self.assertTrue(marker["available_activities"]["option_search"].startswith("v1@"))

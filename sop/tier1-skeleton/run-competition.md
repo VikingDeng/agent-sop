@@ -4,7 +4,7 @@
 - **落实纪律**: P1 P2 P3 P4
 - **绑定骨架**: competition；development（产品型黑客松的成品开发）
 - **通用性档位**: U1(竞赛机制通用；平台命令与阈值由项目注入)
-- **版本**: v5
+- **版本**: v6
 
 ## 触发条件
 
@@ -32,6 +32,10 @@
 → tier1-skeleton/package-submission.md(冻结并核验将要提交的准确工件；不执行外部提交)
 
 → tier1-skeleton/run-development.md(产品型黑客松需要交付完整产品时)
+
+## Material decision lens
+
+只有 Kernel 已把当前未决项判为 `MATERIAL_DECISION`，且本 Profile 因真实竞赛交付面被加载后，才用竞赛 lens 补充候选后果：权威规则与 eligibility、evaluator/score/rubric 路径、提交工件与重建语义、deadline/time reserve、last-known-good、提交/查询/付费预算和外部动作包络。只使用会改变合法性、目标结果、候选选择或最终储备的轴；其余事实先从规则、平台状态和项目工件调查。Lens 不新增 gate、不自动生成 intake 表，也不让用户选择算法、工具或打包命令。
 
 ## 步骤
 

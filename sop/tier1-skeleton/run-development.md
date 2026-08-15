@@ -4,7 +4,7 @@
 - **落实纪律**: P1(产品能力与 non-goals) P2(真实行为验收) P3(失败与替代路径语义显式) P4(关键 claim 可追溯)
 - **绑定骨架**: development
 - **通用性档位**: U1（开发机制通用；技术栈、命令与工具由项目注入）
-- **版本**: v4
+- **版本**: v5
 
 ## 触发条件
 
@@ -32,6 +32,10 @@
 → tier0-core/no-fallback-review.md（错误、恢复或降级路径影响结果语义时）。
 
 → tier2-activity/option-search.md（产品方向确实未冻结且选错方向代价较高时）。
+
+## Material decision lens
+
+只有 Kernel 已把当前未决项判为 `MATERIAL_DECISION`，且本 Profile 因真实 development 交付面被加载后，才用产品/工程 lens 补充候选后果：主要 consumer 与 critical journey、交付等级和价值面、caller-visible default/explicit opt-in、兼容与迁移、error/recovery 和资源状态保持、数据/隐私/ownership，以及能区分结果的 acceptance signal。只选择会分开仍存活方向的轴，不机械生成矩阵或问题清单；证据已经裁决时不询问用户。Lens 不新增 gate，不重开已冻结方向，也不让用户选择框架、库、目录或其他实现细节。
 
 ## 步骤
 

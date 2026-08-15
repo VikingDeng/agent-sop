@@ -4,7 +4,7 @@
 - **落实纪律**: P1(冻结 claim 与验收) P2(证据真实性) P3(风险自适应) P4(可复现交付)
 - **绑定骨架**: research
 - **通用性档位**: U2
-- **版本**: v7（adaptive default；signed v3 为可选 strict profile）
+- **版本**: v8（adaptive default；signed v3 为可选 strict profile）
 
 ## 目标
 
@@ -44,6 +44,8 @@ Agent 根据 proposal 类型、风险和现有证据选择检查与执行顺序�
 没有人工标签的研究不需要 `human_oracle`；不依赖静态数据的研究不需要 registry 或 blinded bundle；理论、系统、simulation、benchmark 和 human-study proposal 应使用各自可信的 oracle。任何缺失都只在它与当前 claim 有因果关系时阻断。
 
 ## 必须先回答的问题
+
+以下内容由 Agent 优先从已批准 proposal、项目证据与现有 contract 推导，是内部 execution contract lens，不是交给用户填写的默认问卷。只有 Kernel 已把剩余分叉判为 `MATERIAL_DECISION`，且本 Profile 已因真实科研交付面加载后，才用 claim/primary estimand、method semantics、data/split、baseline parity、analysis/success criterion、evidence eligibility 与正式预算构造候选后果；只问会改变原研究承诺且证据无法裁决的一个最高影响决定，不重开已批准 proposal，也不因模板缺字段新增 gate。
 
 形成一份简洁 execution contract：
 

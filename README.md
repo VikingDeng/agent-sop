@@ -17,22 +17,18 @@
 
 ## 默认入口
 
-1. 所有实质任务使用 [执行 Kernel](sop/tier0-core/autonomous-supervisor.md)，冻结最小 outcome/non-goals/scope/evidence/authority contract，再按真实不确定性路由：
-   - 每次请求先静默做 Requirement Judgment：事实由工具调查，安全默认由 Agent 采用，实现在契约内自主决定；只有两个以上可信解释没有占优安全默认、证据/probe 无法消解、选择会改变契约/边界且阻断受影响路径的下一可逆动作时，才询问用户，不显示默认问卷或内部分类。
-   - 明确小任务：直接修改、聚焦验证、检查 diff；不生成候选、Durable Goal 或无关文档。
-   - 明确 request/issue/spec/已批准 proposal：保持方向，直接执行；不因实现困难自动重开 ideation。
-   - 开放方向：只在选错会主导成本时调用 [Option Search](sop/tier2-activity/option-search.md)，用核心语义差异、collision/falsifier 和 decisive probe 决定下一个可逆 slice。
+1. 所有实质任务使用 [执行 Kernel v21](sop/tier0-core/autonomous-supervisor.md)。Requirement Judgment、Contextual Intent v1、结果契约、权限与证据语义只以该 Kernel 为准；本 README 不复制运行规则。
 2. 只加载一个与真实交付面匹配的 Profile：
    - 0→1 产品、服务、库、CLI、数据管线：[run-development](sop/tier1-skeleton/run-development.md)
    - 已批准 AI 顶会 proposal 的正确实现与实验：[research-execution-grill](sop/tier1-skeleton/research-execution-grill.md)
    - 竞赛、benchmark、leaderboard、hackathon：[run-competition](sop/tier1-skeleton/run-competition.md)
-3. 只有任务确实跨域时组合 Profile，例如产品黑客松或研究工件赛。
+3. [Option Search](sop/tier2-activity/option-search.md) 是 Kernel 可选调用的方向搜索 activity，不是默认运行层。
 4. Skill 由可观察能力缺口触发。稳定运行只允许 registry 中未过期的 `promoted` 能力隐式启用；其他候选只能用于显式选型实验。
 5. 验收始终回到项目真实 Oracle。Skill、模型、角色、文件存在、build、smoke 或自述不能替代 claim 所需证据。
 
 ## 开放质量升级的验收方式
 
-本仓不把“增加了 SOP 文本”当作能力升级。[开放质量 v1 评测合同](evaluations/open-quality-v1/README.md) 冻结了 `strong native Codex / current SOP / candidate SOP` 三臂、产品/研究 idea/已批准研究/简单任务四个 strata 与 routing 边界例；四个 pilot outcome bundle 已物理化并通过起点/负向 Oracle，其余 promotion fixture 仍须物理化，所有真实运行还必须绑定 Oracle、盲评、用户纠正与返工、WCU 和方差并交由独立 authority 裁决。[进化目标与 Todo](EVOLUTION.md) 记录当前事实、blocker 和下一判别动作，不形成第二运行时 authority。当前 Development v4、Option Search v1 和 Adapter v6 都是待评 candidate，不得因结构测试通过就声称已有净增益。
+本仓不把“增加了 SOP 文本”当作能力升级。[开放质量 v1 评测合同](evaluations/open-quality-v1/README.md) 冻结了 `strong native Codex / current SOP / candidate SOP` 三臂、产品/研究 idea/已批准研究/简单任务四个 strata 与 routing 边界例；四个 pilot outcome bundle 已物理化并通过起点/负向 Oracle，其余 promotion fixture 仍须物理化，所有真实运行还必须绑定 Oracle、盲评、用户纠正与返工、WCU 和方差并交由独立 authority 裁决。[进化目标与 Todo](EVOLUTION.md) 记录当前事实、blocker 和下一判别动作，不形成第二运行时 authority。当前 Kernel v21、Development v5、Research v8、Competition v6、Option Search v1 和 Adapter v7 都只有结构/语义候选证据，不得因测试通过就声称已有净增益。
 
 Codex App 的日常开发、竞赛与已批准 proposal 工程建议安装 `terra-supervisor`：Terra/high 负责前台语义与裁决，Luna 承担有直接 Oracle 的大块执行，Sol 只在持续高判断密度或具体高风险处窄调用。`preserve` 仍是安装器的安全默认，不会静默改现有模型；显式切换与运行时审计命令见 [Codex adapter](codex/README.md)。
 

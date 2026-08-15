@@ -62,10 +62,18 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("平台遥测可以辅助审计", kernel)
         self.assertIn("缺失本身不能", kernel)
 
-    def test_requirement_judgment_asks_only_for_blocking_material_decisions(self) -> None:
+    def test_requirement_judgment_has_one_kernel_owner_and_one_codex_binding(self) -> None:
         kernel = self.read("sop/tier0-core/autonomous-supervisor.md")
         adapter = self.read("codex/CODEX-ADAPTER.md")
         bootstrap = self.read("codex/AGENTS.global.md")
+        root_readme = self.read("README.md")
+        sop_readme = self.read("sop/README.md")
+        codex_readme = self.read("codex/README.md")
+
+        judgment = kernel.split("#### Requirement Judgment 与 Contextual Intent", maxsplit=1)[1]
+        judgment = judgment.split("\n### 2. CONTRACT", maxsplit=1)[0]
+        native_binding = adapter.split("## HUMAN 决策的原生交互绑定", maxsplit=1)[1]
+        native_binding = native_binding.split("\n## ", maxsplit=1)[0]
 
         for uncertainty_class in (
             "DISCOVERABLE",
@@ -73,20 +81,100 @@ class AdaptiveSopContractTests(unittest.TestCase):
             "MATERIAL_DECISION",
             "IMPLEMENTATION_DETAIL",
         ):
-            self.assertIn(uncertainty_class, kernel)
-        self.assertIn("条件**同时成立**", kernel)
-        self.assertIn("阻断受影响结果路径的下一个安全、可逆或有判别力的动作", kernel)
-        self.assertIn("不得展示分类", kernel)
-        self.assertIn("事实优先交给工具", kernel)
-        self.assertIn("仍独立服从 re-contract/HUMAN gate", kernel)
+            self.assertIn(uncertainty_class, judgment)
         self.assertNotIn("request_user_input", kernel)
 
-        self.assertIn("request_user_input", adapter)
-        self.assertIn("2–3 个互斥选项", adapter)
-        self.assertIn("(Recommended)", adapter)
-        self.assertIn("客户端会提供自由输入", adapter)
-        self.assertIn("工具缺失不是用户授权", adapter)
+        for native_schema_marker in ("request_user_input", "2–3", "(Recommended)", "Other"):
+            self.assertIn(native_schema_marker, native_binding)
         self.assertIn("silently apply the Kernel's Requirement Judgment", bootstrap)
+        for non_owner in (adapter, bootstrap, root_readme, sop_readme, codex_readme):
+            for uncertainty_class in (
+                "DISCOVERABLE",
+                "SAFE_DEFAULT",
+                "MATERIAL_DECISION",
+                "IMPLEMENTATION_DETAIL",
+            ):
+                self.assertNotIn(uncertainty_class, non_owner)
+
+    def test_contextual_intent_state_is_kernel_only_and_not_a_persistence_channel(self) -> None:
+        kernel = self.read("sop/tier0-core/autonomous-supervisor.md")
+        adapter = self.read("codex/CODEX-ADAPTER.md")
+        bootstrap = self.read("codex/AGENTS.global.md")
+        judgment = kernel.split("#### Requirement Judgment 与 Contextual Intent", maxsplit=1)[1]
+        judgment = judgment.split("\n### 2. CONTRACT", maxsplit=1)[0]
+
+        for state_marker in (
+            "contextual intent frame",
+            "`confirmed`",
+            "`inferred`",
+            "turn/task/project scope",
+            "provenance",
+            "expiry/",
+        ):
+            self.assertIn(state_marker, judgment)
+        self.assertRegex(judgment, r"默认[^\n。]{0,20}不展示[^\n。]{0,20}不落盘")
+        self.assertRegex(judgment, r"低权威[^\n。]{0,80}不得[^\n。]{0,40}覆盖高权威")
+        self.assertRegex(judgment, r"旧 `confirmed`/`inferred`[^\n。]{0,40}不得覆盖当前明确用户语义")
+        self.assertRegex(judgment, r"`global`/durable[^\n。]{0,50}用户明确授权")
+
+        for non_owner in (
+            adapter,
+            bootstrap,
+            self.read("README.md"),
+            self.read("sop/README.md"),
+            self.read("codex/README.md"),
+        ):
+            for state_marker in ("contextual intent frame", "`confirmed`", "`inferred`", "expiry/"):
+                self.assertNotIn(state_marker, non_owner)
+        self.assertIn("contextual-intent rules", bootstrap)
+
+    def test_sensitive_preference_requires_specific_child_authority(self) -> None:
+        adapter = self.read("codex/CODEX-ADAPTER.md")
+        child_rules = adapter.split("## Sub-agent 协作与生命周期", maxsplit=1)[1]
+        child_rules = child_rules.split("\n## ", maxsplit=1)[0]
+        self.assertRegex(child_rules, r"child packet[^\n]*必需[^\n]*非敏感")
+        self.assertRegex(child_rules, r"敏感偏好[^\n]*明确授权[^\n]*child[^\n]*具体用途")
+        self.assertIn("敏感 provenance", child_rules)
+        self.assertIn("evidence pointer", child_rules)
+
+    def test_domain_lenses_are_structurally_post_judgment(self) -> None:
+        kernel = self.read("sop/tier0-core/autonomous-supervisor.md")
+        judgment = kernel.split("#### Requirement Judgment 与 Contextual Intent", maxsplit=1)[1]
+        judgment = judgment.split("\n### 2. CONTRACT", maxsplit=1)[0]
+        class_definition = judgment.index("`MATERIAL_DECISION`：")
+        lens_gate = judgment.index("领域 lens")
+        self.assertLess(class_definition, lens_gate)
+        self.assertIn("DISCOVERABLE", judgment[lens_gate:])
+
+        for relative, heading in (
+            ("sop/tier1-skeleton/run-development.md", "## Material decision lens"),
+            ("sop/tier1-skeleton/research-execution-grill.md", "## 必须先回答的问题"),
+            ("sop/tier1-skeleton/run-competition.md", "## Material decision lens"),
+        ):
+            profile = self.read(relative)
+            lens = profile.split(heading, maxsplit=1)[1].split("\n## ", maxsplit=1)[0]
+            self.assertIn("Kernel", lens, relative)
+            self.assertIn("MATERIAL_DECISION", lens, relative)
+            for pre_judgment_class in ("DISCOVERABLE", "SAFE_DEFAULT", "IMPLEMENTATION_DETAIL"):
+                self.assertNotIn(pre_judgment_class, lens, relative)
+
+    def test_native_prompt_lifecycle_fails_closed_without_substitute_install(self) -> None:
+        adapter = self.read("codex/CODEX-ADAPTER.md")
+        native_binding = adapter.split("## HUMAN 决策的原生交互绑定", maxsplit=1)[1]
+        native_binding = native_binding.split("\n## ", maxsplit=1)[0]
+        for lifecycle_state in (
+            "configured/advertised",
+            "observed available",
+            "invoked",
+            "answered",
+            "cancelled",
+            "failed",
+            "unavailable",
+        ):
+            self.assertIn(lifecycle_state, native_binding)
+        self.assertIn("fallback", native_binding)
+        self.assertRegex(native_binding, r"不自动安装[^\n。]*(?:Skill|plugin)")
+        self.assertRegex(native_binding, r"(?:cancel|空答|调用失败|过期)[^\n。]{0,120}不能推断选择")
 
     def test_development_profile_is_claim_driven_not_a_product_checklist(self) -> None:
         profile = self.read("sop/tier1-skeleton/run-development.md")
