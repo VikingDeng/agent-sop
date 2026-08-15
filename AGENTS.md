@@ -10,7 +10,7 @@ Load only files needed for the current decision. The three ContestOS v1 skeleton
 
 - Kernel: outcome contract, authority/risk, evidence strength, re-contract, stopping, and delivery truth.
 - Domain Profile: only invariants that are necessary across the named class of tasks.
-- Codex Adapter: models, WCU, roles, sub-agent lifecycle, Hooks, installer, and session audit.
+- Codex Adapter: models, WCU, roles, sub-agent lifecycle, native HUMAN interaction, Hooks, installer, and session audit.
 - Skill: external, optional, replaceable capability; it cannot route work or modify acceptance.
 - Oracle: independent evidence from real execution, checker, browser, profiler, evaluator, or justified analysis.
 

@@ -85,6 +85,8 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             self.install(home, workspace)
 
             self.assertTrue((home / ".codex/config.toml").is_file())
+            parsed = tomllib.loads((home / ".codex/config.toml").read_text(encoding="utf-8"))
+            self.assertTrue(parsed["features"]["default_mode_request_user_input"])
             self.assertTrue((home / ".codex/AGENTS.md").is_file())
             self.assertTrue((home / INSTALL.RUNTIME_CURRENT).is_symlink())
 
@@ -388,8 +390,8 @@ class InstallCodexRuntimeTests(unittest.TestCase):
             for context_text in (global_context, workspace_context):
                 self.assertNotIn("runtime-current/skeletons/contestos-adaptive-overlay", context_text)
             manifest = json.loads((runtime / INSTALL.SNAPSHOT_MANIFEST).read_text(encoding="utf-8"))
-            self.assertEqual(manifest["runtime_components"]["kernel"]["version"], "v19")
-            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v5")
+            self.assertEqual(manifest["runtime_components"]["kernel"]["version"], "v20")
+            self.assertEqual(manifest["runtime_components"]["codex_adapter"]["version"], "v6")
             self.assertEqual(manifest["runtime_components"]["development_profile"]["version"], "v4")
             self.assertEqual(manifest["runtime_components"]["competition_profile"]["version"], "v5")
             self.assertEqual(manifest["runtime_components"]["option_search"]["version"], "v1")
@@ -548,6 +550,7 @@ with installer._install_lock():
             self.assertEqual(parsed["agents"]["max_concurrent_threads_per_session"], 2)
             self.assertFalse(parsed["agents"]["enabled"])
             self.assertNotIn("max_depth", parsed["agents"])
+            self.assertTrue(parsed["features"]["default_mode_request_user_input"])
             hooks = json.loads((codex_home / "hooks.json").read_text())
             self.assertIn("user-hook", json.dumps(hooks))
             self.assertIn("CODEX_ROUTER_ENFORCEMENT=advisory", json.dumps(hooks))
@@ -591,7 +594,7 @@ with installer._install_lock():
         with tempfile.TemporaryDirectory() as directory:
             home, workspace, codex_home = self.make_environment(Path(directory))
             config = codex_home / "config.toml"
-            config.write_text('model = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n\n[telemetry]\nretained = "yes"\n\n[agents]\nmax_depth = 3\nunrelated = "preserve"\n')
+            config.write_text('model = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n\n[telemetry]\nretained = "yes"\n\n[features]\nunrelated = true\ndefault_mode_request_user_input = false\n\n[agents]\nmax_depth = 3\nunrelated = "preserve"\n')
             hooks = codex_home / "hooks.json"
             hooks.write_text(json.dumps({"description": "existing", "hooks": {"PreToolUse": [
                 {"matcher": "Bash", "hooks": [{"type": "command", "command": "existing-hook"}]},
@@ -600,11 +603,88 @@ with installer._install_lock():
             self.install(home, workspace)
             parsed = tomllib.loads(config.read_text())
             self.assertEqual(parsed["telemetry"], {"retained": "yes"})
+            self.assertEqual(
+                parsed["features"],
+                {"unrelated": True, "default_mode_request_user_input": True},
+            )
             self.assertEqual(parsed["agents"]["unrelated"], "preserve")
             self.assertNotIn("max_depth", parsed["agents"])
             merged = json.loads(hooks.read_text())
             self.assertIn("existing-hook", json.dumps(merged))
             self.assertEqual(sum(INSTALL.Installer._is_router_registration(item, home) for item in merged["hooks"]["PreToolUse"]), 1)
+
+    def test_dotted_features_are_enabled_without_reformatting_or_losing_comments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home, workspace, codex_home = self.make_environment(Path(directory))
+            config = codex_home / "config.toml"
+            config.write_text(
+                '# preserve feature comment\n'
+                'features.default_mode_request_user_input = false\n'
+                'features.unrelated = true\n\n'
+                '[telemetry]\nretained = "yes"\n',
+                encoding="utf-8",
+            )
+
+            self.install(home, workspace)
+
+            rendered = config.read_text(encoding="utf-8")
+            parsed = tomllib.loads(rendered)
+            self.assertTrue(parsed["features"]["default_mode_request_user_input"])
+            self.assertTrue(parsed["features"]["unrelated"])
+            self.assertEqual(parsed["telemetry"], {"retained": "yes"})
+            self.assertIn("# preserve feature comment", rendered)
+            self.assertNotIn("[features]", rendered)
+            self.assertEqual(rendered.count("features.default_mode_request_user_input ="), 1)
+
+    def test_quoted_feature_headers_are_managed_idempotently(self) -> None:
+        for header in ('["features"]', "['features']"):
+            with self.subTest(header=header), tempfile.TemporaryDirectory() as directory:
+                home, workspace, codex_home = self.make_environment(Path(directory))
+                config = codex_home / "config.toml"
+                config.write_text(
+                    f'{header}\ndefault_mode_request_user_input = false\nunrelated = true\n',
+                    encoding="utf-8",
+                )
+
+                self.install(home, workspace)
+                rendered = config.read_text(encoding="utf-8")
+                parsed = tomllib.loads(rendered)
+                self.assertTrue(parsed["features"]["default_mode_request_user_input"])
+                self.assertTrue(parsed["features"]["unrelated"])
+                self.assertIn(header, rendered)
+                self.assertEqual(rendered.count("default_mode_request_user_input ="), 1)
+
+                repeated = self.install(home, workspace)
+                self.assertEqual(config.read_text(encoding="utf-8"), rendered)
+                self.assertFalse(
+                    any(
+                        action.startswith(f"backup {config}")
+                        for action in repeated.actions
+                    )
+                )
+
+    def test_inline_feature_table_is_managed_idempotently(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home, workspace, codex_home = self.make_environment(Path(directory))
+            config = codex_home / "config.toml"
+            original = (
+                'features = { default_mode_request_user_input = false, unrelated = true }\n'
+            )
+            config.write_text(original, encoding="utf-8")
+
+            self.install(home, workspace)
+
+            rendered = config.read_text(encoding="utf-8")
+            parsed = tomllib.loads(rendered)
+            self.assertTrue(parsed["features"]["default_mode_request_user_input"])
+            self.assertTrue(parsed["features"]["unrelated"])
+            self.assertIn("features = {", rendered)
+
+            repeated = self.install(home, workspace)
+            self.assertEqual(config.read_text(encoding="utf-8"), rendered)
+            self.assertFalse(
+                any(action.startswith(f"backup {config}") for action in repeated.actions)
+            )
 
     def test_agents_section_migration_removes_basic_and_literal_quoted_legacy_keys(self) -> None:
         for quoted_key in ('"max_depth"', "'max_depth'"):

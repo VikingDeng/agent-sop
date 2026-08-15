@@ -1,6 +1,6 @@
 # Codex adapter
 
-This directory implements Codex-specific model routing, roles, Hooks, installation, provenance, and session audit. The platform-independent result contract lives in the [execution Kernel](../sop/tier0-core/autonomous-supervisor.md); the architectural boundary is [CODEX-ADAPTER.md](CODEX-ADAPTER.md).
+This directory implements Codex-native HUMAN interaction, model routing, roles, Hooks, installation, provenance, and session audit. The platform-independent result contract lives in the [execution Kernel](../sop/tier0-core/autonomous-supervisor.md); the architectural boundary is [CODEX-ADAPTER.md](CODEX-ADAPTER.md).
 
 ## Instruction scopes
 
@@ -36,6 +36,7 @@ The installer:
 - merges only its own Hook registrations into existing `~/.codex/hooks.json`;
 - resolves and verifies the base Python interpreter running the installer, then writes that executable's absolute path into managed Hook commands instead of assuming `/usr/bin/python3`;
 - preserves the foreground model by default; explicit profiles set Terra/high or Sol/high;
+- manages `[features].default_mode_request_user_input = true` so supported Codex clients can present material requirement decisions as native popups in Default mode while preserving unrelated feature settings;
 - installs advisory routing by default and keeps strict routing opt-in;
 - relocates the old internal `research-execution-grill` Skill link and recognized historical backup copies outside Codex Skill discovery when exact path or content evidence proves they were adapter-managed. Unknown same-named user content is preserved. The Research Grill remains a Domain Profile, not a Skill.
 
@@ -44,6 +45,12 @@ The default `--workspace` is the current home directory; pass the actual workspa
 Each destination is backed up before replacement and written atomically. The installer does not claim a whole-install ACID transaction or power-loss durability; rerun it to converge after a reported partial failure. Existing immutable generations are retained for running sessions.
 
 The verified Python launcher is an external runtime dependency and must remain executable. The installer rejects a launcher that resolves inside the removable source checkout; rerun installation after moving or replacing the system Python.
+
+## Requirement decision prompts
+
+The managed feature flag exposes the native `request_user_input` surface; it does not create an always-on questionnaire. The Kernel silently investigates discoverable facts, takes grounded reversible defaults, and keeps implementation choices inside the Agent. A popup appears only after evidence and a proportionate probe cannot resolve the surviving alternatives, no safe default exists, and the decision changes the result contract or authority boundary while blocking the affected path's next safe reversible action. Each popup normally contains one decision with 2–3 outcome-level choices and a recommended option; the client supplies free-form `Other` input.
+
+Configuration is consumed by newly started Codex tasks. If an already-running client does not reload it, restart the client or start a fresh task. Clients or modes that do not expose the native tool fall back to the same single concise question in ordinary conversation; tool absence never counts as approval.
 
 ## Runtime provenance
 

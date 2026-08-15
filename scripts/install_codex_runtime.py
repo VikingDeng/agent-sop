@@ -45,6 +45,9 @@ AGENT_SETTINGS = {
     "default_subagent_reasoning_effort": '"medium"',
     "max_concurrent_threads_per_session": "2",
 }
+FEATURE_SETTINGS = {
+    "default_mode_request_user_input": "true",
+}
 PROFILE_SETTINGS = {
     "preserve": {},
     "sol-supervisor": {"model": '"gpt-5.6-sol"', "model_reasoning_effort": '"high"'},
@@ -490,6 +493,37 @@ class Installer:
         return target
 
     @staticmethod
+    def _split_inline_table_entries(body: str) -> list[str]:
+        """Split a valid single-line TOML inline table without touching nested commas."""
+        entries: list[str] = []
+        start = 0
+        quote: str | None = None
+        escaped = False
+        depth = 0
+        for index, character in enumerate(body):
+            if quote is not None:
+                if quote == '"' and escaped:
+                    escaped = False
+                elif quote == '"' and character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+                continue
+            if character in {'"', "'"}:
+                quote = character
+            elif character in "[{":
+                depth += 1
+            elif character in "]}":
+                depth -= 1
+            elif character == "," and depth == 0:
+                entries.append(body[start:index].strip())
+                start = index + 1
+        if quote is not None or depth != 0:
+            raise ValueError("unable to safely update malformed inline TOML table")
+        entries.append(body[start:].strip())
+        return [entry for entry in entries if entry]
+
+    @staticmethod
     def _replace_section_values(
         text: str,
         section: str,
@@ -497,21 +531,58 @@ class Installer:
         remove_keys: tuple[str, ...] = (),
     ) -> str:
         lines = text.splitlines()
-        header = re.compile(rf"^\s*\[{re.escape(section)}\]\s*(?:#.*)?$")
+
         def key_pattern(key: str) -> str:
             escaped = re.escape(key)
             return rf"(?:{escaped}|\"{escaped}\"|'{escaped}')"
 
+        section_key = key_pattern(section)
+        header = re.compile(rf"^\s*\[\s*{section_key}\s*\]\s*(?:#.*)?$")
         top_level_end = next(
             (index for index, line in enumerate(lines) if re.match(r"^\s*\[", line)),
             len(lines),
         )
+        inline_assignment = re.compile(rf"^\s*{section_key}\s*=")
+        inline_table = re.compile(
+            rf"^(?P<prefix>\s*{section_key}\s*=\s*\{{)"
+            rf"(?P<body>.*)(?P<suffix>\}}\s*(?:#.*)?)$"
+        )
+        inline_index = next(
+            (
+                index
+                for index in range(top_level_end)
+                if inline_assignment.match(lines[index])
+            ),
+            None,
+        )
+        if inline_index is not None:
+            match = inline_table.match(lines[inline_index])
+            if match is None:
+                raise ValueError(f"unable to safely update inline table {section!r}")
+            entries = Installer._split_inline_table_entries(match.group("body"))
+            for key in remove_keys:
+                pattern = re.compile(rf"^\s*{key_pattern(key)}\s*=")
+                entries = [entry for entry in entries if not pattern.match(entry)]
+            for key, value in settings.items():
+                pattern = re.compile(rf"^\s*{key_pattern(key)}\s*=")
+                existing = next(
+                    (index for index, entry in enumerate(entries) if pattern.match(entry)),
+                    None,
+                )
+                rendered = f"{key} = {value}"
+                if existing is None:
+                    entries.append(rendered)
+                else:
+                    entries[existing] = rendered
+            body = f" {', '.join(entries)} " if entries else ""
+            lines[inline_index] = f"{match.group('prefix')}{body}{match.group('suffix')}"
+            return "\n".join(lines) + "\n"
         dotted_key = re.compile(
-            rf"^\s*{re.escape(section)}\.(?:[A-Za-z0-9_-]+|\"[^\"]+\"|'[^']+')\s*="
+            rf"^\s*{section_key}\s*\.\s*(?:[A-Za-z0-9_-]+|\"[^\"]+\"|'[^']+')\s*="
         )
         if any(dotted_key.match(line) for line in lines[:top_level_end]):
             for key in remove_keys:
-                pattern = re.compile(rf"^\s*{re.escape(section)}\.{key_pattern(key)}\s*=")
+                pattern = re.compile(rf"^\s*{section_key}\s*\.\s*{key_pattern(key)}\s*=")
                 lines = [
                     line
                     for index, line in enumerate(lines)
@@ -523,7 +594,7 @@ class Installer:
                 )
 
             for key, value in settings.items():
-                pattern = re.compile(rf"^\s*{re.escape(section)}\.{key_pattern(key)}\s*=")
+                pattern = re.compile(rf"^\s*{section_key}\s*\.\s*{key_pattern(key)}\s*=")
                 existing = next(
                     (index for index in range(top_level_end) if pattern.match(lines[index])),
                     None,
@@ -749,6 +820,7 @@ class Installer:
                     "select --profile sol-supervisor or terra-supervisor, or install with --routing-profile advisory"
                 )
         staged = self._replace_top_level_values(original_config, PROFILE_SETTINGS[self.profile])
+        staged = self._replace_section_values(staged, "features", FEATURE_SETTINGS)
         self.staged_config = self._replace_section_values(
             staged,
             "agents",
@@ -795,7 +867,7 @@ class Installer:
         self._write_staged(
             self.config_path,
             self.staged_config,
-            f"configure profile={self.profile} and [agents] in {self.config_path}",
+            f"configure profile={self.profile}, [features], and [agents] in {self.config_path}",
         )
 
     def merge_hooks(self) -> None:

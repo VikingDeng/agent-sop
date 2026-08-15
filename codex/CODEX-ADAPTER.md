@@ -1,12 +1,12 @@
 # Codex 平台适配层
 
 - **Adapter ID**: `codex-runtime`
-- **版本**: v5
+- **版本**: v6
 - **性质**: platform adapter，不是 SOP、Domain Profile 或 Skill
 
 ## 责任边界
 
-本文档是 Sol/Terra/Luna 路由、sub-agent 协作、WCU 计量、Codex Hooks 与 session auditor 的架构归属点。它只回答“如何在 Codex 上以可审计、成本合理的方式执行”，不回答“什么结果算成功”。
+本文档是 Codex 原生 HUMAN 交互、Sol/Terra/Luna 路由、sub-agent 协作、WCU 计量、Codex Hooks 与 session auditor 的架构归属点。它只回答“如何在 Codex 上以可审计、成本合理的方式执行”，不回答“什么结果算成功”。
 
 权威顺序是：用户和 closest project instructions → [`PRINCIPLES.md`](../PRINCIPLES.md) 与 [`sop/tier0-core/autonomous-supervisor.md`](../sop/tier0-core/autonomous-supervisor.md) → 已触发的 Domain Profile → 本 Adapter → 可替换 Skill/Oracle/role recipe。本 Adapter 不得：
 
@@ -16,6 +16,18 @@
 - 以平台限制为理由静默改变成功定义。
 
 安装、路由配置和命令的当前做法见 [`README.md`](README.md)；本文档不复制那些易变实现细节。
+
+## HUMAN 决策的原生交互绑定
+
+HUMAN gate 是否成立只由 Kernel 决定，本 Adapter 不新增、扩大或取消 gate。命中真实未决决定且当前会话提供 `request_user_input` 时，优先使用原生弹窗，不把普通任务变成默认问卷：
+
+- 默认每次只发一个问题；问题是一句可直接决定方向的话，header 不超过 12 个字符；
+- 提供 2–3 个互斥选项，1–5 个词的短 label 只命名用户可见选择，description 用一句话说明结果或取舍；
+- 把 Kernel 选出的推荐项放在第一位，并在 label 后加 `(Recommended)`；不要手工添加 `Other`，客户端会提供自由输入；
+- 选项表达 outcome、scope、acceptance 或授权边界，不让用户代替 Agent 选择库、内部架构、命令或排错步骤；
+- 收到答案后回到 Kernel 重新 `RESOLVE/CONTRACT`，不预先排出固定问题链，也不把该答复视为对其他边界的概括授权。用户追问原因时解释当前分叉并保持它未决；用户明确委托 Agent 决定时，只在 Kernel 允许安全默认的范围内继续。
+
+如果当前 Codex 版本、模式或客户端没有暴露 `request_user_input`，或一次符合当前 schema 的调用失败，通过普通对话提出表达同一决定的一句简洁自然语言问题，说明关键影响与推荐后等待；只有更高优先级的当前模式指令允许时才在文本中列出选项。工具缺失不是用户授权，也不能成为扩大问题数量、降低 acceptance、改变契约或展示内部分类的理由。若 Kernel 判定没有阻断性决定，则不调用该工具、不发澄清消息，直接调查、采用安全默认或执行。
 
 ## 会话来源与运行时 provenance
 

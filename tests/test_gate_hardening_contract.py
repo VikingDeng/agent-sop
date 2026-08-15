@@ -62,6 +62,32 @@ class AdaptiveSopContractTests(unittest.TestCase):
         self.assertIn("平台遥测可以辅助审计", kernel)
         self.assertIn("缺失本身不能", kernel)
 
+    def test_requirement_judgment_asks_only_for_blocking_material_decisions(self) -> None:
+        kernel = self.read("sop/tier0-core/autonomous-supervisor.md")
+        adapter = self.read("codex/CODEX-ADAPTER.md")
+        bootstrap = self.read("codex/AGENTS.global.md")
+
+        for uncertainty_class in (
+            "DISCOVERABLE",
+            "SAFE_DEFAULT",
+            "MATERIAL_DECISION",
+            "IMPLEMENTATION_DETAIL",
+        ):
+            self.assertIn(uncertainty_class, kernel)
+        self.assertIn("条件**同时成立**", kernel)
+        self.assertIn("阻断受影响结果路径的下一个安全、可逆或有判别力的动作", kernel)
+        self.assertIn("不得展示分类", kernel)
+        self.assertIn("事实优先交给工具", kernel)
+        self.assertIn("仍独立服从 re-contract/HUMAN gate", kernel)
+        self.assertNotIn("request_user_input", kernel)
+
+        self.assertIn("request_user_input", adapter)
+        self.assertIn("2–3 个互斥选项", adapter)
+        self.assertIn("(Recommended)", adapter)
+        self.assertIn("客户端会提供自由输入", adapter)
+        self.assertIn("工具缺失不是用户授权", adapter)
+        self.assertIn("silently apply the Kernel's Requirement Judgment", bootstrap)
+
     def test_development_profile_is_claim_driven_not_a_product_checklist(self) -> None:
         profile = self.read("sop/tier1-skeleton/run-development.md")
         self.assertIn("最小 domain model", profile)

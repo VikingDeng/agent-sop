@@ -14,9 +14,9 @@
 > 不设 universal clean-tree、`ENV_LOCK`、clean-rebuild 或多 seed 门禁。
 > 中间实验、数据流与 final table 使用 `tier1-skeleton/references/research-evidence-presentation.md`
 > 的派生视图契约；它不要求新建 dashboard 或独立台账。
-> `tier0-core/autonomous-supervisor.md` 当前为 **v19**，`build-oracle.md` 为 **v3**，
+> `tier0-core/autonomous-supervisor.md` 当前为 **v20**，`build-oracle.md` 为 **v3**，
 > `tier1-skeleton/run-development.md` 为 **v4**，`tier2-activity/option-search.md` 为 **v1**：
-> 清楚小任务走快路，冻结方向直接执行，只有未冻结 material fork 才做候选碰撞与 decisive probe。
+> 每次请求先静默区分可调查事实、安全默认、实质决定与实现细节；清楚小任务走快路，只有真正阻断下一可逆动作的未决 material fork 才询问用户或做候选碰撞与 decisive probe。
 > Development v4 先验证 representative slice，通过后才作为 golden implementation 扩展；价值 claim 仍单独要求真实价值信号。
 
 ## Tier 0 — 核心横切(所有场景共用)

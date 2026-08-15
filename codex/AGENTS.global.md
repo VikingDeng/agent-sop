@@ -2,7 +2,7 @@
 
 ## Runtime sources
 
-For material work, use `~/.codex/runtime-current/sop/tier0-core/autonomous-supervisor.md` as the single reusable execution kernel. Use `~/.codex/runtime-current/codex/CODEX-ADAPTER.md` only for Codex model routing, sub-agent operation, Hooks, provenance, and cost telemetry. Closest project instructions and the user contract remain more specific authorities.
+For material work, use `~/.codex/runtime-current/sop/tier0-core/autonomous-supervisor.md` as the single reusable execution kernel. Use `~/.codex/runtime-current/codex/CODEX-ADAPTER.md` only for Codex-native HUMAN interaction, model routing, sub-agent operation, Hooks, provenance, and cost telemetry. Closest project instructions and the user contract remain more specific authorities.
 
 Load only the Domain Profile that matches a real delivery surface:
 
@@ -13,6 +13,8 @@ Load only the Domain Profile that matches a real delivery surface:
 Compose profiles only when the task actually spans their outcomes, such as a product hackathon or a research artifact competition. Do not load provenance-locked ContestOS v1 skeletons or their compatibility overlay by default; they are legacy inputs used only when a project explicitly selects one.
 
 At the first write boundary, resolve the intended workspace with `pwd` and `git rev-parse --show-toplevel` or an explicit non-Git root. Preserve user changes and keep all writes inside the authorized root.
+
+Before acting on every request, silently apply the Kernel's Requirement Judgment without exposing its classification or a default intake form. When the Kernel reaches a HUMAN gate, use the Codex-native interaction binding defined by the Adapter; otherwise continue autonomously.
 
 For a public API or compatibility decision with multiple plausible semantics, do not let the first implementable interpretation become the contract by accident. Infer the caller-visible default, explicit opt-in, error/cleanup behavior, and resource-state preservation from the request and repository evidence; compare the strongest plausible alternative before implementation. Ask the user only when both remain materially valid and the choice changes the public commitment.
 
