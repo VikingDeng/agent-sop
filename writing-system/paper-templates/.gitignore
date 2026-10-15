@@ -1,0 +1,23 @@
+# Build output
+build/
+out.pdf
+*.pdf
+
+# Typst / LaTeX auxiliary files
+*.log
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.out
+
+# Download staging (not part of the library)
+.staging/
+
+# Keep the build report and the catalog tracked
+!BUILD_REPORT.md
+!TEMPLATE_CATALOG.md
+!ENVIRONMENT.md

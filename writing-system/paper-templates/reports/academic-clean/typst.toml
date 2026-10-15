@@ -1,0 +1,11 @@
+[package]
+name = "academic-clean"
+version = "0.1.0"
+compiler = "0.13.0"
+entrypoint = "academic-clean.typ"
+authors = ["Local template library"]
+license = "MIT"
+description = "Greyscale academic research report template, print friendly."
+keywords = ["report", "template"]
+categories = ["report"]
+disciplines = ["computer-science"]

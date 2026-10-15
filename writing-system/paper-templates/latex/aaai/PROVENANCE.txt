@@ -1,0 +1,13 @@
+Venue: aaai
+Kit: AAAI-27 Author Kit (AuthorKit27)
+Source URL: https://aaai.org/authorkit27/
+Source type: Official conference site
+Official: yes
+Year/version: 2027 (aaai2027.sty [2027/05/04 AAAI 2027 Submission format])
+Retrieved: 2026-09-17
+Commit/ETag: ETag "6a18653c-53daef" (Last-Modified 2026-05-28)
+Archive: _original.zip (5,495,535 B, sha256 e28c6ac9bc6eb3b4e2d849547d2cefb5162610ee39d0a12e0dc62d1126b44a7d)
+Unpacked: aaai/kit/
+Contains: aaai2027.sty, aaai2027.bst, aaai2027.bib, CameraReady2027.tex (+.pdf), AnonymousSubmission2027.tex (+.pdf), ReproducibilityChecklist.tex (+.pdf), Figures/figure1.pdf, Figures/figure2.pdf, Word/ (CameraReady2027.docx, AnonymousSubmission2027.docx, ReproducibilityChecklist.docx + .pdfs)
+Status: OK
+Notes: The URL looks like a web page but serves application/zip directly (Content-Type: application/zip), so it must be saved as a file, not parsed as HTML. The link is the one published on the official AAAI-27 conference page https://aaai.org/conference/aaai/aaai-27/. Caveat: this was a large (~5.5 MB) download and a naive short-timeout fetch truncates it mid-stream (a first attempt returned only 105 KB); it needs a generous --max-time (~90 s observed here). Includes both LaTeX and Word templates plus the reproducibility checklist.

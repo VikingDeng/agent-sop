@@ -1,0 +1,13 @@
+Venue: neurips
+Kit: NeurIPS 2025 Style Files (Styles.zip)
+Source URL: https://media.neurips.cc/Conferences/NeurIPS2025/Styles.zip
+Source type: Official conference site
+Official: yes
+Year/version: 2025 (neurips_2025.sty [2025/05/01])
+Retrieved: 2026-09-17
+Commit/ETag: ETag "801ff089006d4c30-2df71-634f31186ad00" (Last-Modified 2025-05-12)
+Archive: _original.zip (188,273 B, sha256 72032130232955b785cd622b7c52d893e3166f30a90e1e6279d0a28e8373beef)
+Unpacked: neurips/Styles/
+Contains: neurips_2025.sty, neurips_2025.tex, neurips_2025.pdf
+Status: OK
+Notes: neurips.cc/Conferences/<year>/PaperInformation/StyleFiles is login-gated (404 -> /accounts/login?nextp=...), so media.neurips.cc is the public distribution point for the same official kit. NeurIPS2026/Styles.zip does not exist (HTTP 404); NeurIPS2024 (186,748 B) and NeurIPS2025 (188,273 B) do, so 2025 is the most recent. Build with pdflatex.

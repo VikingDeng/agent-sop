@@ -1,0 +1,15 @@
+{
+  // Opening this folder in VS Code will offer to install these.
+  // They are the whole toolchain for writing — no other extension is needed.
+  "recommendations": [
+    "myriad-dreamin.tinymist",
+    "calebfiggers.typst-companion",
+    "james-yu.latex-workshop"
+  ],
+  "unwantedRecommendations": [
+    // Superseded by Tinymist. Installing either one alongside it registers a
+    // second language server for .typ files and you get duplicate diagnostics.
+    "nvarner.typst-lsp",
+    "mgt19937.typst-preview"
+  ]
+}

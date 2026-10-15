@@ -1,0 +1,11 @@
+[package]
+name = "chinese-thesis-report"
+version = "0.1.0"
+compiler = "0.13.0"
+entrypoint = "chinese-thesis-report.typ"
+authors = ["Local template library"]
+license = "MIT"
+description = "Chinese thesis-style technical report: cover, abstract, TOC, notation list, numbered chapters, three-line tables."
+keywords = ["report", "template", "chinese", "thesis"]
+categories = ["report"]
+disciplines = ["computer-science"]

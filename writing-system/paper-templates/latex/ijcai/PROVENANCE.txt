@@ -1,0 +1,13 @@
+Venue: ijcai
+Kit: IJCAI-ECAI 2026 Formatting Guidelines (author kit)
+Source URL: https://www.ijcai.org/sites/default/files/Guidelines/FormattingGuidelines-IJCAI-ECAI-26.zip
+Source type: Official conference site
+Official: yes
+Year/version: 2026 (ijcai26.sty, ijcai26.tex)
+Retrieved: 2026-09-17
+Commit/ETag: - (no ETag; Last-Modified 2025-12-02 15:09:12 GMT)
+Archive: _original.zip (69,002 B, sha256 68c0f282c3b2340795642586998dff19597686c4b34d0bd9057de43d4e2a6ed3)
+Unpacked: ijcai/kit/
+Contains: ijcai26.sty, ijcai26.tex, ijcai26.bib, named.bst, ijcai26.docx
+Status: OK
+Notes: Linked from the official IJCAI Author's Kit page https://www.ijcai.org/authors_kit ("You can download the IJCAI-ECAI 2026 formatting guidelines here"). Ships both LaTeX and Word templates. The archive's top-level directory is FormattingGuidelines-IJCAI-ECAI-26/ (renamed to kit/ locally for consistency).

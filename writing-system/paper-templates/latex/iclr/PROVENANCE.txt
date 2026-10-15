@@ -1,0 +1,13 @@
+Venue: iclr
+Kit: ICLR Master-Template (contains the iclr2027 author kit, plus iclr2026 / iclr2025 / older years)
+Source URL: https://github.com/ICLR/Master-Template/archive/46ed6f4c6cef5b175dde23639e77d44c3463b230.tar.gz
+Source type: Official GitHub org
+Official: yes
+Year/version: 2027 (iclr2027_conference.sty; repo also ships iclr2026, iclr2025, iclr2024.zip, iclr2023.zip, iclr2022.zip, iclr2020/, iclr2021/, archive/)
+Retrieved: 2026-09-17
+Commit/ETag: 46ed6f4c6cef5b175dde23639e77d44c3463b230 (branch master)
+Archive: _original.tar.gz (2,673,233 B, sha256 f27c72e24f8dcb91f8ab2db3cacc8ca15114a061102edcc03ed0539c0faec684)
+Unpacked: iclr/kit/
+Contains: iclr2027/iclr2027_conference.sty, iclr2027_conference.bst, iclr2027_conference.tex, iclr2027_conference.bib, natbib.sty, fancyhdr.sty, math_commands.tex (and identical file sets under iclr2026/, iclr2025/); top level also has iclr2019_conference.sty/.bst/.tex, natbib.sty, fancyhdr.sty, math_commands.tex
+Status: OK
+Notes: IMPORTANT CORRECTION to the task brief: repositories named ICLR/iclr20XX do NOT exist. github.com/ICLR/iclr2024, iclr2025, iclr2026 and iclr2027 all return HTTP 404 "Not Found". The ICLR GitHub org publishes EVERY year from one repo: ICLR/Master-Template (default branch "master"). Use iclr2027/ as the current kit. There is no .zip for iclr2027 alone inside the repo, but iclr2022..iclr2024 do ship as year zips alongside the unpacked directories.

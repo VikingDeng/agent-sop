@@ -1,0 +1,11 @@
+[package]
+name = "modern-technical"
+version = "0.2.0"
+compiler = "0.13.0"
+entrypoint = "modern-technical.typ"
+authors = ["Local template library"]
+license = "MIT"
+description = "Modern restrained technical report / whitepaper template."
+keywords = ["report", "template"]
+categories = ["report"]
+disciplines = ["computer-science"]

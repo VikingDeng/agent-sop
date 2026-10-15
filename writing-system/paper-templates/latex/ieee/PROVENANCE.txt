@@ -1,0 +1,13 @@
+Venue: radar
+Kit: IEEEtran used in "conference" mode (bare_conf.tex) — the format RADAR 2026 officially mandates
+Source URL: https://mirrors.ctan.org/macros/latex/contrib/IEEEtran.zip
+Source type: CTAN
+Official: yes
+Year/version: CTAN package IEEEtran 1.8b; IEEEtran.cls [2015/08/26 V1.8b by Michael Shell]. RADAR 2026 official: https://2026.ieee-radarconf.org/
+Retrieved: 2026-09-17
+Commit/ETag: - (same artifact as the ieee venue)
+Archive: _original.zip (1,727,001 B, sha256 e0cd4f5afbd42c8076092280e72b3e0a5111efe501d35de9f715cfb8da313cb4)
+Unpacked: radar/IEEEtran/
+Contains: IEEEtran.cls, bare_conf.tex, bare_conf_compsoc.tex, bare_jrnl*.tex, bibtex/IEEEtran.bst, tools/IEEEtrantools.sty, testflow/
+Status: OK
+Notes: Primary evidence, from the official RADAR 2026 submission system's "Samples and Templates" page (https://epapers2.org/radar2026/ESR/samples.php, linked from the official conference site https://2026.ieee-radarconf.org/): "In order to prepare a submission using LaTeX, please use the IEEEtran document class file in 'conference' mode. The most up to date distribution of such class is available either from the IEEE or the Comprehensive TeX Archive Network: IEEE Download Site | CTAN Site." That page links http://mirrors.ctan.org/macros/latex/contrib/IEEEtran/bare_conf.tex, i.e. exactly the bare_conf.tex shipped here, and also supplies MS Word templates, IEEE PDF eXpress, and the copyright form. The official conference author pages are https://2026.ieee-radarconf.org/authors/initial-author-instructions-0 (US Letter or A4; max 6 pages incl. figures/tables/references; no page numbers; embed all fonts; avoid Type 3; <=5 MB PDF) and .../final-author-instructions. SECONDARY CHECKS AS REQUESTED: (a) IEEE GRSS — https://www.grss-ieee.org/ is reachable and its IEEE Transactions on Radar Systems page https://www.grss-ieee.org/publications/ieee-transactions-on-radar-systems/ was inspected; GRSS publishes no GRSS-specific LaTeX template and instead routes authors to the IEEE Author Center (journals.ieeeauthorcenter.ieee.org) and IEEE Xplore publishing policies, consistent with IEEEtran being the class. (b) IEEE Transactions on Radar Systems has NO separate official template page — as an IEEE journal it uses the standard IEEE journal templates (IEEEtran + bare_jrnl.tex) from the IEEE Author Center. Note https://radar.ieee.org/ is dead (connection failure, HTTP 000), so radarconf sites must be located via search. Also relevant: IGARSS, TGRS, GRSL and TAES are all IEEE GRSS/AESS publications and likewise use IEEEtran.

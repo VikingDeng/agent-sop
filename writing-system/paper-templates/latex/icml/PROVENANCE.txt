@@ -1,0 +1,13 @@
+Venue: icml
+Kit: ICML 2026 Style Files (icml2026.zip)
+Source URL: https://media.icml.cc/Conferences/ICML2026/Styles/icml2026.zip
+Source type: Official conference site
+Official: yes
+Year/version: 2026 (icml2026.sty v2.0 [2025/10/29])
+Retrieved: 2026-09-17
+Commit/ETag: ETag "801ff08900116193-37c10-6437c315629c0" (Last-Modified 2025-11-13)
+Archive: _original.zip (228,368 B, sha256 8b29290f5828e176debb57ea9cc00252502973d55ea561a2f18a7f0a326bfc6c)
+Unpacked: icml/kit/
+Contains: icml2026.sty, icml2026.bst, example_paper.tex, example_paper.bib, example_paper.pdf, algorithm.sty, algorithmic.sty, fancyhdr.sty, icml_numpapers.pdf
+Status: OK
+Notes: Discovery path: https://icml.cc/Conferences/2026/AuthorInstructions (the human-facing /StyleFiles page is login-gated, same as NeurIPS). The AuthorInstructions page links the media.icml.cc zip directly. There is no official ICML GitHub org (github.com/icml-org and github.com/ICML both 404), so this CDN zip is the authoritative artifact. No support for non-LaTeX typesetting; submissions must be anonymized. Build with pdflatex.

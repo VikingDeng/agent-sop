@@ -1,0 +1,121 @@
+{
+  // =========================================================================
+  //  paper-templates — VS Code workspace settings
+  //
+  //  Scope: this file only ADDS Typst and LaTeX settings for this folder.
+  //  VS Code merges workspace settings over user settings, and only for the
+  //  keys below — nothing you configured globally is overridden.
+  //
+  //  If you already have a .vscode/settings.json here, merge these keys into
+  //  it rather than replacing it.
+  //
+  //  Every `tinymist.*` key below was checked against the extension's own
+  //  configuration schema (editors/vscode/package.json in
+  //  github.com/Myriad-Dreamin/tinymist) rather than written from memory.
+  //  Keys that older guides mention but that no longer exist —
+  //  `tinymist.diagnosticsMode`, `tinymist.hoverPreview.enabled` — are
+  //  deliberately absent.
+  // =========================================================================
+
+  // ---------------------------------------------------------------- Typst ---
+  // Tinymist is the maintained Typst language server (LSP + preview +
+  // formatter + compiler). It supersedes the abandoned `typst-lsp` and
+  // `typst-preview` extensions, so only Tinymist is configured here.
+
+  // The language-server binary. The copy Tinymist bundles inside its VSIX is
+  // linked against the MUSL loader (/lib/ld-musl-x86_64.so.1), which a stock
+  // Ubuntu does not ship, so it fails to start with
+  //   "timeout: failed to execute process: No such file or directory".
+  // We therefore run the glibc build from the same upstream release, installed
+  // to ~/.local/bin/tinymist. Delete this line if you are on a distro with musl,
+  // or point it at your own build.
+  // NOTE: this must be a LITERAL absolute path. The extension consumes
+  // `serverPath` verbatim -- it does NOT expand ${env:HOME} or any other
+  // VS Code variable -- and once this setting is non-empty it also stops
+  // falling back to searching PATH. A ${env:HOME}/... value here fails with
+  // the path being taken literally.
+  "tinymist.serverPath": "/home/viking/.local/bin/tinymist",
+
+  // Live preview. `onType` re-renders as you type; `onSave` is lighter.
+  "tinymist.preview.refresh": "onType",
+  "tinymist.preview.cursorIndicator": true,
+  "tinymist.preview.scrollSync": "onSelectionChange",
+  "tinymist.preview.partialRendering": true,
+
+  // Do NOT write PDFs on save. This workspace builds PDFs through
+  // scripts/build_all_examples.sh so that editing a file never litters the
+  // template tree with artefacts. Switch to "onSave" if you prefer.
+  "tinymist.exportPdf": "never",
+
+  // Formatter: typstyle ships with Tinymist.
+  "tinymist.formatterMode": "typstyle",
+  "tinymist.formatterIndentSize": 2,
+
+  // Linting is OFF by default upstream; turn it on for this library.
+  "tinymist.lint.enabled": true,
+  "tinymist.lint.when": "onSave",
+
+  "tinymist.completion.triggerOnSnippetPlaceholders": true,
+  "tinymist.statusBarFormat": "{compileStatusIcon} {wordCount} [{fileName}]",
+
+  // NOTE ON THE PROJECT ROOT — intentionally left at its defaults.
+  // Typst resolves the project root to the directory of the *entry file*, and
+  // every document in this library is written to work under that rule:
+  //   * examples/radar-paper/*.typ import "content/..." relatively and pull
+  //     their venue style from a package (@preview/... or @local/...);
+  //   * typst/<venue>/main.typ uses root-absolute imports like "/icml.typ",
+  //     which resolve correctly because that file's own directory IS the root.
+  // Pinning `tinymist.rootPath` to the workspace folder would break the
+  // second case, so leave it unset. If you ever need to force a root:
+  //   "tinymist.rootPath": "${workspaceFolder}"
+  // and accept that the vendored `typst/<venue>/` demos then need adjusting.
+
+  "[typst]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "myriad-dreamin.tinymist",
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    // Typst source is often hard-wrapped; do not fight the author's wrapping.
+    "editor.wordWrap": "on",
+    "editor.rulers": [80, 100]
+  },
+
+  // ---------------------------------------------------------------- LaTeX ---
+  // LaTeX Workshop (already installed) drives the official author kits under
+  // latex/. Two recipes cover what the kits actually need:
+  //   * latexmk + pdflatex -> most math/CS venues
+  //   * latexmk + xelatex  -> anything with fontspec or CJK
+  "latex-workshop.latex.recipes": [
+    { "name": "latexmk (pdflatex)", "tools": ["latexmk-pdf"] },
+    { "name": "latexmk (xelatex)", "tools": ["latexmk-xe"] },
+    { "name": "pdflatex -> bibtex -> pdflatex x2", "tools": ["pdflatex", "bibtex", "pdflatex", "pdflatex"] }
+  ],
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk-pdf",
+      "command": "latexmk",
+      "args": ["-synctex=1", "-interaction=nonstopmode", "-file-line-error", "-pdf", "%DOC%"]
+    },
+    {
+      "name": "latexmk-xe",
+      "command": "latexmk",
+      "args": ["-synctex=1", "-interaction=nonstopmode", "-file-line-error", "-xelatex", "%DOC%"]
+    },
+    {
+      "name": "pdflatex",
+      "command": "pdflatex",
+      "args": ["-synctex=1", "-interaction=nonstopmode", "-file-line-error", "%DOC%"]
+    },
+    { "name": "bibtex", "command": "bibtex", "args": ["%DOCFILE%"] }
+  ],
+  // Build artefacts must not pollute the template folders.
+  "latex-workshop.latex.outDir": "%DIR%/build",
+  "latex-workshop.latex.autoBuild.run": "never",
+  "latex-workshop.latex.clean.subfolder.enabled": true,
+  "latex-workshop.view.pdf.viewer": "tab",
+
+  // ------------------------------------------------------------- workspace --
+  "files.associations": { "*.typ": "typst" },
+  "files.exclude": { "**/build": true, "**/out.pdf": true },
+  "search.exclude": { "**/build": true, "**/.staging": true }
+}

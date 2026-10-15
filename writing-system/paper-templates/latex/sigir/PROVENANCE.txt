@@ -1,0 +1,13 @@
+Venue: www
+Kit: ACM Primary Article Template — acmart v2.20 (The Web Conference is ACM; no separate kit)
+Source URL: https://portalparts.acm.org/hippo/latex_templates/acmart-primary.zip
+Source type: Publisher
+Official: yes
+Year/version: acmart.cls v2.20 [2026/08/16]
+Retrieved: 2026-09-17
+Commit/ETag: 4ac4814f8736276e0b6540679e5ed45a38231c40 (zip archive comment)
+Archive: _original.zip (15,543,267 B, sha256 ad3489a190f35b99a6796d0c9895727546a5eae2dd8155ea00e97a991d6910ff)
+Unpacked: www/acmart-primary/
+Contains: acmart.cls, acmart.dtx, acmart.ins, acmart.bib, ACM-Reference-Format.bst, acmauthoryear.*, acmnumeric.*, samples/ (sigconf.tex et al.), acmguide.pdf, acmart.pdf, LICENSE, README, Makefile
+Status: OK
+Notes: The Web Conference (WWW) is ACM-published and follows the same ACM proceedings format, so the ACM Primary Article Template is the official kit — The Web Conference does not ship a bespoke LaTeX class. Byte-identical archive to kdd/ and sigir/ (sha256 ad3489a1...). Direct curl is blocked (403) — fetched via the browser session. See the kdd Notes for the CTAN alternative and its acmart.cls caveat.

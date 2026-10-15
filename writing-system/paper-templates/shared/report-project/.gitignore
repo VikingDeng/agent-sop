@@ -1,0 +1,9 @@
+# 构建产物：本工程只往 build/ 里写，clean 也只删已知文件（不删整个 build/）
+build/
+
+# 临时文件
+*.log
+*.tmp
+
+# tools/*.py 的运行缓存
+__pycache__/

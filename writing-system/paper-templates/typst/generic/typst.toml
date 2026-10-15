@@ -1,0 +1,11 @@
+[package]
+name = "generic-paper"
+version = "0.2.0"
+compiler = "0.13.0"
+entrypoint = "generic.typ"
+authors = ["Local template library"]
+license = "MIT"
+description = "Clean single-column academic paper template (original work, not a venue template)."
+keywords = ["paper", "academic", "single-column", "generic"]
+categories = ["paper"]
+disciplines = ["computer-science"]

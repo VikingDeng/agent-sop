@@ -1,0 +1,13 @@
+Venue: iccv
+Kit: ICCV 2025 Author Kit (February revision)
+Source URL: https://media.eventhosts.cc/Conferences/ICCV2025/ICCV2025-Author-Kit-Feb.zip
+Source type: Official conference site
+Official: yes
+Year/version: 2025 (iccv.sty [2025 LaTeX class for IEEE ICCV])
+Retrieved: 2026-09-17
+Commit/ETag: ETag "801ff08900328f02-829f-62d404fd85b40" (Last-Modified 2025-02-03)
+Archive: _original.zip (33,439 B, sha256 22c1bee4cf64c2106b9afaecf18807be9f8350a60576bc4bf4ba14a50ca36d83)
+Unpacked: iccv/kit/
+Contains: iccv.sty, main.tex, preamble.tex, rebuttal.tex, main.bib, ieeenat_fullname.bst, sec/ (0_abstract, 1_intro, 2_formatting, 3_finalcopy), README.md
+Status: OK
+Notes: There IS a dedicated ICCV kit, contrary to the assumption that ICCV only borrows the CVPR repo. It was linked from ICCV's own author-guidelines page at https://iccv.thecvf.com/Conferences/2025/AuthorGuidelines (found via the "AuthorGuidelines" page of the official CVF-hosted ICCV 2025 site), and is served from CVF's media host media.eventhosts.cc. main.tex declares \def\confName{ICCV}, \def\confYear{2025}, and selects the review/camera-ready variant via \usepackage[review]{iccv}. Note the archive also contained macOS junk (__MACOSX/, .DS_Store) which was removed on unpack. ICCV is additionally covered by cvpr-org/author-kit (see cvpr).

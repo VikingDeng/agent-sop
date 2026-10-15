@@ -1,0 +1,11 @@
+[package]
+name = "chinese-plain"
+version = "0.1.0"
+compiler = "0.13.0"
+entrypoint = "chinese-plain.typ"
+authors = ["Local template library"]
+license = "MIT"
+description = "Chinese report template, pure black and white, no colour."
+keywords = ["report", "template", "chinese", "monochrome"]
+categories = ["report"]
+disciplines = ["computer-science"]

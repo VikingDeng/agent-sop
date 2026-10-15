@@ -1,0 +1,13 @@
+Venue: eccv
+Kit: ECCV 2022 Author Kit (eccv2022AuthorKit.zip)
+Source URL: https://drive.google.com/uc?export=download&id=171-xo72Jx40cZ4qT20ZZsDDKXPIOWnss
+Source type: Official conference site
+Official: yes
+Year/version: 2022 (llncs.cls v2.20 [2018/03/10]; splncs04.bst)
+Retrieved: 2026-09-17
+Commit/ETag: - (Google Drive; no ETag. Drive file id 171-xo72Jx40cZ4qT20ZZsDDKXPIOWnss)
+Archive: _original.zip (240,506 B, sha256 a2822fe9506bae0f45b777707edf0f5c40164b46dc0d2f84a97535e358e3c489)
+Unpacked: eccv/kit/
+Contains: llncs.cls, splncs04.bst, eccv2022submission.tex, comment.sty, ruler.sty, egbib.bib, llncsdoc.pdf, README.txt, history.txt, eijkel2.eps, eijkel2.pdf
+Status: PARTIAL
+Notes: The bytes come from Google Drive, but the link is the official one published by the ECCV organisers on the official ECCV 2022 Call for Papers page (https://eccv2022.ecva.net/submission/call-for-papers/), which lists "LaTeX Templates (zip): eccv2022AuthorKit.zip" and "LaTeX Templates (tar): eccv2022AuthorKit.tgz" pointing at those Drive files. Status is PARTIAL, not OK, because this is the 2022 kit rather than the most recent ECCV: the ECCV 2024 site (eccv2024.ecva.net, and the eccv.ecva.net alias) is UNREACHABLE from this network for the whole session (DNS resolves to 198.202.70.65 weber.snl.salk.edu; every request after one transient early 200 ended in connection-closed / "TLS alert decode error / unexpected eof while reading", both through the local proxy and with --noproxy, over ~20 attempts including a 10x8s retry loop). eccv2026.ecva.net does not resolve/connect. No official ECCV GitHub org exists: github.com/eccv-org, github.com/ECVA and github.com/cvpr-org/eccv-author-kit all return 404, and media.eventhosts.cc/Conferences/ECCV2024/ exists but common kit filenames there 404. IMPORTANT: ECCV uses the SPRINGER LNCS class (llncs.cls + splncs04.bst) and NOT the cvpr.sty family used by CVPR/ICCV — do not substitute the CVPR kit. Also note eccv.org is an unrelated Colorado water-sanitation district, NOT the conference; do not use it. The kit's own README.txt is stale and still refers to "eccv2020submission" although the shipped file is eccv2022submission.tex.

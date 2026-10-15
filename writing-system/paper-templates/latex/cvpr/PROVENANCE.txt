@@ -1,0 +1,13 @@
+Venue: cvpr
+Kit: CVPR/ICCV/3DV official author kit (updated for CVPR 2026)
+Source URL: https://github.com/cvpr-org/author-kit/archive/291758547e923160eb4d37079b7b9f0dfce82355.tar.gz
+Source type: Official GitHub org
+Official: yes
+Year/version: 2026 (cvpr.sty [2026 LaTeX class for IEEE CVPR])
+Retrieved: 2026-09-17
+Commit/ETag: 291758547e923160eb4d37079b7b9f0dfce82355 (branch main)
+Archive: _original.tar.gz (24,496 B, sha256 106adc4fcac8ef7525fc99adc2630afba588b7670ffcf3ea0c8e46c25203da34)
+Unpacked: cvpr/kit/
+Contains: cvpr.sty, main.tex, preamble.tex, rebuttal.tex, main.bib, ieeenat_fullname.bst, sec/ (0_abstract, 1_intro, 2_formatting, 3_finalcopy, X_suppl), fig/teaser.tex, .github/workflows/latex-build.yml, README.md
+Status: OK
+Notes: Repo README titles this "Official LaTeX template for CVPR/ICCV/3DV", so this single repo also serves ICCV and 3DV. The CVPR 2026 MS Word template is no longer supported. Latest GitHub release tag is "CVPR2026-v1(latex)" (published 2025-09-17); the repo has only two repos in the org (author-kit, author-kit-msword), so there is no separate ICCV-only repo here. Submitted via the CVF paper site.

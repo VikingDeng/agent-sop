@@ -1,0 +1,13 @@
+Venue: emnlp
+Kit: The *ACL style files (acl-org/acl-style-files) — EMNLP has no separate style kit
+Source URL: https://github.com/acl-org/acl-style-files/archive/d5adc823ff0f80f98c80405ca0ab66c68e684409.tar.gz
+Source type: Official GitHub org
+Official: yes
+Year/version: current master (shared *ACL style files)
+Retrieved: 2026-09-17
+Commit/ETag: d5adc823ff0f80f98c80405ca0ab66c68e684409 (branch master)
+Archive: _original.tar.gz (32,736 B, sha256 00977b20fce2795778298af837bd51dc0e9fd69e734c1b70742201e7ba08b34f)
+Unpacked: emnlp/kit/
+Contains: acl.sty, acl_natbib.bst, acl_latex.tex, acl_lualatex.tex, formatting.md, anthology.bib.txt, custom.bib, README.md, tests/
+Status: OK
+Notes: SHARED LINEAGE WITH ACL — the archive here is byte-identical to the acl/ one (same sha256 00977b20...), which is expected and correct. Evidence of the official route: the official EMNLP 2025 calls page https://2025.emnlp.org/calls/main_conference_papers/ directs authors to ACL Rolling Review (https://aclrollingreview.org/cfp), whose guidelines state "Paper submissions must use the official ACL style template" and link https://github.com/acl-org/acl-style-files. No EMNLP-specific .sty exists. Caveat: https://2025.emnlp.org/ also links https://github.com/acl-org/emnlp-2025, but that repo is the conference WEBSITE (a Jekyll site: _pages/, _sass/, _includes/, downloads/, _config.yml), NOT style files — it was checked and rejected as a kit source. EMNLP also requires the ACL/ARR submission checklist.

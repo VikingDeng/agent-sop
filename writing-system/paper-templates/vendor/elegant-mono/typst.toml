@@ -1,0 +1,11 @@
+[package]
+name = "elegant-mono"
+version = "0.1.0"
+entrypoint = "lib.typ"
+authors = ["Xyber Nova <xyber-nova@outlook.com>", "patched locally (monochrome)"]
+license = "LGPL-3.0"
+description = "elegant-paper with all colour removed (monochrome). Patched copy; see PATCHES.md."
+categories = ["paper"]
+repository = "https://github.com/ctypst/elegant-paper-typst"
+keywords = ["typst", "template", "paper", "cjk", "中文", "monochrome"]
+exclude = ["*.pdf", "PATCHES.md"]

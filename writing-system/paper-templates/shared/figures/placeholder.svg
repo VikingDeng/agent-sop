@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  placeholder.svg — a neutral, greyscale figure placeholder.
+
+  Presentation attributes only (no <style> block): the Typst SVG renderer does
+  not apply CSS, so a stylesheet-driven SVG that looks right in a browser
+  renders unstyled here. See examples/radar-paper/figures/fig-pipeline.svg
+  for a worked example of a figure authored the same way.
+
+  Copy this next to your project's figures and replace it; new_typst_paper
+  already ships a copy.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="280" viewBox="0 0 480 280">
+  <rect x="0.5" y="0.5" width="479" height="279" fill="#fafbfc"
+        stroke="#b9bec6" stroke-width="1"/>
+  <line x1="0.5" y1="0.5" x2="479.5" y2="279.5" stroke="#dfe2e6" stroke-width="1"/>
+  <line x1="479.5" y1="0.5" x2="0.5" y2="279.5" stroke="#dfe2e6" stroke-width="1"/>
+  <text x="240" y="133" font-family="Libertinus Serif, serif" font-size="16"
+        fill="#6b7280" text-anchor="middle">Figure placeholder</text>
+  <text x="240" y="157" font-family="Libertinus Serif, serif" font-size="12"
+        fill="#9aa1ab" text-anchor="middle">replace this file</text>
+</svg>

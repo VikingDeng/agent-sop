@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+#  templates.tsv — machine-readable template manifest
+#
+#  This is the data source for scripts/list_templates.{sh,ps1} and for
+#  scripts/build_all_examples.{sh,ps1}. TEMPLATE_CATALOG.md is the human-facing
+#  companion and carries the full provenance and the quality scores.
+#
+#  Columns (TAB separated):
+#    id  format  venue  template  version  year  origin  license  path  source  state
+#
+#  origin: official | typst-official | community | own
+#    - official       : published by the venue/publisher itself
+#    - typst-official : published by the Typst project (not a venue endorsement)
+#    - community      : third-party reimplementation of a venue's look
+#    - own            : authored for this library
+#
+#  state: ok | patched | no-typst-template | broken
+#
+#  A row whose path is reports/<id>, or the generic-typst draft, is a LAYERED
+#  document BY REGISTRATION: scripts/new_typst_paper.{sh,ps1} scaffolds it with a
+#  vendor/template/ snapshot + template.lock (no @local/@preview, no network),
+#  and pre-checks starter/{main.typ,meta.typ,content/} — a missing starter is a
+#  hard failure, never a fallback to a venue entry. Daily entries:
+#  chinese-research (调研综述), modern-technical (工程技术文档), generic-typst
+#  (paper draft, no target yet). Everything else is a venue paper and needs its
+#  adapted entry in examples/radar-paper/.
+#
+#  A TAB-separated file is deliberate: it is trivially readable from both bash
+#  and PowerShell without a JSON parser, and diffable in git.
+# ---------------------------------------------------------------------------
+#id	format	venue	template	version	year	origin	license	path	source	state
+neurips-typst	typst	NeurIPS	bloated-neurips	0.8.0	2026	community	MIT	typst/neurips	https://typst.app/universe/package/bloated-neurips	ok
+icml-typst	typst	ICML	lucky-icml	0.7.1	2025	community	MIT	typst/icml	https://github.com/daskol/typst-templates	patched
+iclr-typst	typst	ICLR	clear-iclr	0.7.1	2026	community	MIT	typst/iclr	https://github.com/daskol/typst-templates	patched
+cvpr-typst	typst	CVPR	blind-cvpr	0.7.0	2025	community	MIT	typst/cvpr	https://typst.app/universe/package/blind-cvpr	ok
+acl-typst	typst	ACL / EMNLP / NAACL	tracl	0.8.1	current	community	Apache-2.0	typst/acl	https://typst.app/universe/package/tracl	ok
+ieee-typst	typst	IEEE (general)	charged-ieee	0.1.4	current	typst-official	MIT-0	typst/ieee/charged-ieee	https://github.com/typst/templates	ok
+ieee-ieeeconf-typst	typst	IEEE (conference)	bamdone-ieeeconf	0.1.3	current	typst-official	MIT-0	typst/ieee/bamdone-ieeeconf	https://github.com/typst/templates	ok
+ieee-vgtc-typst	typst	IEEE VGTC / TVCG	ieee-vgtc	0.0.4	current	community	MIT-0	typst/ieee/ieee-vgtc	https://github.com/ieeevgtc/ieee-vgtc-typst	ok
+isprs-typst	typst	ISPRS (remote sensing)	magic-isprs	0.1.0	current	community	MIT-0	typst/radar/isprs	https://github.com/alexandre-bry/ISPRS-Typst-Template	ok
+jmlr-typst	typst	JMLR	classic-jmlr	0.7.0	current	community	MIT	typst/generic/jmlr	https://github.com/daskol/typst-templates	ok
+tmlr-typst	typst	TMLR	smooth-tmlr	0.7.0	current	community	MIT	typst/generic/tmlr	https://github.com/daskol/typst-templates	ok
+generic-typst	typst	(none - generic)	generic-paper	0.2.0	current	own	MIT	typst/generic	(local)	ok
+iccv-typst	typst	ICCV	-	-	-	-	-	typst/iccv	-	no-typst-template
+eccv-typst	typst	ECCV	-	-	-	-	-	typst/eccv	-	no-typst-template
+emnlp-typst	typst	EMNLP	(reuses tracl)	0.8.1	current	community	Apache-2.0	typst/emnlp	https://typst.app/universe/package/tracl	no-typst-template
+aaai-typst	typst	AAAI	-	-	-	-	-	typst/aaai	-	no-typst-template
+ijcai-typst	typst	IJCAI	-	-	-	-	-	typst/ijcai	-	no-typst-template
+kdd-typst	typst	KDD	-	-	-	-	-	typst/kdd	-	no-typst-template
+sigir-typst	typst	SIGIR	-	-	-	-	-	typst/sigir	-	no-typst-template
+www-typst	typst	TheWebConf	-	-	-	-	-	typst/www	-	no-typst-template
+radar-typst	typst	IEEE Radar / IGARSS / TGRS	-	-	-	-	-	typst/radar	-	no-typst-template
+modern-technical	typst	(none - report)	modern-technical	0.2.0	current	own	MIT	reports/modern-technical	(local)	ok
+academic-clean	typst	(none - report)	academic-clean	0.1.0	current	own	MIT	reports/academic-clean	(local)	ok
+chinese-research	typst	(none - report)	chinese-research	0.2.0	current	own	MIT	reports/chinese-research	(local)	ok
+chinese-thesis-report	typst	(none - report)	chinese-thesis-report	0.1.0	current	own	MIT	reports/chinese-thesis-report	(local)	ok

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  fig-placeholder.svg — a placeholder result panel.
+
+  Ships as a VECTOR placeholder on purpose: the example project then compiles
+  with zero binary assets, and you can swap this one file for your real
+  artefact without touching any .typ source.
+
+  Presentation attributes only — see fig-pipeline.svg for why.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="300"
+     viewBox="0 0 560 300">
+
+  <rect x="0.5" y="0.5" width="559" height="299" fill="#ffffff"
+        stroke="#c8ccd2" stroke-width="1"/>
+
+  <!-- three panels ================================================ -->
+  <g>
+    <!-- panel 1 -->
+    <rect x="34" y="34" width="150" height="150" fill="#f7f8fa" stroke="#9aa1ab" stroke-width="1"/>
+    <ellipse cx="109" cy="109" rx="46" ry="26" fill="#1f3a5f" opacity="0.20"/>
+    <ellipse cx="109" cy="109" rx="26" ry="13" fill="#1f3a5f" opacity="0.35"/>
+    <ellipse cx="109" cy="109" rx="9" ry="5" fill="#1f3a5f" opacity="0.65"/>
+    <text x="109" y="206" font-family="Libertinus Serif, serif" font-size="14"
+          fill="#333333" text-anchor="middle">Ground truth</text>
+
+    <!-- panel 2 -->
+    <rect x="205" y="34" width="150" height="150" fill="#f7f8fa" stroke="#9aa1ab" stroke-width="1"/>
+    <ellipse cx="280" cy="109" rx="46" ry="26" fill="#1f3a5f" opacity="0.20"/>
+    <ellipse cx="280" cy="109" rx="24" ry="12" fill="#1f3a5f" opacity="0.33"/>
+    <ellipse cx="280" cy="109" rx="8" ry="4" fill="#1f3a5f" opacity="0.60"/>
+    <text x="280" y="206" font-family="Libertinus Serif, serif" font-size="14"
+          fill="#333333" text-anchor="middle">Physics only</text>
+
+    <!-- panel 3 -->
+    <rect x="376" y="34" width="150" height="150" fill="#f7f8fa" stroke="#9aa1ab" stroke-width="1"/>
+    <ellipse cx="451" cy="109" rx="46" ry="26" fill="#1f3a5f" opacity="0.20"/>
+    <ellipse cx="451" cy="109" rx="26" ry="13" fill="#1f3a5f" opacity="0.35"/>
+    <ellipse cx="451" cy="109" rx="9" ry="5" fill="#1f3a5f" opacity="0.65"/>
+    <text x="451" y="206" font-family="Libertinus Serif, serif" font-size="14"
+          fill="#333333" text-anchor="middle">Ours (K = 5)</text>
+  </g>
+
+  <!-- axis hints =================================================== -->
+  <line x1="34" y1="228" x2="526" y2="228" stroke="#c8ccd2" stroke-width="1"/>
+  <text x="280" y="258" font-family="Libertinus Serif, serif" font-size="14"
+        fill="#555b63" text-anchor="middle">Range bin →</text>
+  <text x="16" y="160" font-family="Libertinus Serif, serif" font-size="14"
+        fill="#555b63" text-anchor="middle" transform="rotate(-90 16 160)">Doppler bin →</text>
+
+  <text x="280" y="286" font-family="Libertinus Serif, serif" font-size="13"
+        fill="#8a9099" text-anchor="middle">PLACEHOLDER — replace this file</text>
+</svg>
