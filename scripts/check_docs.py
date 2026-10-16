@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 CAPS = {
     "README.md": 450,
     "AGENTS.md": 300,
-    "KERNEL.md": 1300,
-    "playbooks/oss-pr.md": 1000,
-    "playbooks/research.md": 1200,
+    "KERNEL.md": 1000,
+    "playbooks/oss-pr.md": 600,
+    "playbooks/research.md": 800,
     "retro/TEMPLATE.md": 300,
 }
-TOTAL_CAP = 5000  # all Markdown outside writing-system/ and retro entries
+TOTAL_CAP = 3500  # all Markdown outside writing-system/ and retro entries
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 CJK = re.compile(r"[㐀-鿿]")
 LATIN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.'/-]*")
