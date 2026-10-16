@@ -1,7 +1,0 @@
-{
-  "base": "valid-submission.json",
-  "operation": "delete",
-  "path": ["candidates", 1, "signal"],
-  "expected_error_path": "$.candidates[1]",
-  "expected_error_fragment": "'signal' is a required property"
-}

@@ -1,1 +1,0 @@
-"""Typed API fixture package."""
